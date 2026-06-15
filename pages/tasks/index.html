@@ -1,0 +1,47 @@
+<!-- Tasks page — loaded dynamically into #page-content by menu.js -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Tasks</h1>
+    <p class="page-subtitle" id="tasks-subtitle">Your open tasks</p>
+  </div>
+  <div class="flex gap-3">
+    <button class="btn btn--secondary" id="btn-toggle-mine">My tasks only</button>
+    <button class="btn btn--primary" id="btn-new-task">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New task
+    </button>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div class="card" style="margin-bottom:var(--space-4)">
+  <div class="flex gap-3 items-center" style="flex-wrap:wrap">
+    <div class="search-wrap" style="flex:1;min-width:200px">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="search-input" id="task-search" placeholder="Search tasks…">
+    </div>
+    <select id="filter-task-status" style="width:160px">
+      <option value="open">Open</option>
+      <option value="">All</option>
+      <option value="pending">Pending</option>
+      <option value="in_progress">In progress</option>
+      <option value="completed">Completed</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+    <select id="filter-task-priority" style="width:140px">
+      <option value="">All priorities</option>
+      <option value="urgent">Urgent</option>
+      <option value="high">High</option>
+      <option value="normal">Normal</option>
+      <option value="low">Low</option>
+    </select>
+  </div>
+</div>
+
+<!-- Task list -->
+<div id="tasks-list" class="card" style="padding:0;overflow:hidden">
+  <div style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">Loading…</div>
+</div>
+
+<!-- New/edit task modal -->
+<div id="task-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="task-modal-title"></div>

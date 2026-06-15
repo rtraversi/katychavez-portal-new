@@ -1,0 +1,104 @@
+<!-- Conflict Checker — run before accepting a new client -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Conflict Check</h1>
+    <p class="page-subtitle">Search for conflicts of interest before accepting a new client.</p>
+  </div>
+</div>
+
+<!-- Search form -->
+<div class="card" style="margin-bottom:var(--space-4)">
+  <h2 class="card-title" style="margin-bottom:var(--space-4)">Run a Check</h2>
+  <form id="cc-form" novalidate>
+    <div class="field-row" style="margin-bottom:var(--space-4)">
+      <div class="field" style="flex:1">
+        <label for="cc-client-first">Prospective client — first name <span class="required">*</span></label>
+        <input type="text" id="cc-client-first" placeholder="First name" autocomplete="off">
+      </div>
+      <div class="field" style="flex:1">
+        <label for="cc-client-last">Last name <span class="required">*</span></label>
+        <input type="text" id="cc-client-last" placeholder="Last name" autocomplete="off">
+      </div>
+    </div>
+    <div class="field-row" style="margin-bottom:var(--space-4)">
+      <div class="field" style="flex:1">
+        <label for="cc-opp-first">Opposing party — first name</label>
+        <input type="text" id="cc-opp-first" placeholder="First name (optional)" autocomplete="off">
+      </div>
+      <div class="field" style="flex:1">
+        <label for="cc-opp-last">Last name</label>
+        <input type="text" id="cc-opp-last" placeholder="Last name (optional)" autocomplete="off">
+      </div>
+    </div>
+
+    <!-- Additional names -->
+    <div id="cc-extra-names"></div>
+    <button type="button" class="btn btn--ghost btn--sm" id="cc-add-name" style="margin-bottom:var(--space-4)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add another name to check
+    </button>
+
+    <div id="cc-form-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+    <button type="submit" class="btn btn--primary" id="cc-run-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Run Conflict Check
+    </button>
+  </form>
+</div>
+
+<!-- Results -->
+<div id="cc-results-section" class="hidden">
+
+  <!-- Summary banner -->
+  <div id="cc-summary" class="card" style="margin-bottom:var(--space-4);border-left:4px solid var(--color-border)"></div>
+
+  <!-- Match list -->
+  <div id="cc-matches-card" class="card hidden" style="margin-bottom:var(--space-4)">
+    <h2 class="card-title" style="margin-bottom:var(--space-4)">Matches Found</h2>
+    <p class="text-muted text-sm" style="margin-bottom:var(--space-4)">
+      Review each match below. Appearing in the database does not automatically mean a conflict exists — you must evaluate the relationship.
+    </p>
+    <div id="cc-matches-body"></div>
+  </div>
+
+  <!-- Decision -->
+  <div class="card" style="margin-bottom:var(--space-4)">
+    <h2 class="card-title" style="margin-bottom:var(--space-4)">Record Decision</h2>
+    <div class="field" style="margin-bottom:var(--space-4)">
+      <label>Outcome <span class="required">*</span></label>
+      <div style="display:flex;gap:var(--space-3);flex-wrap:wrap">
+        <label class="cc-radio-label">
+          <input type="radio" name="cc-outcome" value="clear" id="cc-outcome-clear">
+          <span class="badge badge--active" style="cursor:pointer">Clear — no conflict found</span>
+        </label>
+        <label class="cc-radio-label">
+          <input type="radio" name="cc-outcome" value="conflict" id="cc-outcome-conflict">
+          <span class="badge badge--closed" style="cursor:pointer">Conflict found — cannot accept</span>
+        </label>
+        <label class="cc-radio-label">
+          <input type="radio" name="cc-outcome" value="review_needed" id="cc-outcome-review">
+          <span class="badge badge--pending" style="cursor:pointer">Needs further review</span>
+        </label>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:var(--space-4)">
+      <label for="cc-notes">Notes</label>
+      <textarea id="cc-notes" rows="3" placeholder="Document your reasoning, what you found, or next steps…" style="resize:vertical"></textarea>
+    </div>
+    <div id="cc-decision-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+    <button class="btn btn--primary" id="cc-save-btn">Save Decision</button>
+    <span id="cc-saved-msg" class="text-muted text-sm hidden" style="margin-left:var(--space-3)">✓ Saved</span>
+  </div>
+
+</div>
+
+<!-- Past checks -->
+<div class="card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4)">
+    <h2 class="card-title" style="margin:0">Recent Checks</h2>
+    <button class="btn btn--ghost btn--sm" id="cc-refresh-history">Refresh</button>
+  </div>
+  <div id="cc-history-body">
+    <div style="padding:var(--space-8);text-align:center;color:var(--color-text-muted)">Loading…</div>
+  </div>
+</div>

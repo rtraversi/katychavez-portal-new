@@ -1,0 +1,106 @@
+<!-- Module: uploads — loaded dynamically into #page-content by menu.js -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Document Intake</h1>
+    <p class="page-subtitle" id="uploads-subtitle">Select a matter to view its documents</p>
+  </div>
+  <div class="flex gap-3" id="uploads-actions">
+    <button class="btn btn--secondary" id="btn-smart-intake">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
+      Smart Intake
+    </button>
+    <button class="btn btn--primary" id="btn-upload-doc" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload document
+    </button>
+  </div>
+</div>
+
+<!-- Matter selector ──────────────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:var(--space-4)">
+  <div class="flex gap-4 items-end" style="flex-wrap:wrap">
+    <div class="field" style="flex:1;min-width:260px;margin:0">
+      <label>Client matter</label>
+      <div id="matter-combobox" style="position:relative">
+        <div id="matter-search-wrap">
+          <input type="text" id="matter-search" placeholder="Type to search by client name or case type…" autocomplete="off">
+        </div>
+        <div id="matter-selected-wrap" style="display:none;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-3);background:var(--color-bg-subtle);border-radius:var(--radius)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" style="width:13px;height:13px;flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>
+          <span id="matter-selected-label" style="font-weight:500;font-size:var(--text-sm)"></span>
+          <button id="matter-clear" class="btn btn--ghost btn--xs" style="margin-left:auto;font-size:var(--text-xs)">Change</button>
+        </div>
+        <div id="matter-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:200;max-height:260px;overflow-y:auto;margin-top:2px"></div>
+      </div>
+    </div>
+    <div id="matter-meta" class="text-sm text-muted" style="padding-bottom:var(--space-1)"></div>
+  </div>
+</div>
+
+<!-- Document list ────────────────────────────────────────────────────────── -->
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:var(--space-4)" id="docs-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-4) var(--space-5)">
+    <h2 class="card-title" style="margin:0">Documents</h2>
+    <div class="flex gap-3" style="align-items:center">
+      <span id="doc-count" class="text-muted text-sm"></span>
+      <button class="btn btn--ghost btn--sm" id="btn-refresh-docs" disabled title="Refresh document list">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
+      <button class="btn btn--secondary btn--sm" id="btn-apply-checklist" style="white-space:nowrap" disabled>
+        Apply checklist
+      </button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table aria-label="Documents">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Uploaded</th>
+          <th>By</th>
+          <th style="width:96px"></th>
+        </tr>
+      </thead>
+      <tbody id="docs-tbody">
+        <tr>
+          <td colspan="6" style="padding:var(--space-12);text-align:center;color:var(--color-text-muted)">
+            Select a matter above to view documents
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Missing-doc discovery panel ─────────────────────────────────────────── -->
+<div class="card" id="missing-docs-card" style="display:none">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:var(--space-4);gap:var(--space-4);flex-wrap:wrap">
+    <div>
+      <h2 class="card-title" style="margin:0 0 var(--space-1)">Required Documents — Not Yet Received</h2>
+      <p class="text-muted text-sm" style="margin:0">Documents required for this matter that haven't been received yet.</p>
+    </div>
+    <button class="btn btn--secondary btn--sm" id="btn-send-reminder" style="white-space:nowrap;flex-shrink:0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      Send reminder
+    </button>
+  </div>
+  <div id="missing-docs-list"></div>
+</div>
+
+<!-- Mark Received modal -->
+<div id="mark-received-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
+
+<!-- Upload modal (built by uploads.js) ──────────────────────────────────── -->
+<div id="upload-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="upload-modal-title"></div>
+
+<!-- Status-change modal (built by uploads.js) ───────────────────────────── -->
+<div id="status-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
+
+<!-- Signature-request modal (built by uploads.js) ──────────────────────── -->
+<div id="sig-request-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
+
+<!-- Smart Intake modal (built by uploads.js) ────────────────────────────── -->
+<div id="smart-intake-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>

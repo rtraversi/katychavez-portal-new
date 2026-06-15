@@ -1,0 +1,65 @@
+<!-- Messaging — staff inbox: conversation list + thread view -->
+<div class="page-header" style="margin-bottom:var(--space-4)">
+  <div>
+    <h1 class="page-title">Messages</h1>
+    <p class="page-subtitle">Client conversations via the portal.</p>
+  </div>
+</div>
+
+<div class="msg-layout">
+
+  <!-- ── Conversation list (left pane) ──────────────────────────────────── -->
+  <div class="msg-sidebar" id="msg-sidebar">
+    <div class="msg-sidebar-header">
+      <span class="msg-sidebar-title">All Conversations</span>
+      <span class="msg-total-unread hidden" id="msg-total-unread"></span>
+    </div>
+    <div style="padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--color-border)">
+      <input type="search" id="msg-search" placeholder="Search by client name…"
+        style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:var(--text-xs);background:var(--color-bg);color:var(--color-text)">
+    </div>
+    <div id="msg-convo-list">
+      <div class="msg-loading">Loading…</div>
+    </div>
+  </div>
+
+  <!-- ── Thread view (right pane) ──────────────────────────────────────── -->
+  <div class="msg-thread" id="msg-thread">
+
+    <!-- Empty state -->
+    <div class="msg-empty" id="msg-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <p>Select a conversation to view messages</p>
+    </div>
+
+    <!-- Thread header -->
+    <div class="msg-thread-header hidden" id="msg-thread-header">
+      <div class="msg-thread-avatar" id="msg-thread-avatar"></div>
+      <div>
+        <div class="msg-thread-name" id="msg-thread-name"></div>
+        <div class="msg-thread-sub">Portal messaging</div>
+      </div>
+    </div>
+
+    <!-- Messages scroll area -->
+    <div class="msg-bubbles" id="msg-bubbles"></div>
+
+    <!-- Reply box -->
+    <div class="msg-reply hidden" id="msg-reply">
+      <textarea
+        id="msg-reply-input"
+        class="msg-reply-input"
+        placeholder="Type a message… (Ctrl+Enter to send)"
+        rows="3"
+        maxlength="2000"
+      ></textarea>
+      <div class="msg-reply-actions">
+        <span class="msg-reply-chars" id="msg-reply-chars">0 / 2000</span>
+        <button id="msg-send-btn" class="btn btn--primary">Send</button>
+      </div>
+    </div>
+
+  </div>
+</div>

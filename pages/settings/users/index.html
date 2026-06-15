@@ -1,0 +1,34 @@
+<!-- Settings › Users — admin only -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Users</h1>
+    <p class="page-subtitle">Manage staff accounts and roles</p>
+  </div>
+  <div class="flex gap-3">
+    <a href="#settings/permissions" class="btn btn--secondary">Permissions matrix</a>
+    <button class="btn btn--primary" id="btn-invite-user">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Invite user
+    </button>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <table id="users-table" aria-label="Users">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Status</th>
+        <th>Invited by</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="users-tbody">
+      <tr><td colspan="6" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div id="user-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="user-modal-title"></div>

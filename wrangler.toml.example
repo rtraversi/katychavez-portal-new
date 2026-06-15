@@ -1,0 +1,48 @@
+# IurisIQ Portal — Cloudflare Workers config
+# SETUP: copy this file to wrangler.toml, fill in every placeholder, then deploy.
+# wrangler.toml is gitignored — never commit it with real credentials.
+
+name = "CLIENT-SLUG"           # e.g. "smithlaw" — becomes your workers.dev subdomain
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+main = "./_worker.js"
+
+[assets]
+directory = "."
+binding = "ASSETS"
+
+[triggers]
+crons = ["0 14 * * *", "*/5 * * * *"]   # Daily 9am CST: doc reminders | Every 5 min: message notifications
+
+# ── Non-sensitive vars (safe to commit once filled in) ────────────────────────
+# Secrets (listed below) are set via: npx wrangler secret put <NAME>
+[vars]
+SUPABASE_URL      = "https://YOUR-PROJECT-REF.supabase.co"
+SUPABASE_ANON_KEY = "YOUR-SUPABASE-ANON-KEY"
+R2_ACCOUNT_ID     = "YOUR-CLOUDFLARE-ACCOUNT-ID"
+R2_BUCKET_NAME    = "CLIENT-SLUG-portal-prod"
+PORTAL_URL        = "https://CLIENT-SLUG.YOUR-CF-SUBDOMAIN.workers.dev"
+PORTAL_FIRM_NAME  = "Client Firm Name"
+PORTAL_FROM_EMAIL = "portal@clientdomain.com"
+B2_ENDPOINT       = "s3.us-east-005.backblazeb2.com"   # adjust region if needed
+B2_BUCKET_NAME    = "CLIENT-SLUG-portal-backup"
+ATTACHMENTAV_API_URL = "https://us.developer.attachmentav.com"   # or eu. for EU region
+GOOGLE_REDIRECT_URI  = "https://CLIENT-SLUG.YOUR-CF-SUBDOMAIN.workers.dev/api/calendar/oauth-callback"
+OUTLOOK_REDIRECT_URI = "https://CLIENT-SLUG.YOUR-CF-SUBDOMAIN.workers.dev/api/calendar/outlook-oauth-callback"
+
+# ── Secrets — set via CLI, never in this file ────────────────────────────────
+# npx wrangler secret put SUPABASE_SERVICE_KEY
+# npx wrangler secret put SSN_ENCRYPTION_KEY          # 32-char random string
+# npx wrangler secret put R2_ACCESS_KEY_ID
+# npx wrangler secret put R2_SECRET_ACCESS_KEY
+# npx wrangler secret put B2_KEY_ID
+# npx wrangler secret put B2_APPLICATION_KEY
+# npx wrangler secret put RESEND_API_KEY
+# npx wrangler secret put ATTACHMENTAV_API_KEY
+# npx wrangler secret put ANTHROPIC_API_KEY
+# npx wrangler secret put GOOGLE_CLIENT_ID            # if using Google Calendar
+# npx wrangler secret put GOOGLE_CLIENT_SECRET
+# npx wrangler secret put OUTLOOK_CLIENT_ID           # if using Outlook Calendar
+# npx wrangler secret put OUTLOOK_CLIENT_SECRET
+# npx wrangler secret put ILOVEAPI_PROJECT_ID         # if using Doc Translations PDF export
+# npx wrangler secret put ILOVEAPI_SECRET_KEY

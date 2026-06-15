@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>IurisIQ — Portal Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body class="login-page">
+
+  <div class="login-container" role="main">
+    <div class="login-card">
+
+      <header class="login-header">
+        <img src="assets/iurisiq-logo.png" class="login-logo" alt="IurisIQ">
+        <p class="login-subtitle">Client &amp; Staff Portal</p>
+      </header>
+
+      <form id="login-form" class="login-form" novalidate>
+        <div class="field">
+          <label for="email">Email address</label>
+          <input type="email" id="email" name="email" required
+                 autocomplete="email" inputmode="email"
+                 placeholder="you@example.com">
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required
+                 autocomplete="current-password">
+        </div>
+
+        <div id="login-error" class="form-error" role="alert" hidden></div>
+
+        <button type="submit" id="login-btn" class="btn btn--primary btn--full">
+          Sign in
+        </button>
+
+        <a href="#" id="forgot-link" class="login-forgot">Forgot password?</a>
+      </form>
+
+      <!-- Reset password panel (hidden by default) -->
+      <div id="reset-panel" class="login-form" hidden>
+        <p class="reset-intro">Enter your email and we'll send a reset link.</p>
+        <div class="field">
+          <label for="reset-email">Email address</label>
+          <input type="email" id="reset-email" autocomplete="email">
+        </div>
+        <div id="reset-message" class="form-success" role="status" hidden></div>
+        <div id="reset-error"   class="form-error"   role="alert"  hidden></div>
+        <button id="reset-btn" class="btn btn--primary btn--full">Send reset link</button>
+        <a href="#" id="back-link" class="login-forgot">← Back to sign in</a>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="powered-by">
+    <img src="IurisIQ-Logo-removebg-preview.png" alt="IurisIQ">
+    <span>Powered by IurisIQ</span>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    (async function () {
+      // Supabase dashboard recovery emails redirect to the site root with a
+      // recovery token in the hash. Hand off to the dedicated reset page.
+      if (window.location.hash.includes('type=recovery')) {
+        window.location.replace('/reset-password' + window.location.hash);
+        return;
+      }
+
+      // Already logged in → bounce to portal
+      const session = await Auth.getSession();
+      if (session) { window.location.replace('/portal'); return; }
+
+      // Show session-expired message if redirected from portal
+      const loginMsg = sessionStorage.getItem('login_message');
+      if (loginMsg) {
+        sessionStorage.removeItem('login_message');
+        const errorEl = document.getElementById('login-error');
+        errorEl.textContent = loginMsg;
+        errorEl.hidden = false;
+      }
+
+      const form       = document.getElementById('login-form');
+      const emailEl    = document.getElementById('email');
+      const passwordEl = document.getElementById('password');
+      const errorEl    = document.getElementById('login-error');
+      const loginBtn   = document.getElementById('login-btn');
+
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        errorEl.hidden = true;
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Signing in…';
+
+        try {
+          await Auth.login(emailEl.value.trim(), passwordEl.value);
+          window.location.replace('/portal');
+        } catch (err) {
+          errorEl.textContent = err.message === 'Invalid login credentials'
+            ? 'Incorrect email or password.' : err.message;
+          errorEl.hidden = false;
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Sign in';
+        }
+      });
+
+      // Forgot password flow
+      const forgotLink   = document.getElementById('forgot-link');
+      const resetPanel   = document.getElementById('reset-panel');
+      const backLink     = document.getElementById('back-link');
+      const resetBtn     = document.getElementById('reset-btn');
+      const resetEmail   = document.getElementById('reset-email');
+      const resetMsg     = document.getElementById('reset-message');
+      const resetErr     = document.getElementById('reset-error');
+
+      forgotLink.addEventListener('click', e => {
+        e.preventDefault();
+        form.hidden = true;
+        resetPanel.hidden = false;
+        resetEmail.value = emailEl.value;
+        resetEmail.focus();
+      });
+
+      backLink.addEventListener('click', e => {
+        e.preventDefault();
+        resetPanel.hidden = true;
+        form.hidden = false;
+      });
+
+      resetBtn.addEventListener('click', async () => {
+        resetMsg.hidden = true;
+        resetErr.hidden = true;
+        const email = resetEmail.value.trim();
+        if (!email) { resetErr.textContent = 'Enter your email.'; resetErr.hidden = false; return; }
+
+        resetBtn.disabled = true;
+        resetBtn.textContent = 'Sending…';
+        try {
+          await Auth.sendPasswordReset(email);
+          resetMsg.textContent = 'Reset link sent — check your email.';
+          resetMsg.hidden = false;
+        } catch (err) {
+          resetErr.textContent = err.message;
+          resetErr.hidden = false;
+        } finally {
+          resetBtn.disabled = false;
+          resetBtn.textContent = 'Send reset link';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

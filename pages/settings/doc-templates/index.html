@@ -1,0 +1,50 @@
+<!-- Settings: Doc Templates — loaded dynamically into #page-content by menu.js -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Document Templates</h1>
+    <p class="page-subtitle">Required document checklists by case type. Applied automatically when staff clicks "Apply Checklist" on a matter.</p>
+  </div>
+  <button class="btn btn--primary" id="btn-add-template">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Add item
+  </button>
+</div>
+
+<!-- Case type filter -->
+<div class="card" style="margin-bottom:var(--space-4);padding:var(--space-3) var(--space-5)">
+  <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:center">
+    <span class="text-sm text-muted" style="margin-right:var(--space-2)">Filter:</span>
+    <button class="btn btn--ghost btn--sm dt-filter-btn active" data-filter="all">All</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="">Universal</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="divorce">Divorce</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="sapcr_original">SAPCR Original</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="sapcr_modification">SAPCR Modification</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="custody">Custody</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="custody_modification">Custody Mod.</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="child_support">Child Support</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="enforcement">Enforcement</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="prenuptial_agreement">Prenuptial</button>
+    <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="protective_order">Protective Order</button>
+  </div>
+</div>
+
+<!-- Templates table -->
+<div class="card" style="padding:0;overflow:hidden">
+  <table aria-label="Document templates">
+    <thead>
+      <tr>
+        <th>Document name</th>
+        <th>Case type</th>
+        <th>Category</th>
+        <th>Required by default</th>
+        <th style="width:80px"></th>
+      </tr>
+    </thead>
+    <tbody id="templates-tbody">
+      <tr><td colspan="5" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Add/Edit modal -->
+<div id="dt-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>

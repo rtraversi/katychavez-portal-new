@@ -1,0 +1,17 @@
+_worker.js
+node_modules
+functions/
+scripts/
+_planning/
+_migrations/
+clientdocs/
+supabase/
+.claude/
+.env
+.env.*
+package.json
+package-lock.json
+wrangler.toml
+netlify.toml
+.git
+.wrangler

@@ -1,0 +1,75 @@
+<!-- Clients page — loaded dynamically into #page-content by menu.js -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Clients</h1>
+    <p class="page-subtitle">All active client matters</p>
+  </div>
+  <div class="flex gap-3">
+    <button class="btn btn--primary" id="btn-new-client">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New client
+    </button>
+  </div>
+</div>
+
+<!-- Search + filter bar -->
+<div class="card" style="margin-bottom: var(--space-4);">
+  <div class="flex gap-3 items-center" style="flex-wrap:wrap">
+    <div class="search-wrap" style="flex:1;min-width:200px">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="search-input" id="client-search" placeholder="Search by name or email…">
+    </div>
+    <select id="filter-status" style="width:160px">
+      <option value="">All statuses</option>
+      <option value="active">Active</option>
+      <option value="intake">Intake</option>
+      <option value="on_hold">On hold</option>
+      <option value="closed">Closed</option>
+    </select>
+    <select id="filter-case-type" style="width:180px">
+      <option value="">All case types</option>
+      <option value="divorce">Divorce</option>
+      <option value="sapcr_original">SAPCR – Original</option>
+      <option value="sapcr_modification">SAPCR – Modification</option>
+      <option value="enforcement">Enforcement</option>
+      <option value="custody">Custody</option>
+      <option value="custody_modification">Custody Modification</option>
+      <option value="child_support">Child Support</option>
+      <option value="child_support_modification">CS Modification</option>
+      <option value="paternity">Paternity</option>
+      <option value="prenuptial_agreement">Prenuptial Agreement</option>
+      <option value="postnuptial_agreement">Postnuptial Agreement</option>
+      <option value="protective_order">Protective Order</option>
+      <option value="adoption">Adoption</option>
+      <option value="other">Other</option>
+    </select>
+  </div>
+</div>
+
+<!-- Clients table -->
+<div class="card" style="padding:0;overflow:hidden">
+  <div class="table-wrap">
+    <table id="clients-table" aria-label="Clients">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Case type</th>
+          <th>Case #</th>
+          <th>Status</th>
+          <th>Attorney</th>
+          <th>Next hearing</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="clients-tbody">
+        <tr><td colspan="7" class="empty-state" style="text-align:center;color:var(--color-text-muted);padding:var(--space-10)">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Pagination -->
+<div id="clients-pagination" class="flex items-center gap-3 mt-4 text-sm text-muted" style="justify-content:flex-end"></div>
+
+<!-- New / Edit client modal (rendered by clients.js) -->
+<div id="client-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>

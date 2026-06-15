@@ -1,0 +1,81 @@
+/* Design tokens — edit here to retheme the whole portal */
+:root {
+  /* Brand */
+  --color-primary:       #42563e;
+  --color-primary-hover: #354a32;
+  --color-primary-text:  #ffffff;
+
+  /* Sidebar */
+  --sidebar-bg:           #0c1a0b;
+  --sidebar-border:       #1a3019;
+  --sidebar-text:         #8fa889;
+  --sidebar-text-active:  #f1f5f9;
+  --sidebar-icon-active:  #a8c9a0;
+  --sidebar-accent:       #42563e;
+  --sidebar-width:        240px;
+
+  /* Topbar */
+  --topbar-gradient: linear-gradient(170deg, rgba(74,110,64,.86) 0%, rgba(42,70,36,.86) 50%, rgba(16,38,14,.94) 100%);
+
+  /* Content */
+  --color-bg:         #f1f5f0;
+  --color-bg-subtle:  #f0f4ed;
+  --color-surface:    #ffffff;
+  --color-border:     #e2e8f0;
+  --color-border-mid: #cbd5e1;
+
+  /* Typography */
+  --color-text:       #0f172a;
+  --color-text-muted: #64748b;
+  --color-text-light: #94a3b8;
+
+  /* Status */
+  --color-success:      #16a34a;
+  --color-success-bg:   #f0fdf4;
+  --color-warning:      #d97706;
+  --color-warning-bg:   #fffbeb;
+  --color-danger:       #dc2626;
+  --color-danger-bg:    #fef2f2;
+  --color-info:         #2563eb;
+  --color-info-bg:      #eff6ff;
+
+  /* Elevation */
+  --shadow-sm:  0 1px 2px 0 rgba(0,0,0,.05);
+  --shadow-md:  0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -2px rgba(0,0,0,.1);
+  --shadow-lg:  0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
+
+  /* Radii */
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+
+  /* Spacing scale (4px base) */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Typography */
+  --font-sans: 'Open Sans', system-ui, -apple-system, sans-serif;
+  --text-xs:   12px;
+  --text-sm:   14px;
+  --text-base: 15px;
+  --text-md:   16px;
+  --text-lg:   19px;
+  --text-xl:   23px;
+  --text-2xl:  30px;
+
+  /* Topbar */
+  --topbar-height: 52px;
+
+  /* Transitions */
+  --transition-fast: 120ms ease;
+  --transition-mid:  200ms ease;
+}

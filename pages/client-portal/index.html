@@ -1,0 +1,224 @@
+<!-- Client Portal — client-facing view of their own matter -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title" id="cp-title">My Matter</h1>
+    <p class="page-subtitle" id="cp-subtitle">Loading your matter information…</p>
+  </div>
+</div>
+
+<!-- Tab nav -->
+<div style="display:flex;gap:0;border-bottom:2px solid var(--color-border);margin-bottom:var(--space-5)">
+  <button id="cp-tab-btn-overview"  class="cp-tab-btn active" style="padding:var(--space-2) var(--space-5);background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;font-size:var(--text-sm);font-weight:600;cursor:pointer;color:var(--color-text-muted);transition:color .15s" data-tab="overview">Overview</button>
+  <button id="cp-tab-btn-profile"   class="cp-tab-btn"        style="padding:var(--space-2) var(--space-5);background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;font-size:var(--text-sm);font-weight:600;cursor:pointer;color:var(--color-text-muted);transition:color .15s" data-tab="profile">My Profile</button>
+  <button id="cp-tab-btn-messages"  class="cp-tab-btn"        style="padding:var(--space-2) var(--space-5);background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;font-size:var(--text-sm);font-weight:600;cursor:pointer;color:var(--color-text-muted);transition:color .15s" data-tab="messages">Messages</button>
+</div>
+
+<!-- Loading / error state -->
+<div id="cp-loading" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">Loading…</div>
+<div id="cp-error" class="hidden" style="padding:var(--space-10);text-align:center;color:var(--color-danger)"></div>
+
+<!-- ── OVERVIEW TAB ─────────────────────────────────────────────────────────── -->
+<div id="cp-tab-overview">
+
+  <!-- Matter status card -->
+  <div id="cp-matter-card" class="card hidden" style="margin-bottom:var(--space-4)">
+    <h2 class="card-title" style="margin-bottom:var(--space-4)">Matter Overview</h2>
+    <div id="cp-matter-body" style="display:grid;gap:var(--space-3);grid-template-columns:repeat(auto-fill,minmax(220px,1fr))"></div>
+  </div>
+
+  <!-- Key dates -->
+  <div id="cp-dates-card" class="card hidden" style="margin-bottom:var(--space-4)">
+    <h2 class="card-title" style="margin-bottom:var(--space-4)">Key Dates</h2>
+    <div id="cp-dates-body"></div>
+  </div>
+
+  <!-- Pending signatures -->
+  <div id="cp-esign-card" class="card hidden" style="margin-bottom:var(--space-4);border-left:4px solid var(--color-primary)">
+    <h2 class="card-title" style="margin-bottom:var(--space-1)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;vertical-align:-3px;margin-right:var(--space-2)"><path d="M20 19.5v.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8.5L18 5.5"/><path d="M8 18h1l12.5-12.5-1-1L8 17v1z"/></svg>
+      Signature Requested
+    </h2>
+    <p class="text-muted text-sm" style="margin-bottom:var(--space-4)">Your attorney has requested your electronic signature on the following documents.</p>
+    <div id="cp-esign-body"></div>
+  </div>
+
+  <!-- Sign modal -->
+  <div id="cp-sign-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
+
+  <!-- Freeform upload modal -->
+  <div id="cp-upload-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
+
+  <!-- Document checklist + uploads -->
+  <div id="cp-docs-card" class="card hidden" style="padding:0;overflow:hidden;margin-bottom:var(--space-4)">
+    <div style="padding:var(--space-5) var(--space-5) 0;display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-4)">
+      <div>
+        <h2 class="card-title">Documents</h2>
+        <p class="text-muted text-sm">Upload requested documents below. Accepted: PDF, Word, Excel, JPEG, PNG.</p>
+      </div>
+      <button class="btn btn--secondary btn--sm" id="cp-btn-upload" style="flex-shrink:0;margin-top:2px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload a document
+      </button>
+    </div>
+
+    <!-- Required checklist -->
+    <div id="cp-checklist-section" class="hidden">
+      <div style="padding:var(--space-3) var(--space-5);background:var(--color-bg);font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)">
+        Requested Documents
+      </div>
+      <div id="cp-checklist-body"></div>
+    </div>
+
+    <!-- Uploaded documents -->
+    <div id="cp-uploaded-section" class="hidden">
+      <div style="padding:var(--space-3) var(--space-5);background:var(--color-bg);font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)">
+        Uploaded Documents
+      </div>
+      <div id="cp-uploaded-body"></div>
+    </div>
+
+    <div id="cp-docs-empty" class="hidden" style="padding:var(--space-8);text-align:center;color:var(--color-text-muted)">
+      No documents on file yet.
+    </div>
+  </div>
+
+  <!-- Hidden file input for uploads -->
+  <input type="file" id="cp-file-input" style="display:none"
+    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tiff,.tif,.webp">
+
+</div>
+
+<!-- ── MESSAGES TAB ─────────────────────────────────────────────────────────── -->
+<div id="cp-tab-messages" class="hidden">
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:var(--space-4)">
+    <div style="padding:var(--space-5) var(--space-5) var(--space-3);border-bottom:1px solid var(--color-border)">
+      <h2 class="card-title" style="margin-bottom:4px">Messages</h2>
+      <p class="text-muted text-sm">Direct messages with your legal team. We typically respond within one business day.</p>
+    </div>
+    <div class="msg-bubbles" id="cp-msg-bubbles" style="height:350px;max-height:50vh">
+      <div class="msg-loading">Loading messages…</div>
+    </div>
+    <div class="msg-reply">
+      <textarea
+        id="cp-msg-input"
+        class="msg-reply-input"
+        placeholder="Type a message… (Ctrl+Enter to send)"
+        rows="3"
+        maxlength="2000"
+      ></textarea>
+      <div class="msg-reply-actions">
+        <span class="msg-reply-chars" id="cp-msg-chars">0 / 2000</span>
+        <button id="cp-msg-send-btn" class="btn btn--primary">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MY PROFILE TAB ──────────────────────────────────────────────────────── -->
+<div id="cp-tab-profile" class="hidden">
+  <div class="card" style="margin-bottom:var(--space-4)">
+    <h2 class="card-title" style="margin-bottom:var(--space-1)">My Contact Information</h2>
+    <p class="text-muted text-sm" style="margin-bottom:var(--space-5)">Keep your information current so the firm can reach you quickly. Your name and case details are managed by your attorney.</p>
+
+    <form id="cp-profile-form" novalidate>
+
+      <!-- Phone -->
+      <div style="margin-bottom:var(--space-5)">
+        <div style="font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);margin-bottom:var(--space-3)">Phone Numbers</div>
+        <div class="field-row">
+          <div class="field" style="flex:1">
+            <label for="cp-cell-phone">Cell / Mobile</label>
+            <input type="tel" id="cp-cell-phone" name="cell_phone" placeholder="(555) 000-0000" autocomplete="tel">
+          </div>
+          <div class="field" style="flex:1">
+            <label for="cp-home-phone">Home</label>
+            <input type="tel" id="cp-home-phone" name="home_phone" placeholder="(555) 000-0000" autocomplete="tel-home">
+          </div>
+          <div class="field" style="flex:1">
+            <label for="cp-work-phone">Work</label>
+            <input type="tel" id="cp-work-phone" name="work_phone" placeholder="(555) 000-0000" autocomplete="tel-work">
+          </div>
+        </div>
+      </div>
+
+      <!-- Preferred contact -->
+      <div class="field" style="margin-bottom:var(--space-5)">
+        <label for="cp-preferred-contact">Preferred way to be contacted</label>
+        <select id="cp-preferred-contact" name="preferred_contact">
+          <option value="">— Select —</option>
+          <option value="portal">Portal (messages inside this app)</option>
+          <option value="email">Email</option>
+          <option value="phone">Phone call</option>
+          <option value="text">Text message</option>
+        </select>
+      </div>
+
+      <!-- Address -->
+      <div style="margin-bottom:var(--space-5)">
+        <div style="font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);margin-bottom:var(--space-3)">Home Address</div>
+        <div class="field" style="margin-bottom:var(--space-3)">
+          <label for="cp-address1">Street address</label>
+          <input type="text" id="cp-address1" name="address_line1" placeholder="123 Main St" autocomplete="address-line1">
+        </div>
+        <div class="field" style="margin-bottom:var(--space-3)">
+          <label for="cp-address2">Apt / Unit (optional)</label>
+          <input type="text" id="cp-address2" name="address_line2" placeholder="Apt 4B" autocomplete="address-line2">
+        </div>
+        <div class="field-row">
+          <div class="field" style="flex:2">
+            <label for="cp-city">City</label>
+            <input type="text" id="cp-city" name="city" autocomplete="address-level2">
+          </div>
+          <div class="field" style="flex:1">
+            <label for="cp-state">State</label>
+            <input type="text" id="cp-state" name="state" placeholder="TX" maxlength="2" autocomplete="address-level1">
+          </div>
+          <div class="field" style="flex:1">
+            <label for="cp-zip">ZIP</label>
+            <input type="text" id="cp-zip" name="zip" placeholder="75001" maxlength="10" autocomplete="postal-code">
+          </div>
+        </div>
+      </div>
+
+      <!-- Employer -->
+      <div style="margin-bottom:var(--space-5)">
+        <div style="font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);margin-bottom:var(--space-3)">Employer</div>
+        <div class="field" style="margin-bottom:var(--space-3)">
+          <label for="cp-employer">Employer name</label>
+          <input type="text" id="cp-employer" name="employer" placeholder="Company name" autocomplete="organization">
+        </div>
+        <div class="field-row">
+          <div class="field" style="flex:2">
+            <label for="cp-emp-city">Employer city</label>
+            <input type="text" id="cp-emp-city" name="employer_city" autocomplete="off">
+          </div>
+          <div class="field" style="flex:1">
+            <label for="cp-emp-state">State</label>
+            <input type="text" id="cp-emp-state" name="employer_state" placeholder="TX" maxlength="2" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <!-- Emergency contact -->
+      <div style="margin-bottom:var(--space-5)">
+        <div style="font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);margin-bottom:var(--space-3)">Emergency Contact</div>
+        <div class="field-row">
+          <div class="field" style="flex:2">
+            <label for="cp-ec-name">Name</label>
+            <input type="text" id="cp-ec-name" name="emergency_contact_name" placeholder="Full name" autocomplete="off">
+          </div>
+          <div class="field" style="flex:1">
+            <label for="cp-ec-phone">Phone</label>
+            <input type="tel" id="cp-ec-phone" name="emergency_contact_phone" placeholder="(555) 000-0000" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <div id="cp-profile-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+      <div style="display:flex;align-items:center;gap:var(--space-3)">
+        <button type="submit" class="btn btn--primary" id="cp-profile-save">Save Profile</button>
+        <span id="cp-profile-saved" class="text-muted text-sm hidden">✓ Saved</span>
+      </div>
+    </form>
+  </div>
+</div>

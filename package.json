@@ -1,0 +1,19 @@
+{
+  "name": "wilsonlakesavage-portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Wilson Lake Savage family-law client & staff portal",
+  "scripts": {
+    "build": "node scripts/build-config.js",
+    "dev": "node scripts/build-config.js && npx serve . -p 3000"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.726.0",
+    "@aws-sdk/s3-request-presigner": "^3.726.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "supabase": "^2.103.0"
+  }
+}

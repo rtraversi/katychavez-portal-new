@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>IurisIQ — Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&family=Sora:wght@400;600&family=Codystar:wght@300;400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/portal.css">
+  <script src="js/theme.js"></script>
+</head>
+<body class="portal-body" style="visibility:hidden">
+
+<!-- ── SIDEBAR ──────────────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar" aria-label="Main navigation">
+
+  <div class="sidebar-brand">
+    <img src="assets/iurisiq-logo-small.png" class="brand-logo" alt="IurisIQ">
+    <span class="brand-tagline">Client Portal</span>
+  </div>
+
+  <nav class="sidebar-nav" id="sidebar-nav" aria-label="Portal modules">
+    <!-- Rendered by menu.js -->
+    <div class="nav-skeleton" aria-hidden="true">
+      <div class="nav-skel-item"></div>
+      <div class="nav-skel-item"></div>
+      <div class="nav-skel-item"></div>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="sidebar-footer-user">
+      <div class="user-card" id="user-card">
+        <div class="user-avatar" id="user-avatar" aria-hidden="true">?</div>
+        <div class="user-info">
+          <div class="user-name" id="user-name">Loading…</div>
+          <div class="user-role" id="user-role"></div>
+        </div>
+      </div>
+      <button class="logout-btn" id="logout-btn" aria-label="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="powered-by">
+      <img src="IurisIQ-Logo-removebg-preview.png" alt="IurisIQ">
+      <span>Powered by IurisIQ</span>
+    </div>
+  </div>
+
+</aside>
+
+<!-- ── MAIN ──────────────────────────────────────────────────────────────── -->
+<div class="main-wrapper">
+
+  <header class="topbar" id="topbar">
+    <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="3" y1="6"  x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+    <nav class="breadcrumb" id="breadcrumb" aria-label="Breadcrumb"></nav>
+    <div class="topbar-right">
+      <div class="topbar-date" id="topbar-date"></div>
+      <button id="topbar-theme-btn" class="topbar-settings-btn" aria-label="Change theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10c0 1.657-1.343 3-3 3h-1.5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h1.5"/><circle cx="7" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="9.5" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="13" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="16.5" cy="9.5" r="1" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <a href="#settings/users" class="topbar-settings-btn" id="topbar-settings-link" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </a>
+    </div>
+  </header>
+  <script>
+    (function() {
+      const el = document.getElementById('topbar-date');
+      function setDate() {
+        el.textContent = new Date().toLocaleDateString('en-US', {
+          weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+        });
+      }
+      setDate();
+      const now = new Date();
+      const msUntilMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now;
+      setTimeout(function() { setDate(); setInterval(setDate, 86400000); }, msUntilMidnight);
+    })();
+  </script>
+
+  <main class="page-content" id="page-content" role="main">
+    <!-- Loaded dynamically by menu.js based on hash route -->
+    <div class="page-skeleton" aria-busy="true" aria-label="Loading…"></div>
+  </main>
+
+</div>
+
+<!-- ── TOAST CONTAINER ───────────────────────────────────────────────────── -->
+<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+<!-- ── SCRIPTS ───────────────────────────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="modules/registry.js"></script>
+<script src="js/menu.js"></script>
+<script>
+  // ── Global error handler ────────────────────────────────────────────────────
+  // Catches any uncaught JS error or unhandled promise rejection across the whole
+  // portal and shows a non-blocking banner so the user knows something went wrong.
+  (function () {
+    function showErrorBanner(msg) {
+      if (document.getElementById('global-error-banner')) return; // only one at a time
+      const banner = document.createElement('div');
+      banner.id = 'global-error-banner';
+      banner.setAttribute('role', 'alert');
+      banner.style.cssText = [
+        'position:fixed;bottom:72px;left:50%;transform:translateX(-50%)',
+        'background:#1e293b;color:#f1f5f9;border-radius:8px;padding:12px 20px',
+        'font-size:13px;font-family:var(--font-sans,system-ui)',
+        'display:flex;align-items:center;gap:12px;z-index:9998;box-shadow:0 4px 12px rgba(0,0,0,.3)',
+        'max-width:480px;width:calc(100% - 48px)',
+      ].join(';');
+      banner.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" style="width:18px;height:18px;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span style="flex:1">${msg || 'Something went wrong on this page.'}</span>
+        <button onclick="window.location.reload()" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit">Refresh</button>
+        <button onclick="this.closest('#global-error-banner').remove()" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1;padding:0 4px" aria-label="Dismiss">×</button>`;
+      document.body.appendChild(banner);
+      // Auto-dismiss after 30s if not interacted with
+      setTimeout(() => banner.remove(), 30000);
+    }
+
+    window.addEventListener('error', e => {
+      // Ignore cross-origin script errors (no useful info available)
+      if (!e.message || e.message === 'Script error.') return;
+      console.error('[global-error]', e.message, e.filename, e.lineno);
+      showErrorBanner('Something went wrong. Refresh the page if things look broken.');
+    });
+
+    window.addEventListener('unhandledrejection', e => {
+      console.error('[unhandled-rejection]', e.reason);
+      // Don't surface every auth/network blip — only unexpected errors
+      const msg = e.reason?.message || String(e.reason) || '';
+      if (msg.includes('Unauthorized') || msg.includes('Invalid token')) return;
+      showErrorBanner('Something went wrong. Refresh the page if things look broken.');
+    });
+  })();
+
+  (async function () {
+
+    // Auth gate — redirect to login if no session
+    const session = await Auth.requireAuth();
+    if (!session) return;
+
+    // Load profile and populate sidebar user card
+    const profile = await Auth.getProfile();
+    if (profile) {
+      document.getElementById('user-avatar').textContent = Utils.initials(profile);
+      document.getElementById('user-name').textContent   = Utils.fullName(profile);
+      document.getElementById('user-role').textContent   = profile.role?.name || '';
+    }
+
+    // Hide staff-only topbar controls from clients
+    if (profile?.role?.name === 'Client') {
+      const settingsLink = document.getElementById('topbar-settings-link');
+      if (settingsLink) settingsLink.remove();
+    }
+
+    // Render nav
+    await Menu.render();
+
+    // Reveal UI now that everything is ready
+    document.body.style.visibility = '';
+
+    // Init router
+    Menu.init();
+
+    // Sidebar toggle (mobile)
+    const toggle  = document.getElementById('sidebar-toggle');
+    const sidebar = document.getElementById('sidebar');
+    toggle.addEventListener('click', () => {
+      const open = sidebar.classList.toggle('sidebar--open');
+      toggle.setAttribute('aria-expanded', open);
+    });
+
+    // Close sidebar on nav click (mobile)
+    document.getElementById('sidebar-nav').addEventListener('click', () => {
+      sidebar.classList.remove('sidebar--open');
+      toggle.setAttribute('aria-expanded', 'false');
+    });
+
+    // Logout
+    document.getElementById('logout-btn').addEventListener('click', () => Auth.logout());
+
+    // Session expiry — if Supabase fires SIGNED_OUT while the portal is active
+    // (refresh token expired after 7+ days inactivity), redirect to login with a message.
+    let manualLogout = false;
+    document.getElementById('logout-btn').addEventListener('click', () => { manualLogout = true; }, true);
+    db.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && !manualLogout) {
+        // Unexpected sign-out — session expired
+        sessionStorage.setItem('login_message', 'Your session expired. Please log in again.');
+        window.location.replace('/');
+      }
+    });
+
+    // Update page title on route change
+    window.addEventListener('hashchange', updateTitle);
+    updateTitle();
+
+    function updateTitle() {
+      const route = Menu.currentRoute();
+      const mod   = (window.MODULE_REGISTRY || []).find(m => m.route === route || route.startsWith(m.route + '/'));
+      const label = mod ? mod.name : Utils.titleCase(route.split('/').pop());
+      document.title = `${label} — IurisIQ`;
+
+      // Breadcrumb
+      const bc = document.getElementById('breadcrumb');
+      if (bc) bc.textContent = label;
+    }
+
+  })();
+</script>
+
+<!-- Theme picker modal -->
+<div id="theme-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="theme-modal-title">Appearance</h2>
+      <button class="modal-close" id="theme-modal-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="text-sm text-muted" style="margin-bottom:var(--space-1)">Choose a colour theme. Your selection is saved in this browser.</p>
+      <div class="theme-picker-grid" id="theme-picker-grid"></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
