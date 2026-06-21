@@ -78,20 +78,7 @@
       </a>
     </div>
   </header>
-  <script>
-    (function() {
-      const el = document.getElementById('topbar-date');
-      function setDate() {
-        el.textContent = new Date().toLocaleDateString('en-US', {
-          weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-        });
-      }
-      setDate();
-      const now = new Date();
-      const msUntilMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now;
-      setTimeout(function() { setDate(); setInterval(setDate, 86400000); }, msUntilMidnight);
-    })();
-  </script>
+  <script src="js/portal-date.js"></script>
 
   <main class="page-content" id="page-content" role="main">
     <!-- Loaded dynamically by menu.js based on hash route -->
@@ -104,131 +91,14 @@
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
 <!-- ── SCRIPTS ───────────────────────────────────────────────────────────── -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js" integrity="sha384-nD3dwv4+ZqdYnmZKe/249ImlV04om7xTCcsoSeQYI+RO+XlKPoqAWaJR1M5SJH9p" crossorigin="anonymous"></script>
 <script src="js/config.js"></script>
 <script src="js/supabase-client.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/auth.js"></script>
 <script src="modules/registry.js"></script>
 <script src="js/menu.js"></script>
-<script>
-  // ── Global error handler ────────────────────────────────────────────────────
-  // Catches any uncaught JS error or unhandled promise rejection across the whole
-  // portal and shows a non-blocking banner so the user knows something went wrong.
-  (function () {
-    function showErrorBanner(msg) {
-      if (document.getElementById('global-error-banner')) return; // only one at a time
-      const banner = document.createElement('div');
-      banner.id = 'global-error-banner';
-      banner.setAttribute('role', 'alert');
-      banner.style.cssText = [
-        'position:fixed;bottom:72px;left:50%;transform:translateX(-50%)',
-        'background:#1e293b;color:#f1f5f9;border-radius:8px;padding:12px 20px',
-        'font-size:13px;font-family:var(--font-sans,system-ui)',
-        'display:flex;align-items:center;gap:12px;z-index:9998;box-shadow:0 4px 12px rgba(0,0,0,.3)',
-        'max-width:480px;width:calc(100% - 48px)',
-      ].join(';');
-      banner.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" style="width:18px;height:18px;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span style="flex:1">${msg || 'Something went wrong on this page.'}</span>
-        <button onclick="window.location.reload()" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit">Refresh</button>
-        <button onclick="this.closest('#global-error-banner').remove()" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1;padding:0 4px" aria-label="Dismiss">×</button>`;
-      document.body.appendChild(banner);
-      // Auto-dismiss after 30s if not interacted with
-      setTimeout(() => banner.remove(), 30000);
-    }
-
-    window.addEventListener('error', e => {
-      // Ignore cross-origin script errors (no useful info available)
-      if (!e.message || e.message === 'Script error.') return;
-      console.error('[global-error]', e.message, e.filename, e.lineno);
-      showErrorBanner('Something went wrong. Refresh the page if things look broken.');
-    });
-
-    window.addEventListener('unhandledrejection', e => {
-      console.error('[unhandled-rejection]', e.reason);
-      // Don't surface every auth/network blip — only unexpected errors
-      const msg = e.reason?.message || String(e.reason) || '';
-      if (msg.includes('Unauthorized') || msg.includes('Invalid token')) return;
-      showErrorBanner('Something went wrong. Refresh the page if things look broken.');
-    });
-  })();
-
-  (async function () {
-
-    // Auth gate — redirect to login if no session
-    const session = await Auth.requireAuth();
-    if (!session) return;
-
-    // Load profile and populate sidebar user card
-    const profile = await Auth.getProfile();
-    if (profile) {
-      document.getElementById('user-avatar').textContent = Utils.initials(profile);
-      document.getElementById('user-name').textContent   = Utils.fullName(profile);
-      document.getElementById('user-role').textContent   = profile.role?.name || '';
-    }
-
-    // Hide staff-only topbar controls from clients
-    if (profile?.role?.name === 'Client') {
-      const settingsLink = document.getElementById('topbar-settings-link');
-      if (settingsLink) settingsLink.remove();
-    }
-
-    // Render nav
-    await Menu.render();
-
-    // Reveal UI now that everything is ready
-    document.body.style.visibility = '';
-
-    // Init router
-    Menu.init();
-
-    // Sidebar toggle (mobile)
-    const toggle  = document.getElementById('sidebar-toggle');
-    const sidebar = document.getElementById('sidebar');
-    toggle.addEventListener('click', () => {
-      const open = sidebar.classList.toggle('sidebar--open');
-      toggle.setAttribute('aria-expanded', open);
-    });
-
-    // Close sidebar on nav click (mobile)
-    document.getElementById('sidebar-nav').addEventListener('click', () => {
-      sidebar.classList.remove('sidebar--open');
-      toggle.setAttribute('aria-expanded', 'false');
-    });
-
-    // Logout
-    document.getElementById('logout-btn').addEventListener('click', () => Auth.logout());
-
-    // Session expiry — if Supabase fires SIGNED_OUT while the portal is active
-    // (refresh token expired after 7+ days inactivity), redirect to login with a message.
-    let manualLogout = false;
-    document.getElementById('logout-btn').addEventListener('click', () => { manualLogout = true; }, true);
-    db.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT' && !manualLogout) {
-        // Unexpected sign-out — session expired
-        sessionStorage.setItem('login_message', 'Your session expired. Please log in again.');
-        window.location.replace('/');
-      }
-    });
-
-    // Update page title on route change
-    window.addEventListener('hashchange', updateTitle);
-    updateTitle();
-
-    function updateTitle() {
-      const route = Menu.currentRoute();
-      const mod   = (window.MODULE_REGISTRY || []).find(m => m.route === route || route.startsWith(m.route + '/'));
-      const label = mod ? mod.name : Utils.titleCase(route.split('/').pop());
-      document.title = `${label} — IurisIQ`;
-
-      // Breadcrumb
-      const bc = document.getElementById('breadcrumb');
-      if (bc) bc.textContent = label;
-    }
-
-  })();
-</script>
+<script src="js/portal-init.js"></script>
 
 <!-- Theme picker modal -->
 <div id="theme-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
