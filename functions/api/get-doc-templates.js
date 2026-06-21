@@ -14,7 +14,7 @@ export async function onRequest({ request, env }) {
 
   const { data, error } = await admin
     .from('document_checklists')
-    .select('id, case_type, case_types, doc_name, doc_category, description, is_required_by_default, sort_order')
+    .select('id, case_type, case_types, doc_name, doc_category, description, is_required_by_default, sort_order, library_id')
     .order('sort_order');
 
   if (error) {

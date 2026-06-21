@@ -2,16 +2,20 @@
 
 (async function DocTemplatesPage() {
 
-  let templates       = [];
-  let practiceAreas   = [];
-  let caseTypesData   = [];
-  let caseTypeKeyMap  = new Map();  // key → name
-  let activePa        = 'all';     // 'all' | '__universal__' | practice_area id
-  let activeCt        = null;      // null | case_type key (only when a PA is active)
-  let canWrite        = false;
+  let templates          = [];
+  let library            = [];
+  let practiceAreas      = [];
+  let caseTypesData      = [];
+  let caseTypeKeyMap     = new Map();  // key → name
+  let importedLibraryIds = new Set();
+  let enabledPaKeys      = new Set();
+  let activePa           = 'all';     // 'all' | '__universal__' | practice_area id
+  let activeCt           = null;      // null | case_type key
+  let canWrite           = false;
 
   const tbody     = document.getElementById('templates-tbody');
   const modal     = document.getElementById('dt-modal');
+  const libModal  = document.getElementById('lib-modal');
   const filterBar = document.getElementById('dt-filter-bar');
 
   const CATEGORY_LABELS = {
@@ -24,7 +28,6 @@
     other:          'Other',
   };
 
-  // Tab/chip styles (inline so no global CSS changes needed)
   const TAB_BASE  = 'padding:var(--space-2) var(--space-4);font-size:var(--text-sm);font-weight:500;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:var(--color-text-muted);transition:color .15s,border-color .15s;white-space:nowrap';
   const TAB_ACTV  = 'padding:var(--space-2) var(--space-4);font-size:var(--text-sm);font-weight:600;background:none;border:none;border-bottom:2px solid var(--color-primary);cursor:pointer;color:var(--color-primary);white-space:nowrap';
   const CHIP_BASE = 'padding:var(--space-1) var(--space-3);font-size:var(--text-xs);font-weight:500;background:var(--color-bg-subtle);border:1px solid var(--color-border);border-radius:999px;cursor:pointer;color:var(--color-text-muted);white-space:nowrap;transition:background .15s,color .15s,border-color .15s';
@@ -35,7 +38,9 @@
   const profile  = await Auth.getProfile();
   const roleName = profile?.role?.name || '';
   canWrite = ['Owner', 'Attorney', 'Partner Attorney'].includes(roleName);
-  document.getElementById('btn-add-template').style.display = canWrite ? '' : 'none';
+  document.getElementById('btn-add-template').style.display   = canWrite ? '' : 'none';
+  document.getElementById('btn-add-recommended').style.display = canWrite ? '' : 'none';
+  document.getElementById('btn-browse-library').style.display  = canWrite ? '' : 'none';
 
   // ── Load reference data ───────────────────────────────────────────────────────
 
@@ -45,17 +50,37 @@
       db.from('case_types').select('*').order('sort_order'),
       db.from('enabled_practice_areas').select('practice_area_key'),
     ]);
-    const enabledPaKeys = new Set((enabledPa || []).map(r => r.practice_area_key));
+    enabledPaKeys  = new Set((enabledPa || []).map(r => r.practice_area_key));
     practiceAreas  = (pa || []).filter(p => enabledPaKeys.has(p.key));
     caseTypesData  = ct || [];
     caseTypeKeyMap = new Map(caseTypesData.map(c => [c.key, c.name]));
     renderFilters();
   }
 
+  // ── Load library ──────────────────────────────────────────────────────────────
+
+  async function loadLibrary() {
+    const { data } = await db.from('doc_template_library').select('*').order('sort_order');
+    library = data || [];
+  }
+
+  // ── Load firm's adopted templates ─────────────────────────────────────────────
+
+  async function load() {
+    const session = await Auth.getSession();
+    const res     = await fetch('/api/get-doc-templates', {
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) { Utils.toast(data.error || 'Failed to load templates.', 'error'); return; }
+    templates          = data.templates || [];
+    importedLibraryIds = new Set(templates.map(t => t.library_id).filter(Boolean));
+    render();
+  }
+
   // ── Two-level filter: PA tabs + case type chips ───────────────────────────────
 
   function renderFilters() {
-    // Row 1: Practice area tabs
     let tabsHtml = `<div style="display:flex;gap:0;border-bottom:1px solid var(--color-border);margin-bottom:var(--space-3)">`;
     tabsHtml += `<button class="dt-pa-tab" data-pa="all" style="${activePa === 'all' ? TAB_ACTV : TAB_BASE}">All</button>`;
     tabsHtml += `<button class="dt-pa-tab" data-pa="__universal__" style="${activePa === '__universal__' ? TAB_ACTV : TAB_BASE}">Universal</button>`;
@@ -65,7 +90,6 @@
     });
     tabsHtml += `</div>`;
 
-    // Row 2: Case type chips — only shown when a specific PA is selected
     let chipsHtml = '';
     if (activePa !== 'all' && activePa !== '__universal__') {
       const pa    = practiceAreas.find(p => p.id === activePa);
@@ -81,8 +105,6 @@
     filterBar.innerHTML = tabsHtml + chipsHtml;
   }
 
-  // Single delegated listener on filterBar (survives innerHTML replacement since
-  // the listener is on the container element, not the buttons inside it)
   filterBar.addEventListener('click', e => {
     const tab  = e.target.closest('.dt-pa-tab');
     const chip = e.target.closest('.dt-ct-chip');
@@ -98,19 +120,6 @@
     }
   });
 
-  // ── Load templates ────────────────────────────────────────────────────────────
-
-  async function load() {
-    const session = await Auth.getSession();
-    const res     = await fetch('/api/get-doc-templates', {
-      headers: { 'Authorization': `Bearer ${session.access_token}` },
-    });
-    const data = await res.json();
-    if (!res.ok) { Utils.toast(data.error || 'Failed to load templates.', 'error'); return; }
-    templates = data.templates || [];
-    render();
-  }
-
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
   function formatCaseTypes(caseTypes) {
@@ -120,22 +129,30 @@
     return `${labels.slice(0, 2).join(', ')} +${labels.length - 2} more`;
   }
 
+  // Build the set of case type keys that belong to enabled PAs
+  function enabledCaseTypeKeys() {
+    const enabledPaIds = new Set(practiceAreas.map(pa => pa.id));
+    return new Set(caseTypesData.filter(ct => enabledPaIds.has(ct.practice_area_id)).map(ct => ct.key));
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   function render() {
     let filtered;
     if (activePa === 'all') {
-      filtered = templates;
+      // Only show templates whose case types belong to enabled PAs (or universal)
+      const enabledCtKeys = enabledCaseTypeKeys();
+      filtered = templates.filter(t =>
+        !t.case_types || t.case_types.length === 0 ||
+        t.case_types.some(k => enabledCtKeys.has(k))
+      );
     } else if (activePa === '__universal__') {
       filtered = templates.filter(t => !t.case_types || t.case_types.length === 0);
     } else {
-      // Specific practice area
       const paCts = new Set(caseTypesData.filter(ct => ct.practice_area_id === activePa).map(ct => ct.key));
       if (activeCt) {
-        // Specific case type chip selected
         filtered = templates.filter(t => Array.isArray(t.case_types) && t.case_types.includes(activeCt));
       } else {
-        // "All [PA]" chip — any template touching this PA's case types
         filtered = templates.filter(t => Array.isArray(t.case_types) && t.case_types.some(k => paCts.has(k)));
       }
     }
@@ -169,7 +186,228 @@
       </tr>`).join('');
   }
 
-  // ── Modal ─────────────────────────────────────────────────────────────────────
+  // ── Add Recommended Templates ─────────────────────────────────────────────────
+
+  async function handleAddRecommended() {
+    const toImport = library.filter(item =>
+      item.is_recommended &&
+      (item.practice_area_key === null || enabledPaKeys.has(item.practice_area_key)) &&
+      !importedLibraryIds.has(item.id)
+    );
+
+    if (toImport.length === 0) {
+      Utils.toast('All recommended templates are already added.', 'info');
+      return;
+    }
+
+    const confirmed = await Utils.confirm(
+      `This will add ${toImport.length} recommended template${toImport.length !== 1 ? 's' : ''} for your enabled practice areas. You can remove any you don't need afterward.`,
+      { confirmLabel: 'Add templates' }
+    );
+    if (!confirmed) return;
+
+    const btn = document.getElementById('btn-add-recommended');
+    Utils.setLoading(btn, true);
+
+    const session = await Auth.getSession();
+    const res = await fetch('/api/save-doc-template', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body:    JSON.stringify({ action: 'bulk_import', items: toImport }),
+    });
+    const data = await res.json();
+    Utils.setLoading(btn, false);
+
+    if (!res.ok) { Utils.toast(data.error || 'Import failed.', 'error'); return; }
+    Utils.toast(`${data.imported} template${data.imported !== 1 ? 's' : ''} added.`, 'success');
+    await load();
+  }
+
+  // ── Library Picker Modal ──────────────────────────────────────────────────────
+
+  function openLibraryPicker() {
+    let libActivePa = 'all';
+    let libActiveCt = null;
+
+    function libEnabledCaseTypeKeys() {
+      const enabledPaIds = new Set(practiceAreas.map(pa => pa.id));
+      return new Set(caseTypesData.filter(ct => enabledPaIds.has(ct.practice_area_id)).map(ct => ct.key));
+    }
+
+    function filterLibrary() {
+      if (libActivePa === 'all') {
+        const enabledCtKeys = libEnabledCaseTypeKeys();
+        return library.filter(item =>
+          item.practice_area_key === null ||
+          (enabledPaKeys.has(item.practice_area_key) &&
+            (!item.case_type_keys || item.case_type_keys.length === 0 ||
+              item.case_type_keys.some(k => enabledCtKeys.has(k))))
+        );
+      }
+      if (libActivePa === '__universal__') {
+        return library.filter(item => item.practice_area_key === null);
+      }
+      const pa = practiceAreas.find(p => p.id === libActivePa);
+      if (!pa) return [];
+      const paItems = library.filter(item => item.practice_area_key === pa.key);
+      if (libActiveCt) {
+        return paItems.filter(item =>
+          !item.case_type_keys || item.case_type_keys.length === 0 ||
+          item.case_type_keys.includes(libActiveCt)
+        );
+      }
+      return paItems;
+    }
+
+    function libFormatCaseTypes(item) {
+      if (item.practice_area_key === null) return 'Universal (all)';
+      if (!item.case_type_keys || item.case_type_keys.length === 0) {
+        const pa = practiceAreas.find(p => p.key === item.practice_area_key);
+        return `All ${pa?.name || item.practice_area_key}`;
+      }
+      const labels = item.case_type_keys.map(k => caseTypeKeyMap.get(k) || k);
+      if (labels.length <= 2) return labels.join(', ');
+      return `${labels.slice(0, 2).join(', ')} +${labels.length - 2} more`;
+    }
+
+    function renderLibFilters(container) {
+      let tabsHtml = `<div style="display:flex;gap:0;border-bottom:1px solid var(--color-border);margin-bottom:var(--space-3)">`;
+      tabsHtml += `<button class="lib-pa-tab" data-pa="all" style="${libActivePa === 'all' ? TAB_ACTV : TAB_BASE}">All</button>`;
+      tabsHtml += `<button class="lib-pa-tab" data-pa="__universal__" style="${libActivePa === '__universal__' ? TAB_ACTV : TAB_BASE}">Universal</button>`;
+      practiceAreas.forEach(pa => {
+        tabsHtml += `<button class="lib-pa-tab" data-pa="${Utils.esc(pa.id)}" style="${libActivePa === pa.id ? TAB_ACTV : TAB_BASE}">${Utils.esc(pa.name)}</button>`;
+      });
+      tabsHtml += `</div>`;
+
+      let chipsHtml = '';
+      if (libActivePa !== 'all' && libActivePa !== '__universal__') {
+        const pa    = practiceAreas.find(p => p.id === libActivePa);
+        const paCts = caseTypesData.filter(ct => ct.practice_area_id === libActivePa);
+        if (paCts.length) {
+          chipsHtml = `<div style="display:flex;gap:var(--space-2);flex-wrap:wrap;padding-bottom:var(--space-2)">`;
+          chipsHtml += `<button class="lib-ct-chip" data-ct="" style="${libActiveCt === null ? CHIP_ACTV : CHIP_BASE}">All ${Utils.esc(pa?.name || '')}</button>`;
+          paCts.forEach(ct => {
+            chipsHtml += `<button class="lib-ct-chip" data-ct="${Utils.esc(ct.key)}" style="${libActiveCt === ct.key ? CHIP_ACTV : CHIP_BASE}">${Utils.esc(ct.name)}</button>`;
+          });
+          chipsHtml += `</div>`;
+        }
+      }
+
+      container.innerHTML = tabsHtml + chipsHtml;
+    }
+
+    function renderLibItems(container, importBtn) {
+      const items = filterLibrary();
+
+      if (!items.length) {
+        container.innerHTML = `<div style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">No templates in library for this selection.</div>`;
+        updateImportBtn(importBtn);
+        return;
+      }
+
+      container.innerHTML = items.map(item => {
+        const alreadyImported = importedLibraryIds.has(item.id);
+        const checkId = `lib-cb-${item.id}`;
+        return `
+          <label style="display:flex;align-items:flex-start;gap:var(--space-3);padding:var(--space-3) var(--space-1);border-bottom:1px solid var(--color-border-subtle, var(--color-border));cursor:${alreadyImported ? 'default' : 'pointer'};opacity:${alreadyImported ? '0.45' : '1'}">
+            <input type="checkbox" id="${checkId}" class="lib-item-cb" value="${item.id}"
+              style="width:auto;flex-shrink:0;margin-top:2px"
+              ${alreadyImported ? 'disabled checked' : ''}
+              ${item.is_recommended && !alreadyImported ? 'checked' : ''}>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:500;font-size:var(--text-sm)">${Utils.esc(item.doc_name)}</div>
+              <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px">
+                ${Utils.esc(libFormatCaseTypes(item))}
+                &nbsp;·&nbsp;${Utils.esc(CATEGORY_LABELS[item.doc_category] || item.doc_category)}
+                ${alreadyImported ? '&nbsp;·&nbsp;<span style="color:var(--color-success,#16a34a)">Already added</span>' : ''}
+                ${item.is_recommended && !alreadyImported ? '&nbsp;·&nbsp;<span style="color:var(--color-primary)">Recommended</span>' : ''}
+              </div>
+            </div>
+            <span style="font-size:var(--text-xs);color:${item.is_required_by_default ? 'var(--color-success,#16a34a)' : 'var(--color-text-muted)'};white-space:nowrap;padding-top:2px">
+              ${item.is_required_by_default ? 'Required' : 'Optional'}
+            </span>
+          </label>`;
+      }).join('');
+
+      updateImportBtn(importBtn);
+      container.querySelectorAll('.lib-item-cb:not([disabled])').forEach(cb => {
+        cb.addEventListener('change', () => updateImportBtn(importBtn));
+      });
+    }
+
+    function updateImportBtn(btn) {
+      const checked = libModal.querySelectorAll('.lib-item-cb:not([disabled]):checked').length;
+      btn.textContent = checked > 0 ? `Import selected (${checked})` : 'Import selected';
+      btn.disabled    = checked === 0;
+    }
+
+    // Build modal shell
+    libModal.innerHTML = `
+      <div class="modal" style="max-width:700px;width:100%">
+        <div class="modal-header">
+          <h2 class="modal-title">Browse template library</h2>
+          <button class="modal-close" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body" style="padding-bottom:0">
+          <div id="lib-filter-bar" style="margin-bottom:var(--space-2)"></div>
+          <div id="lib-items" style="max-height:440px;overflow-y:auto;margin:0 calc(-1 * var(--space-6));padding:0 var(--space-6)"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn--secondary" id="lib-cancel">Cancel</button>
+          <button class="btn btn--primary" id="lib-import" disabled>Import selected</button>
+        </div>
+      </div>`;
+
+    libModal.classList.remove('hidden');
+
+    const filterBarEl = document.getElementById('lib-filter-bar');
+    const itemsEl     = document.getElementById('lib-items');
+    const importBtn   = document.getElementById('lib-import');
+
+    renderLibFilters(filterBarEl);
+    renderLibItems(itemsEl, importBtn);
+
+    // Delegated filter listener
+    filterBarEl.addEventListener('click', e => {
+      const tab  = e.target.closest('.lib-pa-tab');
+      const chip = e.target.closest('.lib-ct-chip');
+      if (tab)  { libActivePa = tab.dataset.pa; libActiveCt = null; renderLibFilters(filterBarEl); renderLibItems(itemsEl, importBtn); }
+      if (chip) { libActiveCt = chip.dataset.ct || null; renderLibFilters(filterBarEl); renderLibItems(itemsEl, importBtn); }
+    });
+
+    libModal.querySelector('.modal-close').addEventListener('click', closeLibModal);
+    document.getElementById('lib-cancel').addEventListener('click', closeLibModal);
+    libModal.addEventListener('click', e => { if (e.target === libModal) closeLibModal(); });
+
+    importBtn.addEventListener('click', async () => {
+      const selectedIds = [...libModal.querySelectorAll('.lib-item-cb:not([disabled]):checked')].map(cb => cb.value);
+      if (!selectedIds.length) return;
+
+      const items = library.filter(item => selectedIds.includes(item.id));
+      Utils.setLoading(importBtn, true);
+
+      const session = await Auth.getSession();
+      const res = await fetch('/api/save-doc-template', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body:    JSON.stringify({ action: 'bulk_import', items }),
+      });
+      const data = await res.json();
+      Utils.setLoading(importBtn, false);
+
+      if (!res.ok) { Utils.toast(data.error || 'Import failed.', 'error'); return; }
+      Utils.toast(`${data.imported} template${data.imported !== 1 ? 's' : ''} added.`, 'success');
+      closeLibModal();
+      await load();
+    });
+  }
+
+  function closeLibModal() {
+    libModal.classList.add('hidden');
+    libModal.innerHTML = '';
+  }
+
+  // ── Add / Edit Modal ──────────────────────────────────────────────────────────
 
   function openModal(template = null) {
     const isEdit       = !!template;
@@ -179,7 +417,6 @@
     const catOpts = Object.entries(CATEGORY_LABELS)
       .map(([v, l]) => `<option value="${v}"${template?.doc_category === v ? ' selected' : ''}>${Utils.esc(l)}</option>`).join('');
 
-    // Checkboxes grouped by practice area
     const ctCheckboxes = practiceAreas.map(pa => {
       const paCts = caseTypesData.filter(ct => ct.practice_area_id === pa.id);
       if (!paCts.length) return '';
@@ -197,7 +434,7 @@
     modal.innerHTML = `
       <div class="modal" style="max-width:540px">
         <div class="modal-header">
-          <h2 class="modal-title">${isEdit ? 'Edit' : 'Add'} template item</h2>
+          <h2 class="modal-title">${isEdit ? 'Edit' : 'Add'} custom template</h2>
           <button class="modal-close" aria-label="Close">×</button>
         </div>
         <div class="modal-body">
@@ -266,10 +503,7 @@
         ? null
         : [...modal.querySelectorAll('.dt-ct-cb:checked')].map(cb => cb.value);
 
-      if (!universal && caseTypes.length === 0) {
-        ctErr.classList.remove('hidden');
-        return;
-      }
+      if (!universal && caseTypes.length === 0) { ctErr.classList.remove('hidden'); return; }
 
       Utils.setLoading(saveBtn, true);
 
@@ -285,9 +519,9 @@
 
       const session = await Auth.getSession();
       const res = await fetch('/api/save-doc-template', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify(payload),
+        body:    JSON.stringify(payload),
       });
       const data = await res.json();
 
@@ -317,9 +551,9 @@
 
     const session = await Auth.getSession();
     const res = await fetch('/api/save-doc-template', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ action: 'delete', id }),
+      body:    JSON.stringify({ action: 'delete', id }),
     });
     const data = await res.json();
     if (!res.ok) { Utils.toast(data.error || 'Delete failed.', 'error'); return; }
@@ -329,7 +563,9 @@
 
   // ── Event wiring ──────────────────────────────────────────────────────────────
 
-  document.getElementById('btn-add-template').addEventListener('click', () => openModal());
+  document.getElementById('btn-add-template').addEventListener('click',    () => openModal());
+  document.getElementById('btn-add-recommended').addEventListener('click', handleAddRecommended);
+  document.getElementById('btn-browse-library').addEventListener('click',  openLibraryPicker);
 
   tbody.addEventListener('click', e => {
     const editBtn   = e.target.closest('.dt-edit-btn');
@@ -340,7 +576,7 @@
 
   // ── Init ──────────────────────────────────────────────────────────────────────
 
-  await loadReferenceData();
+  await Promise.all([loadReferenceData(), loadLibrary()]);
   await load();
 
 })();

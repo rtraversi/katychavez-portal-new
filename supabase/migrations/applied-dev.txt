@@ -29,3 +29,4 @@
 1106_doc_drafting.sql
 1107_more_practice_areas.sql
 1108_enabled_practice_areas_rls.sql
+1109_doc_template_library.sql

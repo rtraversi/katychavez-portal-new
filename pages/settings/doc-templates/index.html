@@ -4,10 +4,14 @@
     <h1 class="page-title">Document Templates</h1>
     <p class="page-subtitle">Required document checklists by case type. Applied automatically when staff clicks "Apply Checklist" on a matter.</p>
   </div>
-  <button class="btn btn--primary" id="btn-add-template">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    Add item
-  </button>
+  <div class="flex gap-2">
+    <button class="btn btn--secondary" id="btn-browse-library">Browse library</button>
+    <button class="btn btn--secondary" id="btn-add-recommended">Add recommended templates</button>
+    <button class="btn btn--primary" id="btn-add-template">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Custom item
+    </button>
+  </div>
 </div>
 
 <!-- Case type filter — populated dynamically from practice_areas + case_types tables -->
@@ -38,3 +42,6 @@
 
 <!-- Add/Edit modal -->
 <div id="dt-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
+
+<!-- Library picker modal -->
+<div id="lib-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>

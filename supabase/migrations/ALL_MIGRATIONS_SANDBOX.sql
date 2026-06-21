@@ -1,6 +1,11 @@
-﻿-- ============================================================
+﻿-- ALL_MIGRATIONS_SANDBOX.sql
+-- Auto-generated: concatenation of all migrations in correct order.
+-- Run this against a fresh Supabase project to bootstrap the full schema.
+-- DO NOT edit manually — regenerate via the PowerShell snippet in new-client-setup.md.
+
+-- ════════════════════════════════════════
 -- 001_core_tables.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 001: Core domain tables
 -- clients Â· matters Â· opposing_parties Â· children Â· key_dates Â· financial_info Â· documents Â· tasks Â· task_reminder_rules
 -- Apply with: db-migrate.ps1 -Target dev|prod
@@ -337,9 +342,9 @@ INSERT INTO public.task_reminder_rules (trigger_date_type, offset_days, task_tit
   ('filing',        7,   'Send filed-copy to client: {client_name}',           'Confirm client received copy of filed documents.',             'normal', NULL);
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 002_rbac.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 002: RBAC â€” roles Â· users (profiles) Â· modules Â· role_module_access
 -- Also: FK back-fills, auth trigger, default roles/modules seed data.
 -- Apply AFTER migration 001.
@@ -551,9 +556,9 @@ END;
 $$;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 003_rls_policies.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 003: Row Level Security policies
 -- Apply AFTER migrations 001 + 002.
 -- Principle: DB-level enforcement, not UI-only. Hiding menu items is UX, not security.
@@ -753,9 +758,9 @@ CREATE POLICY "reminder_rules_read"   ON public.task_reminder_rules FOR SELECT U
 CREATE POLICY "reminder_rules_manage" ON public.task_reminder_rules FOR ALL    USING (public.can_admin('core'));
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 004_client_card_full.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 004: Full client card schema â€” family-law fields
 -- Source: divorce, modification, enforcement, and premarital matter types.
 -- Apply AFTER migrations 001, 002, 003.
@@ -1135,9 +1140,9 @@ CREATE POLICY "conflict_q_write" ON public.conflict_questionnaire
   FOR ALL USING (public.can_write('core'));
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 005_client_portal.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 005: Client portal foundation
 -- Adds: auth_id on clients, Client role, Partner Attorney role,
 --       client_portal module, RLS SELECT policies for client self-service.
@@ -1269,9 +1274,9 @@ CREATE POLICY "docs_select_client"
 -- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 006_client_self_service.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 006: Client portal self-service intake
 -- Adds profile_completed_at so staff can see whether a client has filled in
 -- their own contact/address details via the "My Profile" tab.
@@ -1284,9 +1289,9 @@ COMMENT ON COLUMN public.clients.profile_completed_at IS
   'Set by update-client-profile function when client saves their profile via the portal. NULL = not yet submitted.';
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 007_practice_areas.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 007: Practice Areas & Case Types
 -- Replaces the hardcoded case_type enum with a table-driven system.
 -- Supports multiple practice areas per firm (family law, immigration, etc.)
@@ -1459,9 +1464,9 @@ CREATE POLICY "client_family_law_delete" ON public.client_family_law
   FOR DELETE TO authenticated USING (true);
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 400_uploads_init.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 400: Uploads module â€” document_checklists table + soft-delete on documents
 -- Module: uploads | Branch: module/uploads | Range: 400-499
 -- Apply AFTER migrations 001, 002, 003, 004.
@@ -1561,9 +1566,9 @@ INSERT INTO public.document_checklists (case_type, doc_name, doc_category, descr
   ('prenuptial_agreement', 'Asset and liability schedule',     'financial',   'Full disclosure â€” both parties',                         true,  810);
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 401_uploads_cron_cleanup.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 401: Orphaned pending upload cleanup (pg_cron job)
 -- Problem: if a browser closes after the R2 PUT succeeds but before confirm-upload
 -- runs, the document row is stuck as status='pending' forever and appears as a ghost
@@ -1604,9 +1609,9 @@ END;
 $$;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 402_ssn_encryption.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 402: SSN last-4 columns + sensitive field audit log
 --
 -- ssn_last4 (4 chars, plaintext) lets the UI show â—â—â—â€“â—â—â€“XXXX without a
@@ -1656,9 +1661,9 @@ CREATE POLICY "audit_select" ON public.sensitive_field_audit
   FOR SELECT USING (public.can_write('core'));
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 403_malware_scanning.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 403: Malware scanning columns on documents
 -- Module: uploads | Range: 400-499
 --
@@ -1696,9 +1701,9 @@ CREATE INDEX IF NOT EXISTS idx_documents_scan_infected
   WHERE scan_status = 'infected';
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 500_esign_init.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 500: E-sign module â€” initial schema
 -- Module: esign | Branch: module/esign
 -- Number range for this module: 500â€“599
@@ -1805,9 +1810,9 @@ CREATE POLICY "esign_signatures_client_select"
   );
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 501_esign_access.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 501: esign module â€” seed role_module_access
 -- Grants write access to Owner, Attorney, Partner Attorney, Staff Admin.
 -- Read access to Paralegal (can view requests, not create them).
@@ -1825,9 +1830,9 @@ SELECT r.id, 'esign', 'read' FROM public.roles r WHERE r.name = 'Paralegal'
 ON CONFLICT (role_id, module_key) DO UPDATE SET access_level = 'read';
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 502_esign_paralegal_write.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 502: upgrade Paralegal esign access from read â†’ write
 -- Texas law allows all firm staff (including paralegals) to send e-sign requests.
 -- Counter-signing remains attorney-only (enforced in sign-document.js, not here).
@@ -1837,9 +1842,9 @@ SELECT r.id, 'esign', 'write' FROM public.roles r WHERE r.name = 'Paralegal'
 ON CONFLICT (role_id, module_key) DO UPDATE SET access_level = 'write';
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 600_conflict_checker.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 600: Conflict checker module
 -- Adds conflict_checks audit table and registers the module for staff access.
 -- "Conflict check" = checking whether the firm has prior/current relationships
@@ -1912,9 +1917,9 @@ WHERE name != 'Client'
 ON CONFLICT (role_id, module_key) DO NOTHING;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 700_attorney_color.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 700: Attorney color coding
 -- Adds a hex color to staff user records for visual identification in the portal.
 -- Displayed as a colored dot next to attorney names in the client list.
@@ -1927,9 +1932,9 @@ COMMENT ON COLUMN public.users.color IS
   'Hex color string (e.g. #3B82F6) for visual identification in client list. Owner/admin sets in Settings > Users.';
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 800_messaging.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 800: Messaging module (v1 â€” portal channel + email notifications)
 -- Two tables: conversations (one per client) + messages (channel-aware).
 -- Twilio channels (sms, whatsapp, email) are schema-ready but not wired yet.
@@ -2048,9 +2053,9 @@ WHERE r.name IN ('Owner','Attorney','Partner Attorney','Paralegal','Legal Assist
 ON CONFLICT (role_id, module_key) DO NOTHING;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 901_doc_discovery.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 901: Document Discovery â€” offline receipt tracking + reminder infrastructure
 -- Extends the documents + matters tables. document_checklists already seeded in 400.
 -- Apply AFTER migrations 001â€“800.
@@ -2097,9 +2102,9 @@ WHERE r.name IN ('Owner','Attorney','Partner Attorney','Paralegal','Legal Assist
 ON CONFLICT (role_id, module_key) DO NOTHING;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 902_doc_template_case_types.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 902: Document template multi-case-type support
 -- Adds case_types text[] to document_checklists.
 -- NULL = universal (all case types). Array = applies to listed types only.
@@ -2117,9 +2122,9 @@ UPDATE public.document_checklists
 -- Universal rows (case_type IS NULL) remain with case_types = NULL â†’ still universal.
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 950_dashboard.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 950: Dashboard module â€” activate + extend access to later-added roles
 -- The dashboard module row was seeded in migration 002 as 'Analytics' (disabled).
 -- This migration renames it, moves it first in nav, enables it by default, and
@@ -2148,9 +2153,9 @@ WHERE r.name IN ('Partner Attorney', 'Legal Assistant')
 ON CONFLICT (role_id, module_key) DO UPDATE SET access_level = EXCLUDED.access_level;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1000_calendar_oauth.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1000: Calendar module â€” Google (and future Microsoft) OAuth integration
 -- Stores per-user OAuth tokens and short-lived CSRF state for the OAuth redirect flow.
 -- Apply AFTER migrations 001â€“003.
@@ -2219,9 +2224,9 @@ WHERE name != 'Client'
 ON CONFLICT (role_id, module_key) DO NOTHING;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1001_calendar_key_dates.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1001: Link key_dates to Google Calendar events
 -- Adds google_event_id so staff can track which key dates have been pushed to Google Calendar.
 
@@ -2229,9 +2234,9 @@ ALTER TABLE public.key_dates
   ADD COLUMN IF NOT EXISTS google_event_id TEXT;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1002_calendar_outlook_provider.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1002: Fix oauth_tokens provider check constraint.
 -- The original migration used 'microsoft' but all code uses 'outlook'. Align the constraint.
 
@@ -2243,9 +2248,9 @@ ALTER TABLE public.oauth_tokens
   CHECK (provider IN ('google', 'outlook'));
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1003_messaging_debounced_notifications.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1003: add client_notified_at to conversations
 -- Enables debounced email notifications â€” cron checks this to avoid re-notifying
 -- for messages that were already batched into a prior email.
@@ -2254,9 +2259,9 @@ ALTER TABLE public.conversations
   ADD COLUMN IF NOT EXISTS client_notified_at TIMESTAMPTZ;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1050_enabled_modules.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1050: IurisIQ tier model
 -- Adds modules.tier column (core | premium) and enabled_modules table.
 -- Premium modules are off by default; a row in enabled_modules activates them per firm.
@@ -2340,9 +2345,9 @@ INSERT INTO public.enabled_modules (module_key) VALUES
 ON CONFLICT (module_key) DO NOTHING;
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1103_email_log.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- 1103_email_log.sql
 -- Tracks every outbound email sent via Resend for monitoring purposes.
 -- Logged server-side via service key; staff can read via portal monitoring page.
@@ -2363,9 +2368,9 @@ CREATE POLICY "staff read email_log" ON public.email_log
   FOR SELECT USING (can_read('core'));
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1104_ical_token.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1104: iCal feed token per user
 -- Each user gets a secret UUID token; the feed URL is /api/calendar/ical-feed?token=<uuid>
 -- The token is stable (survives server restarts) and can be regenerated to invalidate old URLs.
@@ -2380,9 +2385,9 @@ UPDATE public.users SET ical_token = gen_random_uuid() WHERE ical_token IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ical_token ON public.users (ical_token);
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1105_practice_areas_backfill.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1105: Backfill practice_area_id and case_type_id on existing matters
 -- Maps old case_type text values to the new FK columns added in 007_practice_areas.sql.
 -- Safe to run multiple times (WHERE clause skips already-migrated rows).
@@ -2403,9 +2408,9 @@ WHERE m.case_type = ct.key
   AND (m.case_type_id IS NULL OR m.practice_area_id IS NULL);
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1106_doc_drafting.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1106: Document Drafting Module
 -- HTML-based approach: templates stored as template_html in DB, rendered server-side.
 -- No Word/WebDAV/R2 dependency â€” works in any browser, print-to-PDF ready.
@@ -2631,9 +2636,9 @@ $SCHEMA$[
 );
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1107_more_practice_areas.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1107: Add Personal Injury and Criminal practice areas
 
 INSERT INTO public.practice_areas (key, name, description, sort_order) VALUES
@@ -2745,9 +2750,9 @@ CREATE POLICY "client_criminal_delete" ON public.client_criminal
   FOR DELETE TO authenticated USING (true);
 
 
--- ============================================================
+-- ════════════════════════════════════════
 -- 1108_enabled_practice_areas_rls.sql
--- ============================================================
+-- ════════════════════════════════════════
 -- Migration 1108: Practice area management â€” RLS + settings module registration
 
 -- â”€â”€ Owner-write policy for enabled_practice_areas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2787,4 +2792,162 @@ WHERE r.name = 'Owner'
 ON CONFLICT (role_id, module_key) DO NOTHING;
 
 
+-- ════════════════════════════════════════
+-- 1109_doc_template_library.sql
+-- ════════════════════════════════════════
+-- Migration 1109: Document Template Library
+-- Introduces a curated, IurisIQ-maintained library of suggested document templates.
+-- Firms start with an empty document_checklists and import from this library.
+-- is_recommended = true â†’ included in one-click "Add Recommended Templates" import.
+-- practice_area_key NULL = universal (applicable to all enabled PAs).
+-- case_type_keys    NULL = all case types within the practice area.
+
+-- â”€â”€ Library table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+CREATE TABLE public.doc_template_library (
+  id                     uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  doc_name               text        NOT NULL,
+  practice_area_key      text,                    -- NULL = universal
+  case_type_keys         text[],                  -- NULL = all types in the PA
+  doc_category           text        NOT NULL DEFAULT 'other',
+  description            text,
+  is_required_by_default boolean     NOT NULL DEFAULT true,
+  is_recommended         boolean     NOT NULL DEFAULT false,
+  sort_order             int         NOT NULL DEFAULT 99
+);
+
+ALTER TABLE public.doc_template_library ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "doc_template_library_read"
+  ON public.doc_template_library FOR SELECT
+  TO authenticated USING (true);
+
+-- â”€â”€ Track library origin on adopted templates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+ALTER TABLE public.document_checklists
+  ADD COLUMN IF NOT EXISTS library_id uuid
+    REFERENCES public.doc_template_library(id) ON DELETE SET NULL;
+
+-- â”€â”€ Seed: Universal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Photo ID (Driver''s License or Passport)', NULL, NULL, 'id',   true,  true,  10),
+  ('Social Security Card',                     NULL, NULL, 'id',   false, true,  20);
+
+-- â”€â”€ Seed: Immigration â€” all case types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Passport (all pages)',                                     'immigration', NULL, 'id',       true,  true,  10),
+  ('I-94 Travel History (uscis.gov/i94)',                      'immigration', NULL, 'id',       true,  true,  20),
+  ('Birth Certificate (with certified translation if needed)', 'immigration', NULL, 'id',       true,  true,  30),
+  ('Last 3 months pay stubs',                                  'immigration', NULL, 'financial', true, true,  40),
+  ('Last 2 years W-2 / 1099',                                 'immigration', NULL, 'financial', true, true,  50),
+  ('Last 2 years federal tax returns',                         'immigration', NULL, 'financial', true, true,  60),
+  ('Last 3 months bank statements',                            'immigration', NULL, 'financial', true, false, 70),
+  ('Financial Affidavit of Support (I-864)',                   'immigration', NULL, 'financial', false,false, 80);
+
+-- â”€â”€ Seed: Immigration â€” Family-Based Petition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Petitioner''s Proof of U.S. Citizenship or LPR Status',   'immigration', ARRAY['family_based_petition'], 'id',       true,  true,  10),
+  ('Marriage Certificate (with certified translation)',         'immigration', ARRAY['family_based_petition'], 'id',       true,  true,  20),
+  ('Proof of Termination of Prior Marriages (if applicable)',  'immigration', ARRAY['family_based_petition'], 'other',    false, false, 30),
+  ('Joint Sponsor Documents (I-864A, if applicable)',          'immigration', ARRAY['family_based_petition'], 'financial', false, false, 40);
+
+-- â”€â”€ Seed: Immigration â€” Adjustment of Status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Medical Examination (Form I-693, sealed envelope)',        'immigration', ARRAY['adjustment_of_status'], 'other',  true,  true,  10),
+  ('Evidence of Lawful Entry into the U.S.',                   'immigration', ARRAY['adjustment_of_status'], 'id',     true,  true,  20),
+  ('Proof of Continuous Physical Presence',                    'immigration', ARRAY['adjustment_of_status'], 'other',  false, false, 30);
+
+-- â”€â”€ Seed: Immigration â€” DACA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Proof of Entry Before Age 16',                             'immigration', ARRAY['daca'], 'id',    true, true,  10),
+  ('Proof of Continuous Residence since June 15, 2007',        'immigration', ARRAY['daca'], 'id',    true, true,  20),
+  ('School Records, Diplomas, or Transcripts',                 'immigration', ARRAY['daca'], 'other', true, true,  30),
+  ('Prior DACA Approval Notice (if renewal)',                  'immigration', ARRAY['daca'], 'other', false,false, 40);
+
+-- â”€â”€ Seed: Immigration â€” Asylum â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Personal Declaration of Fear / Asylum Statement',          'immigration', ARRAY['asylum'], 'other', true, true,  10),
+  ('Country Condition Evidence (news, reports, DOJ records)',  'immigration', ARRAY['asylum'], 'other', true, true,  20),
+  ('Evidence of Past Persecution (photos, police reports)',    'immigration', ARRAY['asylum'], 'other', false,false, 30);
+
+-- â”€â”€ Seed: Criminal â€” all case types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Arrest Report / Police Report',                            'criminal', NULL, 'other',    true,  true,  10),
+  ('Booking Sheet',                                            'criminal', NULL, 'other',    true,  true,  20),
+  ('Charging Document (Indictment or Information)',            'criminal', NULL, 'pleading', true,  true,  30),
+  ('Bail / Bond Documentation',                               'criminal', NULL, 'other',    false, true,  40),
+  ('Discovery Materials (evidence list, lab reports)',         'criminal', NULL, 'other',    false, false, 50),
+  ('Prior Criminal History / Rap Sheet',                      'criminal', NULL, 'other',    false, false, 60),
+  ('Witness Statements (if available)',                        'criminal', NULL, 'other',    false, false, 70),
+  ('Surveillance / Dashcam Video (if applicable)',             'criminal', NULL, 'other',    false, false, 80);
+
+-- â”€â”€ Seed: Personal Injury â€” all case types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Police / Incident Report',                                 'personal_injury', NULL, 'other',     true,  true,  10),
+  ('Medical Records (all treating providers)',                 'personal_injury', NULL, 'other',     true,  true,  20),
+  ('Medical Bills / Itemized Statements',                      'personal_injury', NULL, 'financial', true,  true,  30),
+  ('Health Insurance Card and Explanation of Benefits (EOB)', 'personal_injury', NULL, 'financial', true,  true,  40),
+  ('Photos of Injuries and Accident Scene',                    'personal_injury', NULL, 'other',     false, true,  50),
+  ('Proof of Lost Wages / Employer Letter',                    'personal_injury', NULL, 'financial', false, false, 60),
+  ('Prior Medical Records (pre-existing conditions)',          'personal_injury', NULL, 'other',     false, false, 70),
+  ('Witness Contact Information',                              'personal_injury', NULL, 'other',     false, false, 80);
+
+-- â”€â”€ Seed: Personal Injury â€” Auto / Truck / Motorcycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Client''s Auto Insurance Declarations Page',               'personal_injury', ARRAY['auto_accident','truck_accident','motorcycle_accident'], 'financial', true,  true,  10),
+  ('Other Driver''s Insurance Information',                    'personal_injury', ARRAY['auto_accident','truck_accident','motorcycle_accident'], 'financial', true,  true,  20),
+  ('Vehicle Photos / Damage Estimate',                         'personal_injury', ARRAY['auto_accident','truck_accident','motorcycle_accident'], 'other',    false, true,  30),
+  ('Tow / Rental / Repair Receipts',                           'personal_injury', ARRAY['auto_accident','truck_accident','motorcycle_accident'], 'financial', false, false, 40);
+
+-- â”€â”€ Seed: Family Law â€” all case types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Financial Affidavit',                                      'family_law', NULL, 'financial', true,  true,  10),
+  ('Last 3 months pay stubs',                                  'family_law', NULL, 'financial', true,  true,  20),
+  ('Last 2 years W-2 / 1099',                                 'family_law', NULL, 'financial', true,  true,  30),
+  ('Last 2 years federal tax returns',                         'family_law', NULL, 'financial', true,  true,  40),
+  ('Last 3 months bank statements',                            'family_law', NULL, 'financial', true,  false, 50),
+  ('Real estate deed(s) and mortgage statement(s)',            'family_law', NULL, 'financial', false, false, 60),
+  ('Retirement account statements',                            'family_law', NULL, 'financial', false, false, 70),
+  ('Vehicle titles',                                           'family_law', NULL, 'financial', false, false, 80);
+
+-- â”€â”€ Seed: Family Law â€” Divorce â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+INSERT INTO public.doc_template_library
+  (doc_name, practice_area_key, case_type_keys, doc_category, is_required_by_default, is_recommended, sort_order)
+VALUES
+  ('Marriage Certificate',                                     'family_law', ARRAY['divorce'], 'id',              true,  true,  10),
+  ('Petition for Divorce',                                     'family_law', ARRAY['divorce'], 'pleading',        true,  true,  20),
+  ('Decree of Divorce (draft/final)',                          'family_law', ARRAY['divorce'], 'agreement',       true,  true,  30),
+  ('QDRO (if applicable)',                                     'family_law', ARRAY['divorce'], 'court_order',     false, false, 40),
+  ('Closing letter',                                           'family_law', ARRAY['divorce'], 'correspondence',  true,  false, 50);
 

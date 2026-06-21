@@ -2,10 +2,11 @@
 // Create, update, or delete a document_checklists row.
 // Owner + Attorney (write on doc_templates) only.
 //
-// Body (create):  { action:'create', case_types, doc_name, doc_category, description, is_required_by_default, sort_order }
-// Body (update):  { action:'update', id, case_types, doc_name, doc_category, description, is_required_by_default, sort_order }
+// Body (create):       { action:'create', case_types, doc_name, doc_category, description, is_required_by_default, sort_order }
+// Body (update):       { action:'update', id, case_types, doc_name, doc_category, description, is_required_by_default, sort_order }
 // case_types: null = universal; string[] = specific types (e.g. ['divorce','custody'])
-// Body (delete):  { action:'delete', id }
+// Body (delete):       { action:'delete', id }
+// Body (bulk_import):  { action:'bulk_import', items: [{id, doc_name, case_type_keys, doc_category, description, is_required_by_default, sort_order}] }
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 
@@ -91,6 +92,28 @@ export async function onRequest({ request, env }) {
       return json(500, { error: 'Failed to delete template.' });
     }
     return json(200, { deleted: true });
+  }
+
+  if (action === 'bulk_import') {
+    const { items } = body;
+    if (!Array.isArray(items) || items.length === 0) return json(400, { error: 'items array is required.' });
+
+    const rows = items.map(item => ({
+      case_types:              Array.isArray(item.case_type_keys) && item.case_type_keys.length > 0 ? item.case_type_keys : null,
+      doc_name:                item.doc_name,
+      doc_category:            item.doc_category || 'other',
+      description:             item.description || null,
+      is_required_by_default:  item.is_required_by_default !== false,
+      sort_order:              item.sort_order || 0,
+      library_id:              item.id,
+    }));
+
+    const { error } = await admin.from('document_checklists').insert(rows);
+    if (error) {
+      console.error('[save-doc-template] bulk_import:', error.message);
+      return json(500, { error: 'Failed to import templates.' });
+    }
+    return json(200, { imported: rows.length });
   }
 
   return json(400, { error: `Unknown action: ${action}` });
