@@ -40,11 +40,13 @@
   // ── Load reference data ───────────────────────────────────────────────────────
 
   async function loadReferenceData() {
-    const [{ data: pa }, { data: ct }] = await Promise.all([
+    const [{ data: pa }, { data: ct }, { data: enabledPa }] = await Promise.all([
       db.from('practice_areas').select('*').order('sort_order'),
       db.from('case_types').select('*').order('sort_order'),
+      db.from('enabled_practice_areas').select('practice_area_key'),
     ]);
-    practiceAreas  = pa || [];
+    const enabledPaKeys = new Set((enabledPa || []).map(r => r.practice_area_key));
+    practiceAreas  = (pa || []).filter(p => enabledPaKeys.has(p.key));
     caseTypesData  = ct || [];
     caseTypeKeyMap = new Map(caseTypesData.map(c => [c.key, c.name]));
     renderFilters();

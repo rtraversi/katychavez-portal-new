@@ -147,16 +147,19 @@
       { data: u },
       { data: pa },
       { data: ct },
+      { data: enabledPa },
     ] = await Promise.all([
       db.from('clients').select('*').eq('id', clientId).single(),
       db.from('users').select('id, first_name, last_name, roles(name)').eq('active', true).order('first_name'),
       db.from('practice_areas').select('*').order('sort_order'),
       db.from('case_types').select('*').order('sort_order'),
+      db.from('enabled_practice_areas').select('practice_area_key'),
     ]);
 
     client        = c;
     users         = u || [];
-    practiceAreas = pa || [];
+    const enabledPaKeys = new Set((enabledPa || []).map(r => r.practice_area_key));
+    practiceAreas = (pa || []).filter(p => enabledPaKeys.has(p.key));
     caseTypesData = ct || [];
     practiceAreaMap = new Map(practiceAreas.map(p => [p.id, p]));
     caseTypeMap     = new Map(caseTypesData.map(t => [t.id, t]));

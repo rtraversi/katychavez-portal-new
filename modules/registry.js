@@ -73,6 +73,15 @@ window.MODULE_REGISTRY = [
     staffOnly:   true,
   },
   {
+    key:         'practice_areas_settings',
+    name:        'Practice Areas',
+    icon:        'briefcase',
+    route:       'settings/practice-areas',
+    wave:        1,
+    sortOrder:   86,
+    staffOnly:   true,
+  },
+  {
     key:         'calendar',
     name:        'Calendar',
     icon:        'calendar',
