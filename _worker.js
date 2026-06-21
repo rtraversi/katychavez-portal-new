@@ -35,6 +35,7 @@ import { onRequest as resetUserPassword }            from './functions/api/reset
 import { onRequest as deleteUser }                   from './functions/api/delete-user.js';
 import { onRequest as processMessageNotifications, run as runMessageNotifications } from './functions/api/process-message-notifications.js';
 import { onRequest as draftingGenerate }            from './functions/api/drafting-generate.js';
+import { onRequest as draftingToggleFinal }         from './functions/api/drafting-toggle-final.js';
 import { onRequest as calendarIcalFeed }            from './functions/api/calendar-ical-feed.js';
 import { onRequest as calendarIcalToken }           from './functions/api/calendar-ical-token.js';
 
@@ -75,6 +76,7 @@ const routes = {
   '/api/delete-user':                    deleteUser,
   '/api/process-message-notifications':  processMessageNotifications,
   '/api/drafting/generate':              draftingGenerate,
+  '/api/drafting/toggle-final':          draftingToggleFinal,
   '/api/calendar/ical-feed':             calendarIcalFeed,
   '/api/calendar/ical-token':            calendarIcalToken,
 };
