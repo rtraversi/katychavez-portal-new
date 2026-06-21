@@ -100,7 +100,6 @@ window.Menu = (function () {
     { route: 'settings/users',          name: 'Users' },
     { route: 'settings/permissions',    name: 'Permissions' },
     { route: 'settings/practice-areas', name: 'Practice Areas' },
-    { route: 'settings/doc-templates',  name: 'Doc Templates' },
     { route: 'settings/calendar',       name: 'Calendar Sync' },
   ];
 
