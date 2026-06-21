@@ -49,6 +49,46 @@
   </div>
 </div>
 
+<!-- Apple / iCal subscription card -->
+<div class="card" style="margin-bottom:var(--space-4)">
+  <div style="display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-5)">
+    <!-- Apple Calendar icon -->
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect width="24" height="24" rx="5" fill="#fff" stroke="#d1d5db" stroke-width="1"/>
+      <rect x="0" y="0" width="24" height="7" rx="5" fill="#E53935"/>
+      <rect x="0" y="5" width="24" height="2" fill="#E53935"/>
+      <text x="12" y="19" text-anchor="middle" font-size="9" font-weight="700" fill="#1a1a1a" font-family="system-ui,sans-serif">CAL</text>
+    </svg>
+    <div>
+      <div style="font-weight:600;font-size:var(--font-size-base)">Apple Calendar / iCal Feed</div>
+      <div class="text-sm text-muted">Subscribe to matter key dates in any calendar app</div>
+    </div>
+  </div>
+
+  <div id="ical-loading" class="text-sm text-muted">Loading…</div>
+
+  <div id="ical-ready" class="hidden">
+    <p class="text-sm text-muted" style="margin-bottom:var(--space-3)">
+      Copy the link below and paste it into <strong>Apple Calendar &rarr; File &rarr; New Calendar Subscription</strong>,
+      or click <strong>Open in Apple Calendar</strong> to subscribe automatically.
+      This feed updates with all active matter key dates (hearings, trials, deadlines, etc.).
+    </p>
+    <div style="display:flex;gap:var(--space-2);align-items:center;margin-bottom:var(--space-3)">
+      <input id="ical-url" type="text" readonly
+        style="flex:1;font-size:var(--font-size-sm);font-family:monospace;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg-subtle,#f8f9fa);color:var(--color-text)"
+        value="">
+      <button id="btn-ical-copy" class="btn btn--ghost" style="white-space:nowrap">Copy URL</button>
+      <a id="btn-ical-open" href="#" class="btn btn--primary" style="white-space:nowrap">Open in Apple Calendar</a>
+    </div>
+    <div style="border-top:1px solid var(--color-border);padding-top:var(--space-3);margin-top:var(--space-1)">
+      <button id="btn-ical-regen" class="btn btn--ghost" style="font-size:var(--font-size-sm);color:var(--color-danger)">
+        Regenerate URL
+      </button>
+      <span class="text-sm text-muted" style="margin-left:var(--space-2)">Generates a new URL and invalidates the old one.</span>
+    </div>
+  </div>
+</div>
+
 <!-- Microsoft / Outlook card -->
 <div class="card">
   <div style="display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-5)">

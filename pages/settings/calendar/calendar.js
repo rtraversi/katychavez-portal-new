@@ -37,6 +37,76 @@
     history.replaceState(null, '', clean);
   }
 
+  // ── iCal feed elements ───────────────────────────────────────────────────────────
+
+  const icalLoading  = document.getElementById('ical-loading');
+  const icalReady    = document.getElementById('ical-ready');
+  const icalUrlInput = document.getElementById('ical-url');
+  const btnIcalCopy  = document.getElementById('btn-ical-copy');
+  const btnIcalOpen  = document.getElementById('btn-ical-open');
+  const btnIcalRegen = document.getElementById('btn-ical-regen');
+
+  function setIcalUrl(token) {
+    const feedUrl   = `${window.location.origin}/api/calendar/ical-feed?token=${token}`;
+    const webcalUrl = feedUrl.replace(/^https?:\/\//, 'webcal://');
+    icalUrlInput.value   = feedUrl;
+    btnIcalOpen.href     = webcalUrl;
+    icalLoading.classList.add('hidden');
+    icalReady.classList.remove('hidden');
+  }
+
+  // Load token on page load
+  (async () => {
+    try {
+      const session = await Auth.getSession();
+      const res  = await fetch('/api/calendar/ical-token', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        setIcalUrl(data.token);
+      } else {
+        icalLoading.textContent = 'Could not load feed URL.';
+      }
+    } catch {
+      icalLoading.textContent = 'Could not load feed URL.';
+    }
+  })();
+
+  btnIcalCopy.addEventListener('click', () => {
+    navigator.clipboard.writeText(icalUrlInput.value).then(() => {
+      btnIcalCopy.textContent = 'Copied!';
+      setTimeout(() => { btnIcalCopy.textContent = 'Copy URL'; }, 2000);
+    });
+  });
+
+  btnIcalRegen.addEventListener('click', async () => {
+    if (!await Utils.confirm(
+      'Regenerate the iCal feed URL? Your current calendar subscription will stop working and you\'ll need to re-subscribe with the new URL.',
+      { confirmLabel: 'Regenerate', danger: true }
+    )) return;
+    btnIcalRegen.disabled    = true;
+    btnIcalRegen.textContent = 'Regenerating…';
+    try {
+      const session = await Auth.getSession();
+      const res  = await fetch('/api/calendar/ical-token', {
+        method:  'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        setIcalUrl(data.token);
+        Utils.toast('Feed URL regenerated. Re-subscribe with the new URL.', 'success');
+      } else {
+        Utils.toast('Failed to regenerate URL.', 'error');
+      }
+    } catch {
+      Utils.toast('Failed to regenerate URL.', 'error');
+    }
+    btnIcalRegen.disabled    = false;
+    btnIcalRegen.textContent = 'Regenerate URL';
+  });
+
   // ── Google elements ───────────────────────────────────────────────────────────
 
   const googleStatusText = document.getElementById('google-status-text');

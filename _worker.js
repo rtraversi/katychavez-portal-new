@@ -34,6 +34,9 @@ import { onRequest as calendarOutlookOauthCallback } from './functions/api/calen
 import { onRequest as resetUserPassword }            from './functions/api/reset-user-password.js';
 import { onRequest as deleteUser }                   from './functions/api/delete-user.js';
 import { onRequest as processMessageNotifications, run as runMessageNotifications } from './functions/api/process-message-notifications.js';
+import { onRequest as draftingGenerate }            from './functions/api/drafting-generate.js';
+import { onRequest as calendarIcalFeed }            from './functions/api/calendar-ical-feed.js';
+import { onRequest as calendarIcalToken }           from './functions/api/calendar-ical-token.js';
 
 const routes = {
   '/api/confirm-upload': confirmUpload,
@@ -71,12 +74,39 @@ const routes = {
   '/api/reset-user-password':            resetUserPassword,
   '/api/delete-user':                    deleteUser,
   '/api/process-message-notifications':  processMessageNotifications,
+  '/api/drafting/generate':              draftingGenerate,
+  '/api/calendar/ical-feed':             calendarIcalFeed,
+  '/api/calendar/ical-token':            calendarIcalToken,
 };
 
 const HTML_REWRITES = {
   '/portal': '/portal.html',
   '/reset-password': '/reset-password.html',
 };
+
+// ── Security headers ──────────────────────────────────────────────────────────
+function addSecurityHeaders(response) {
+  const ct = response.headers.get('content-type') || '';
+  if (!ct.includes('text/html')) return response;
+  const h = new Headers(response.headers);
+  h.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  h.set('X-Content-Type-Options', 'nosniff');
+  h.set('X-Frame-Options', 'DENY');
+  h.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  h.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  h.set('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.anthropic.com",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; '));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers: h });
+}
 
 export default {
   async scheduled(event, env, ctx) {
@@ -99,8 +129,8 @@ export default {
     const rewrite = HTML_REWRITES[url.pathname] ||
       (url.pathname.startsWith('/portal/') ? '/portal.html' : null);
     if (rewrite) {
-      return env.ASSETS.fetch(new Request(new URL(rewrite, url.origin), request));
+      return addSecurityHeaders(await env.ASSETS.fetch(new Request(new URL(rewrite, url.origin), request)));
     }
-    return env.ASSETS.fetch(request);
+    return addSecurityHeaders(await env.ASSETS.fetch(request));
   },
 };
