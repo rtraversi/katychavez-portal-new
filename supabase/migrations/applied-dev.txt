@@ -27,3 +27,4 @@
 007_practice_areas.sql
 1105_practice_areas_backfill.sql
 1106_doc_drafting.sql
+1107_more_practice_areas.sql

@@ -21,6 +21,8 @@
   let caseTypesData    = [];
   let practiceAreaMap  = new Map();  // id → practice_area row
   let caseTypeMap      = new Map();  // id → case_type row
+  let piDetails        = null;       // client_personal_injury row
+  let criminalDetails  = null;       // client_criminal row
 
   const DATE_TYPES = [
     ['marriage',     'Marriage'],
@@ -74,6 +76,11 @@
   function matterCaseTypeKey() {
     if (matter?.case_type_id) return caseTypeMap.get(matter.case_type_id)?.key || matter?.case_type;
     return matter?.case_type || null;
+  }
+
+  function matterPracticeAreaKey() {
+    if (matter?.practice_area_id) return practiceAreaMap.get(matter.practice_area_id)?.key || null;
+    return null;
   }
 
   function userName(id) {
@@ -172,16 +179,22 @@
         { data: ch },
         { data: fi },
         { data: kd },
+        { data: pi },
+        { data: crim },
       ] = await Promise.all([
         db.from('opposing_parties').select('*').eq('matter_id', matter.id).maybeSingle(),
         db.from('children').select('*').eq('matter_id', matter.id).order('dob'),
         db.from('financial_info').select('*').eq('matter_id', matter.id).maybeSingle(),
         db.from('key_dates').select('*').eq('matter_id', matter.id).order('date_value'),
+        db.from('client_personal_injury').select('*').eq('matter_id', matter.id).maybeSingle(),
+        db.from('client_criminal').select('*').eq('matter_id', matter.id).maybeSingle(),
       ]);
-      oppParty  = op;
-      children  = ch || [];
-      financial = fi;
-      keyDates  = kd || [];
+      oppParty        = op;
+      children        = ch || [];
+      financial       = fi;
+      keyDates        = kd || [];
+      piDetails       = pi;
+      criminalDetails = crim;
     }
 
     renderAll();
@@ -404,6 +417,9 @@
     const rows = [];
 
     const ctKey = matterCaseTypeKey();
+    const paKey = matterPracticeAreaKey();
+
+    // ── Family Law case-type-specific fields ──────────────────────────────────
     if (['sapcr_modification','custody_modification','child_support_modification'].includes(ctKey)) {
       rows.push(field('Child support (monthly)', m.child_support_monthly, 'money'));
       rows.push(field('CS current?', m.child_support_current, 'bool'));
@@ -428,6 +444,37 @@
       rows.push(field('Expected marriage place', m.expected_marriage_place));
       rows.push(field('Client has will', m.client_has_will, 'bool'));
       rows.push(field('Will date', m.client_will_date, 'date'));
+    }
+
+    // ── Personal Injury ───────────────────────────────────────────────────────
+    if (paKey === 'personal_injury') {
+      const pi = piDetails || {};
+      rows.push(field('Incident date',        pi.incident_date,        'date'));
+      rows.push(field('Incident location',    pi.incident_location));
+      rows.push(field('Description',          pi.incident_description));
+      rows.push(field('At-fault party',       pi.at_fault_party));
+      rows.push(field('Insurance carrier',    pi.insurance_carrier));
+      rows.push(field('Claim number',         pi.claim_number));
+      rows.push(field('Policy limits',        pi.policy_limits,        'money'));
+      rows.push(field('Treating physician',   pi.treating_physician));
+      rows.push(field('Medical provider',     pi.medical_provider));
+      rows.push(field('SOL date',             pi.sol_date,             'date'));
+      rows.push(field('Demand amount',        pi.demand_amount,        'money'));
+    }
+
+    // ── Criminal ──────────────────────────────────────────────────────────────
+    if (paKey === 'criminal') {
+      const cr = criminalDetails || {};
+      const BOND = { personal_recognizance: 'Personal Recognizance', cash: 'Cash', surety: 'Surety', no_bond: 'No Bond' };
+      rows.push(field('Arrest date',       cr.arrest_date,       'date'));
+      rows.push(field('Offense date',      cr.offense_date,      'date'));
+      rows.push(field('Cause number',      cr.cause_number));
+      rows.push(field('Charges',           cr.charges));
+      rows.push(field('Arresting agency',  cr.arresting_agency));
+      rows.push(field('Bond amount',       cr.bond_amount,       'money'));
+      rows.push(field('Bond type',         cr.bond_type ? (BOND[cr.bond_type] || cr.bond_type) : null));
+      rows.push(field('Prosecutor',        cr.prosecutor));
+      rows.push(field('Next hearing type', cr.next_hearing_type));
     }
 
     const html = rows.length
@@ -1331,9 +1378,72 @@
       }
     );
 
-    // Circumstances: no inline edit (case-type-specific display only)
-    document.getElementById('btn-edit-circumstances')?.addEventListener('click', () =>
-      Utils.toast('Edit case-specific fields via the Case Details section.', 'info')
+    // Circumstances: PI and Criminal get real inline edit; family law still defers to Case section
+    wireSection('circumstances', 'view-circumstances', 'form-circumstances',
+      'btn-edit-circumstances', 'btn-cancel-circumstances',
+      buildCircumstancesFields,
+      async (fd) => {
+        if (!matter) return;
+        const paKey = matterPracticeAreaKey();
+
+        if (paKey === 'personal_injury') {
+          const payload = {
+            matter_id:            matter.id,
+            incident_date:        fd.get('incident_date')        || null,
+            incident_location:    fd.get('incident_location')?.trim()    || null,
+            incident_description: fd.get('incident_description')?.trim() || null,
+            at_fault_party:       fd.get('at_fault_party')?.trim()       || null,
+            insurance_carrier:    fd.get('insurance_carrier')?.trim()    || null,
+            claim_number:         fd.get('claim_number')?.trim()         || null,
+            policy_limits:        fd.get('policy_limits')    ? parseFloat(fd.get('policy_limits'))    : null,
+            treating_physician:   fd.get('treating_physician')?.trim()   || null,
+            medical_provider:     fd.get('medical_provider')?.trim()     || null,
+            sol_date:             fd.get('sol_date')             || null,
+            demand_amount:        fd.get('demand_amount')   ? parseFloat(fd.get('demand_amount'))   : null,
+            updated_at:           new Date().toISOString(),
+          };
+          if (piDetails?.id) {
+            const { error } = await db.from('client_personal_injury').update(payload).eq('id', piDetails.id);
+            if (error) throw error;
+            piDetails = { ...piDetails, ...payload };
+          } else {
+            const { data, error } = await db.from('client_personal_injury').insert(payload).select().single();
+            if (error) throw error;
+            piDetails = data;
+          }
+          renderCircumstances();
+          return;
+        }
+
+        if (paKey === 'criminal') {
+          const payload = {
+            matter_id:         matter.id,
+            arrest_date:       fd.get('arrest_date')       || null,
+            offense_date:      fd.get('offense_date')      || null,
+            cause_number:      fd.get('cause_number')?.trim()      || null,
+            charges:           fd.get('charges')?.trim()           || null,
+            arresting_agency:  fd.get('arresting_agency')?.trim()  || null,
+            bond_amount:       fd.get('bond_amount')  ? parseFloat(fd.get('bond_amount'))  : null,
+            bond_type:         fd.get('bond_type')         || null,
+            prosecutor:        fd.get('prosecutor')?.trim()        || null,
+            next_hearing_type: fd.get('next_hearing_type')?.trim() || null,
+            updated_at:        new Date().toISOString(),
+          };
+          if (criminalDetails?.id) {
+            const { error } = await db.from('client_criminal').update(payload).eq('id', criminalDetails.id);
+            if (error) throw error;
+            criminalDetails = { ...criminalDetails, ...payload };
+          } else {
+            const { data, error } = await db.from('client_criminal').insert(payload).select().single();
+            if (error) throw error;
+            criminalDetails = data;
+          }
+          renderCircumstances();
+          return;
+        }
+
+        // Family law: no extra editable fields here (submit button is hidden in buildCircumstancesFields)
+      }
     );
 
     // Key dates wire
@@ -1413,6 +1523,58 @@
       ${ta('conflict_check_notes','Conflict check notes',c.conflict_check_notes)}
       ${ck('is_dv_confidential','DV / Protective order — address confidential',c.is_dv_confidential,'Restricts address visibility per Texas DV confidentiality rules')}
     `;
+  }
+
+  function buildCircumstancesFields() {
+    const paKey   = matterPracticeAreaKey();
+    const fieldsEl  = document.getElementById('fields-circumstances');
+    const submitBtn = document.querySelector('#form-circumstances [type=submit]');
+
+    if (paKey === 'personal_injury') {
+      const pi = piDetails || {};
+      if (submitBtn) submitBtn.style.display = '';
+      fieldsEl.innerHTML =
+        inp('incident_date',        'Incident date',        pi.incident_date,        'date') +
+        inp('incident_location',    'Incident location',    pi.incident_location) +
+        `<div class="field"><label>Description</label><textarea name="incident_description" rows="3" style="width:100%;resize:vertical">${Utils.esc(pi.incident_description || '')}</textarea></div>` +
+        inp('at_fault_party',       'At-fault party',       pi.at_fault_party) +
+        inp('insurance_carrier',    'Insurance carrier',    pi.insurance_carrier) +
+        inp('claim_number',         'Claim number',         pi.claim_number) +
+        inp('policy_limits',        'Policy limits ($)',     pi.policy_limits,       'number') +
+        inp('treating_physician',   'Treating physician',   pi.treating_physician) +
+        inp('medical_provider',     'Medical provider',     pi.medical_provider) +
+        inp('sol_date',             'SOL date',             pi.sol_date,            'date') +
+        inp('demand_amount',        'Demand amount ($)',     pi.demand_amount,       'number') +
+        '<div class="form-error hidden"></div>';
+      return;
+    }
+
+    if (paKey === 'criminal') {
+      const cr = criminalDetails || {};
+      const bondOpts = [
+        ['personal_recognizance', 'Personal Recognizance'],
+        ['cash',  'Cash'],
+        ['surety','Surety'],
+        ['no_bond','No Bond'],
+      ];
+      if (submitBtn) submitBtn.style.display = '';
+      fieldsEl.innerHTML =
+        inp('arrest_date',       'Arrest date',       cr.arrest_date,      'date') +
+        inp('offense_date',      'Offense date',      cr.offense_date,     'date') +
+        inp('cause_number',      'Cause number',      cr.cause_number) +
+        `<div class="field"><label>Charges</label><textarea name="charges" rows="3" style="width:100%;resize:vertical">${Utils.esc(cr.charges || '')}</textarea></div>` +
+        inp('arresting_agency',  'Arresting agency',  cr.arresting_agency) +
+        inp('bond_amount',       'Bond amount ($)',    cr.bond_amount,      'number') +
+        sel('bond_type',         'Bond type',         bondOpts,            cr.bond_type) +
+        inp('prosecutor',        'Prosecutor',        cr.prosecutor) +
+        inp('next_hearing_type', 'Next hearing type', cr.next_hearing_type) +
+        '<div class="form-error hidden"></div>';
+      return;
+    }
+
+    // Family law or unknown — no editable fields here
+    if (submitBtn) submitBtn.style.display = 'none';
+    fieldsEl.innerHTML = '<p class="text-sm text-muted" style="padding:var(--space-2) 0">Family law case-specific details are captured in the Case Details section above.</p>';
   }
 
   function buildCaseFields() {
