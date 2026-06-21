@@ -2,31 +2,16 @@
 
 (async function DocTemplatesPage() {
 
-  let templates    = [];
-  let activeFilter = 'all';
-  let canWrite     = false;
+  let templates       = [];
+  let practiceAreas   = [];
+  let caseTypesData   = [];
+  let caseTypeKeyMap  = new Map();  // key → name
+  let activeFilter    = 'all';
+  let canWrite        = false;
 
-  const tbody = document.getElementById('templates-tbody');
-  const modal = document.getElementById('dt-modal');
-
-  const CASE_TYPE_LABELS = {
-    '':                       'Universal (all)',
-    divorce:                  'Divorce',
-    sapcr_original:           'SAPCR Original',
-    sapcr_modification:       'SAPCR Modification',
-    custody:                  'Custody',
-    custody_modification:     'Custody Modification',
-    child_support:            'Child Support',
-    child_support_modification:'Child Support Modification',
-    paternity:                'Paternity',
-    prenuptial_agreement:     'Prenuptial Agreement',
-    postnuptial_agreement:    'Postnuptial Agreement',
-    enforcement:              'Enforcement',
-    protective_order:         'Protective Order',
-    adoption:                 'Adoption',
-    guardianship:             'Guardianship',
-    other:                    'Other',
-  };
+  const tbody     = document.getElementById('templates-tbody');
+  const modal     = document.getElementById('dt-modal');
+  const filterBar = document.getElementById('dt-filter-bar');
 
   const CATEGORY_LABELS = {
     pleading:       'Pleading',
@@ -45,7 +30,51 @@
   canWrite = ['Owner', 'Attorney', 'Partner Attorney'].includes(roleName);
   document.getElementById('btn-add-template').style.display = canWrite ? '' : 'none';
 
-  // ── Load ──────────────────────────────────────────────────────────────────────
+  // ── Load reference data ───────────────────────────────────────────────────────
+
+  async function loadReferenceData() {
+    const [{ data: pa }, { data: ct }] = await Promise.all([
+      db.from('practice_areas').select('*').order('sort_order'),
+      db.from('case_types').select('*').order('sort_order'),
+    ]);
+    practiceAreas  = pa || [];
+    caseTypesData  = ct || [];
+    caseTypeKeyMap = new Map(caseTypesData.map(c => [c.key, c.name]));
+    renderFilterButtons();
+  }
+
+  // ── Filter buttons ────────────────────────────────────────────────────────────
+
+  function renderFilterButtons() {
+    let html = `
+      <span class="text-sm text-muted" style="margin-right:var(--space-2)">Filter:</span>
+      <button class="btn btn--ghost btn--sm dt-filter-btn active" data-filter="all">All</button>
+      <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="">Universal</button>`;
+
+    practiceAreas.forEach(pa => {
+      const paCts = caseTypesData.filter(ct => ct.practice_area_id === pa.id);
+      if (!paCts.length) return;
+      html += `<span style="color:var(--color-border);margin:0 var(--space-1)">|</span>
+               <span class="text-sm text-muted">${Utils.esc(pa.name)}:</span>`;
+      paCts.forEach(ct => {
+        html += `<button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="${Utils.esc(ct.key)}">${Utils.esc(ct.name)}</button>`;
+      });
+    });
+
+    filterBar.innerHTML = html;
+
+    // Event delegation — no re-wiring needed when buttons change
+    filterBar.addEventListener('click', e => {
+      const btn = e.target.closest('.dt-filter-btn');
+      if (!btn) return;
+      filterBar.querySelectorAll('.dt-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter;
+      render();
+    });
+  }
+
+  // ── Load templates ────────────────────────────────────────────────────────────
 
   async function load() {
     const session = await Auth.getSession();
@@ -60,11 +89,9 @@
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
-  const CASE_TYPE_ENTRIES = Object.entries(CASE_TYPE_LABELS).filter(([v]) => v !== '');
-
   function formatCaseTypes(caseTypes) {
     if (!caseTypes || caseTypes.length === 0) return 'Universal (all)';
-    const labels = caseTypes.map(ct => CASE_TYPE_LABELS[ct] || ct);
+    const labels = caseTypes.map(ct => caseTypeKeyMap.get(ct) || ct);
     if (labels.length <= 2) return labels.join(', ');
     return `${labels.slice(0, 2).join(', ')} +${labels.length - 2} more`;
   }
@@ -97,7 +124,7 @@
           ${canWrite ? `
             <div style="display:flex;gap:var(--space-2)">
               <button class="btn btn--ghost btn--sm dt-edit-btn" data-id="${t.id}" title="Edit">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </button>
               <button class="btn btn--ghost btn--sm dt-delete-btn" data-id="${t.id}" title="Delete" style="color:var(--color-danger)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
@@ -110,18 +137,27 @@
   // ── Modal ─────────────────────────────────────────────────────────────────────
 
   function openModal(template = null) {
-    const isEdit      = !!template;
-    const isUniversal = !template?.case_types || template.case_types.length === 0;
-    const selectedTypes = template?.case_types || [];
+    const isEdit       = !!template;
+    const isUniversal  = !template?.case_types || template.case_types.length === 0;
+    const selectedKeys = template?.case_types || [];
 
     const catOpts = Object.entries(CATEGORY_LABELS)
       .map(([v, l]) => `<option value="${v}"${template?.doc_category === v ? ' selected' : ''}>${Utils.esc(l)}</option>`).join('');
 
-    const ctCheckboxes = CASE_TYPE_ENTRIES.map(([v, l]) => `
-      <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-weight:400;font-size:var(--text-sm)">
-        <input type="checkbox" class="dt-ct-cb" value="${v}" style="width:auto;flex-shrink:0" ${selectedTypes.includes(v) ? 'checked' : ''}>
-        ${Utils.esc(l)}
-      </label>`).join('');
+    // Checkboxes grouped by practice area
+    const ctCheckboxes = practiceAreas.map(pa => {
+      const paCts = caseTypesData.filter(ct => ct.practice_area_id === pa.id);
+      if (!paCts.length) return '';
+      return `
+        <div style="margin-bottom:var(--space-3)">
+          <div style="font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:var(--space-2)">${Utils.esc(pa.name)}</div>
+          ${paCts.map(ct => `
+            <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-weight:400;font-size:var(--text-sm);margin-bottom:var(--space-1)">
+              <input type="checkbox" class="dt-ct-cb" value="${Utils.esc(ct.key)}" style="width:auto;flex-shrink:0" ${selectedKeys.includes(ct.key) ? 'checked' : ''}>
+              ${Utils.esc(ct.name)}
+            </label>`).join('')}
+        </div>`;
+    }).join('');
 
     modal.innerHTML = `
       <div class="modal" style="max-width:540px">
@@ -140,7 +176,7 @@
               <input type="checkbox" id="dt-universal" style="width:auto" ${isUniversal ? 'checked' : ''}>
               <span style="font-weight:500">Universal — applies to all case types</span>
             </label>
-            <div id="dt-ct-grid" style="display:${isUniversal ? 'none' : 'grid'};grid-template-columns:1fr 1fr;gap:var(--space-2) var(--space-6);padding:var(--space-3);background:var(--color-bg-subtle);border-radius:var(--radius);border:1px solid var(--color-border)">
+            <div id="dt-ct-grid" style="display:${isUniversal ? 'none' : 'block'};padding:var(--space-3);background:var(--color-bg-subtle);border-radius:var(--radius);border:1px solid var(--color-border)">
               ${ctCheckboxes}
             </div>
             <div id="dt-ct-err" class="form-error hidden" style="margin-top:var(--space-2)">Select at least one case type, or mark as Universal.</div>
@@ -175,7 +211,7 @@
     modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 
     document.getElementById('dt-universal').addEventListener('change', e => {
-      document.getElementById('dt-ct-grid').style.display = e.target.checked ? 'none' : 'grid';
+      document.getElementById('dt-ct-grid').style.display = e.target.checked ? 'none' : 'block';
       document.getElementById('dt-ct-err').classList.add('hidden');
     });
 
@@ -190,8 +226,8 @@
       ctErr.classList.add('hidden');
       if (!name) { errEl.textContent = 'Document name is required.'; errEl.classList.remove('hidden'); return; }
 
-      const universal  = document.getElementById('dt-universal').checked;
-      const caseTypes  = universal
+      const universal = document.getElementById('dt-universal').checked;
+      const caseTypes = universal
         ? null
         : [...modal.querySelectorAll('.dt-ct-cb:checked')].map(cb => cb.value);
 
@@ -260,15 +296,6 @@
 
   document.getElementById('btn-add-template').addEventListener('click', () => openModal());
 
-  document.querySelectorAll('.dt-filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.dt-filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeFilter = btn.dataset.filter === undefined ? 'all' : btn.dataset.filter;
-      render();
-    });
-  });
-
   tbody.addEventListener('click', e => {
     const editBtn   = e.target.closest('.dt-edit-btn');
     const deleteBtn = e.target.closest('.dt-delete-btn');
@@ -277,6 +304,8 @@
   });
 
   // ── Init ──────────────────────────────────────────────────────────────────────
+
+  await loadReferenceData();
   await load();
 
 })();
