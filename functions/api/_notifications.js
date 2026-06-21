@@ -3,14 +3,18 @@
 // Set RESEND_API_KEY + PORTAL_FROM_EMAIL + PORTAL_FIRM_NAME + PORTAL_URL in CF Pages env.
 // Gracefully no-ops when RESEND_API_KEY is absent (dev / pre-domain setup).
 
-async function sendEmail(env, to, subject, html) {
+import { makeAdminClient } from './_helpers.js';
+
+async function sendEmail(env, to, subject, html, type = 'other') {
   const apiKey = env.RESEND_API_KEY;
   if (!apiKey) {
     console.log(`[notify] RESEND_API_KEY not set — skipping: "${subject}" → ${to}`);
     return;
   }
-  const firmName  = env.PORTAL_FIRM_NAME  || 'Your Firm Name';
+  const firmName  = env.PORTAL_FIRM_NAME  || 'Your Law Firm';
   const fromEmail = env.PORTAL_FROM_EMAIL || 'noreply@example.com';
+  let status = 'sent';
+  let error  = null;
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -20,14 +24,24 @@ async function sendEmail(env, to, subject, html) {
     if (!res.ok) {
       const err = await res.text();
       console.error(`[notify] Resend error to ${to}: ${err}`);
+      status = 'failed';
+      error  = err.slice(0, 500);
     }
   } catch (err) {
     console.error(`[notify] fetch error: ${err.message}`);
+    status = 'failed';
+    error  = err.message;
+  }
+  // Log every attempt to email_log (fire-and-forget — never block the notification)
+  try {
+    await makeAdminClient(env).from('email_log').insert({ type, to_email: to, subject, status, error });
+  } catch (logErr) {
+    console.error('[notify] email_log insert failed:', logErr.message);
   }
 }
 
 function layout(env, body) {
-  const firmName = env.PORTAL_FIRM_NAME || 'Your Firm Name';
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
@@ -57,7 +71,7 @@ function row(label, value) {
 
 export async function notifyClientInvited(env, { toEmail, clientName }) {
   const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
-  const firmName  = env.PORTAL_FIRM_NAME || 'Your Firm Name';
+  const firmName  = env.PORTAL_FIRM_NAME || 'Your Law Firm';
   await sendEmail(env, toEmail, `You've been invited to the ${firmName} client portal`,
     layout(env, `
       <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">Welcome, ${clientName}</p>
@@ -70,12 +84,12 @@ export async function notifyClientInvited(env, { toEmail, clientName }) {
       </ul>
       <p style="margin:0;color:#374151">A separate email with your sign-in link has been sent. Use that link to set your password — <strong>the link expires in 20 minutes.</strong> If it expires before you can use it, reply to this email and we'll send a new one.</p>
       ${btn(`${portalUrl}/portal`, 'Open portal')}
-    `)
+    `), 'client_invite'
   );
 }
 
 export async function notifyTaskAssigned(env, { toEmail, taskTitle, clientName, dueDate }) {
-  const portalUrl = env.PORTAL_URL || 'https://divorcedifferently.com';
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   const due = dueDate
     ? new Date(dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : null;
@@ -88,12 +102,12 @@ export async function notifyTaskAssigned(env, { toEmail, taskTitle, clientName, 
         ${row('Due', due)}
       </table>
       ${btn(`${portalUrl}/portal#tasks`, 'View tasks')}
-    `)
+    `), 'task_assigned'
   );
 }
 
 export async function notifyDocumentUploaded(env, { toEmail, uploaderName, clientName, fileName, matterLabel }) {
-  const portalUrl = env.PORTAL_URL || 'https://divorcedifferently.com';
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   await sendEmail(env, toEmail, `New document uploaded — ${clientName}`,
     layout(env, `
       <p style="margin:0 0 20px;font-size:16px;font-weight:600;color:#111">A document has been uploaded</p>
@@ -104,12 +118,12 @@ export async function notifyDocumentUploaded(env, { toEmail, uploaderName, clien
         ${row('Matter', matterLabel)}
       </table>
       ${btn(`${portalUrl}/portal#uploads`, 'Review documents')}
-    `)
+    `), 'doc_uploaded'
   );
 }
 
 export async function notifyMalwareBlocked(env, { toEmail, uploaderName, clientName, fileName, matterLabel, finding }) {
-  const portalUrl = env.PORTAL_URL || 'https://divorcedifferently.com';
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   await sendEmail(env, toEmail, `⚠️ Infected file blocked — ${clientName}`,
     layout(env, `
       <p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#b91c1c">A malicious file was blocked</p>
@@ -122,12 +136,12 @@ export async function notifyMalwareBlocked(env, { toEmail, uploaderName, clientN
         ${row('Threat detected', finding)}
       </table>
       ${btn(`${portalUrl}/portal#uploads`, 'Open documents')}
-    `)
+    `), 'malware_blocked'
   );
 }
 
 export async function notifyChecklistItemReceived(env, { toEmail, clientName, documentLabel, matterLabel }) {
-  const portalUrl = env.PORTAL_URL || 'https://divorcedifferently.com';
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   await sendEmail(env, toEmail, `Checklist item received — ${clientName}`,
     layout(env, `
       <p style="margin:0 0 20px;font-size:16px;font-weight:600;color:#111">A required document has been received</p>
@@ -137,12 +151,12 @@ export async function notifyChecklistItemReceived(env, { toEmail, clientName, do
         ${row('Matter', matterLabel)}
       </table>
       ${btn(`${portalUrl}/portal#uploads`, 'Review documents')}
-    `)
+    `), 'checklist_received'
   );
 }
 
 export async function notifySignatureRequested(env, { toEmail, clientName, requestedBy, documentName, message }) {
-  const portalUrl = env.PORTAL_URL || 'https://divorcedifferently.com';
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   await sendEmail(env, toEmail, `Signature requested — ${documentName}`,
     layout(env, `
       <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">Your signature is needed</p>
@@ -154,12 +168,12 @@ export async function notifySignatureRequested(env, { toEmail, clientName, reque
       </table>
       <p style="margin:16px 0 0;font-size:13px;color:#6b7280">Log in to the portal to review the document and sign. This request expires in 30 days.</p>
       ${btn(`${portalUrl}/portal`, 'Sign document')}
-    `)
+    `), 'signature_request'
   );
 }
 
 export async function notifySignatureSigned(env, { toEmail, signerName, documentName, requestId }) {
-  const portalUrl = env.PORTAL_URL || 'https://divorcedifferently.com';
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   await sendEmail(env, toEmail, `Document signed — awaiting your counter-signature`,
     layout(env, `
       <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">Client has signed — your counter-signature is needed</p>
@@ -169,7 +183,7 @@ export async function notifySignatureSigned(env, { toEmail, signerName, document
       </table>
       <p style="margin:16px 0 0;font-size:13px;color:#6b7280">Log in to the portal to review the signed document and add your counter-signature.</p>
       ${btn(`${portalUrl}/portal#esign`, 'Counter-sign now')}
-    `)
+    `), 'signature_signed'
   );
 }
 
@@ -178,7 +192,7 @@ export async function notifySignatureCompleted(env, { documentName, requestId })
 }
 
 export async function notifySignatureDeclined(env, { toEmail, clientName, documentName, reason }) {
-  const portalUrl = env.PORTAL_URL || 'https://divorcedifferently.com';
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   await sendEmail(env, toEmail, `Signature declined — ${documentName}`,
     layout(env, `
       <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">A client has declined to sign</p>
@@ -189,6 +203,6 @@ export async function notifySignatureDeclined(env, { toEmail, clientName, docume
       </table>
       <p style="margin:16px 0 0;font-size:13px;color:#6b7280">Log in to the portal to follow up with the client.</p>
       ${btn(`${portalUrl}/portal#esign`, 'View e-sign requests')}
-    `)
+    `), 'signature_declined'
   );
 }
