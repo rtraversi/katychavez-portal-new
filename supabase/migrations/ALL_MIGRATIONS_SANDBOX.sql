@@ -1,0 +1,2349 @@
+﻿-- ===== supabase/migrations/001_core_tables.sql =====
+-- Migration 001: Core domain tables
+-- clients · matters · opposing_parties · children · key_dates · financial_info · documents · tasks · task_reminder_rules
+-- Apply with: db-migrate.ps1 -Target dev|prod
+-- Never hand-edit the live database — migrations are the only way schema changes.
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- ENUMS
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TYPE public.case_type AS ENUM (
+  'divorce',
+  'legal_separation',
+  'custody',
+  'child_support',
+  'child_support_modification',
+  'custody_modification',
+  'paternity',
+  'prenuptial_agreement',
+  'postnuptial_agreement',
+  'protective_order',
+  'adoption',
+  'other'
+);
+COMMENT ON TYPE public.case_type IS 'Add values via a new migration, never alter this enum directly';
+
+CREATE TYPE public.matter_status AS ENUM ('intake', 'active', 'on_hold', 'closed');
+
+CREATE TYPE public.billing_type AS ENUM ('hourly', 'flat_fee', 'contingency', 'hybrid');
+
+CREATE TYPE public.task_priority AS ENUM ('low', 'normal', 'high', 'urgent');
+
+CREATE TYPE public.task_status AS ENUM ('pending', 'in_progress', 'completed', 'cancelled');
+
+CREATE TYPE public.key_date_type AS ENUM (
+  'marriage',
+  'separation',
+  'divorce_final',
+  'filing',
+  'hearing',
+  'mediation',
+  'deposition',
+  'trial',
+  'deadline',
+  'custom'
+);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- CLIENTS  (§10 Group ①  +  ⑦ compliance fields)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.clients (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+
+  -- Identity
+  first_name  text        NOT NULL,
+  last_name   text        NOT NULL,
+  dob         date,
+
+  -- SSN: PENDING Q5 — column reserved, managed server-side only if enabled.
+  -- ssn_encrypted text,  -- store only base64(AES-256-GCM(ssn)) via server function, never raw
+
+  -- Contact
+  phone               text,
+  email               text,
+  address_line1       text,
+  address_line2       text,
+  city                text,
+  state               text DEFAULT 'TX',
+  zip                 text,
+  preferred_contact   text CHECK (preferred_contact IN ('phone', 'email', 'portal', 'text')),
+
+  -- Employment / emergency
+  employer                  text,
+  emergency_contact_name    text,
+  emergency_contact_phone   text,
+
+  -- Compliance (Group ⑦)
+  conflict_check_notes  text,
+  -- DV: PENDING Q5 — is_dv_confidential gates extra RLS filters (see migration 003).
+  is_dv_confidential    boolean NOT NULL DEFAULT false,
+
+  active  boolean NOT NULL DEFAULT true,
+  notes   text
+);
+
+CREATE INDEX idx_clients_name ON public.clients (last_name, first_name);
+CREATE INDEX idx_clients_dv   ON public.clients (is_dv_confidential) WHERE is_dv_confidential = true;
+
+-- updated_at trigger (shared function defined at end of this file)
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = now(); RETURN NEW; END;
+$$;
+
+CREATE TRIGGER clients_updated_at
+  BEFORE UPDATE ON public.clients
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- MATTERS  (§10 Groups ②  ⑥)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.matters (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id   uuid        NOT NULL REFERENCES public.clients(id) ON DELETE RESTRICT,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+
+  -- Matter identity (Group ②)
+  case_type       public.case_type NOT NULL,
+  case_number     text,
+  court_county    text,
+  judge_name      text,
+  date_filed      date,
+  status          public.matter_status NOT NULL DEFAULT 'intake',
+
+  -- Assignment
+  assigned_attorney_id  uuid,  -- FK set after users table exists (migration 002)
+
+  -- Financial (Group ⑥)
+  retainer_balance  numeric(10,2),
+  billing_type      public.billing_type DEFAULT 'hourly',
+
+  -- Confidentiality (drives RLS — PINNED for full record-level enforcement)
+  is_dv_confidential  boolean NOT NULL DEFAULT false,
+
+  notes  text
+);
+
+CREATE INDEX idx_matters_client  ON public.matters (client_id);
+CREATE INDEX idx_matters_status  ON public.matters (status);
+CREATE INDEX idx_matters_atty    ON public.matters (assigned_attorney_id);
+
+CREATE TRIGGER matters_updated_at
+  BEFORE UPDATE ON public.matters
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- OPPOSING PARTIES  (§10 Group ③)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.opposing_parties (
+  id          uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id   uuid  NOT NULL REFERENCES public.matters(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+
+  first_name              text NOT NULL,
+  last_name               text,
+  dob                     date,
+  employer                text,
+
+  opposing_counsel_name   text,
+  opposing_counsel_firm   text,
+  opposing_counsel_email  text,
+  opposing_counsel_phone  text,
+
+  -- Address may be sealed (DV/protective-order matters)
+  address_line1       text,
+  address_line2       text,
+  city                text,
+  state               text,
+  zip                 text,
+  is_address_restricted  boolean NOT NULL DEFAULT false
+);
+
+CREATE INDEX idx_opposing_matter ON public.opposing_parties (matter_id);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- CHILDREN  (§10 Group ⑤)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.children (
+  id          uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id   uuid  NOT NULL REFERENCES public.matters(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+
+  first_name          text NOT NULL,
+  last_name           text,
+  dob                 date,
+  custody_arrangement text
+);
+
+CREATE INDEX idx_children_matter ON public.children (matter_id);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- KEY DATES  (§10 Group ④)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.key_dates (
+  id          uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id   uuid  NOT NULL REFERENCES public.matters(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+
+  date_type     public.key_date_type NOT NULL,
+  date_value    date NOT NULL,
+  description   text,
+  is_milestone  boolean NOT NULL DEFAULT false  -- used by smart reminder engine to trigger task creation
+);
+
+CREATE INDEX idx_key_dates_matter ON public.key_dates (matter_id);
+CREATE INDEX idx_key_dates_value  ON public.key_dates (date_value);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- FINANCIAL INFO  (§10 Group ⑥  — supplemental)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.financial_info (
+  id          uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id   uuid  NOT NULL UNIQUE REFERENCES public.matters(id) ON DELETE CASCADE,
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+
+  client_monthly_income    numeric(10,2),
+  opposing_monthly_income  numeric(10,2),
+  financial_affidavit_status  text DEFAULT 'not_started'
+    CHECK (financial_affidavit_status IN ('not_started', 'draft', 'filed')),
+  notes  text
+);
+
+CREATE TRIGGER financial_info_updated_at
+  BEFORE UPDATE ON public.financial_info
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- DOCUMENTS  (Wave 0 metadata; files live in Cloudflare R2)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.documents (
+  id          uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id   uuid  NOT NULL REFERENCES public.matters(id) ON DELETE RESTRICT,
+  uploaded_by uuid, -- FK set after users table (migration 002)
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+
+  name          text NOT NULL,
+  file_name     text NOT NULL,
+  file_size     bigint,
+  r2_key        text NOT NULL UNIQUE,  -- Cloudflare R2 object key — this is the canonical file ref
+  content_type  text,
+
+  doc_type  text CHECK (doc_type IN ('pleading', 'agreement', 'correspondence', 'financial', 'id', 'court_order', 'other')),
+  status    text NOT NULL DEFAULT 'received'
+    CHECK (status IN ('pending', 'received', 'reviewed', 'filed', 'signed', 'expired')),
+
+  -- For missing-doc discovery (Add-on A — reads this column, doesn't own the table)
+  is_required       boolean NOT NULL DEFAULT false,
+  required_by_date  date,
+
+  notes  text
+);
+
+CREATE INDEX idx_documents_matter ON public.documents (matter_id);
+CREATE INDEX idx_documents_status ON public.documents (status);
+
+CREATE TRIGGER documents_updated_at
+  BEFORE UPDATE ON public.documents
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- TASKS  (Wave 0 — task list + smart reminder engine)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.tasks (
+  id          uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id   uuid  REFERENCES public.matters(id) ON DELETE SET NULL,
+  client_id   uuid  REFERENCES public.clients(id) ON DELETE SET NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+
+  title        text NOT NULL,
+  description  text,
+
+  assigned_to  uuid, -- FK set after users table (migration 002)
+  created_by   uuid, -- FK set after users table (migration 002)
+
+  priority      public.task_priority NOT NULL DEFAULT 'normal',
+  status        public.task_status   NOT NULL DEFAULT 'pending',
+  due_date      date,
+  reminder_at   timestamptz,  -- smart reminder engine fires Supabase webhook at this time
+
+  completed_at  timestamptz,
+
+  -- Breadcrumb for auto-created tasks (from reminder rules)
+  auto_created_from_rule_id  uuid  -- FK added after task_reminder_rules table
+);
+
+CREATE INDEX idx_tasks_matter     ON public.tasks (matter_id);
+CREATE INDEX idx_tasks_assigned   ON public.tasks (assigned_to);
+CREATE INDEX idx_tasks_status     ON public.tasks (status);
+CREATE INDEX idx_tasks_due        ON public.tasks (due_date) WHERE status NOT IN ('completed', 'cancelled');
+CREATE INDEX idx_tasks_reminder   ON public.tasks (reminder_at) WHERE reminder_at IS NOT NULL AND status = 'pending';
+
+CREATE TRIGGER tasks_updated_at
+  BEFORE UPDATE ON public.tasks
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- TASK REMINDER RULES  (smart reminder engine config)
+-- ──────────────────────────────────────────────────────────────────────────────
+-- When a key_date of trigger_date_type is set on a matter, a task is auto-created
+-- at (date_value + offset_days). Negative offset = before the date.
+
+CREATE TABLE public.task_reminder_rules (
+  id          uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+
+  trigger_date_type    public.key_date_type NOT NULL,
+  offset_days          integer NOT NULL,
+  task_title_template  text NOT NULL,  -- supports {client_name}, {matter_case_type}, {date}
+  task_description_template  text,
+  default_priority     public.task_priority NOT NULL DEFAULT 'normal',
+  applies_to_case_types  public.case_type[],  -- NULL = applies to all case types
+
+  active  boolean NOT NULL DEFAULT true
+);
+
+-- Back-fill FK from tasks to rules
+ALTER TABLE public.tasks
+  ADD CONSTRAINT fk_tasks_reminder_rule
+  FOREIGN KEY (auto_created_from_rule_id)
+  REFERENCES public.task_reminder_rules(id)
+  ON DELETE SET NULL;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- DEFAULT REMINDER RULES  (family-law lifecycle — refine per client)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+INSERT INTO public.task_reminder_rules (trigger_date_type, offset_days, task_title_template, task_description_template, default_priority, applies_to_case_types) VALUES
+  ('hearing',       -7,  'Prepare hearing materials for {client_name}',       'Upcoming hearing in 7 days. Confirm all documents are filed.', 'high',   NULL),
+  ('hearing',       -1,  'Confirm hearing logistics for {client_name}',        'Hearing tomorrow. Confirm time, location, client notified.',    'urgent', NULL),
+  ('deadline',      -3,  'Deadline approaching: {client_name}',                'Filing deadline in 3 days.',                                   'high',   NULL),
+  ('divorce_final', 14,  'Draft closing letter for {client_name}',             'Matter closed. Draft and send closing letter per Texas Bar guidance.', 'normal', ARRAY['divorce'::public.case_type, 'legal_separation'::public.case_type]),
+  ('filing',        7,   'Send filed-copy to client: {client_name}',           'Confirm client received copy of filed documents.',             'normal', NULL);
+
+
+-- ===== supabase/migrations/002_rbac.sql =====
+-- Migration 002: RBAC — roles · users (profiles) · modules · role_module_access
+-- Also: FK back-fills, auth trigger, default roles/modules seed data.
+-- Apply AFTER migration 001.
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- ENUMS
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TYPE public.access_level AS ENUM ('none', 'read', 'write', 'admin');
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- ROLES
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.roles (
+  id              uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  name            text  NOT NULL UNIQUE,
+  description     text,
+  is_system_role  boolean NOT NULL DEFAULT false,  -- system roles cannot be deleted
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- USERS  (profile table — shadows auth.users)
+-- One row per auth.users row; created by trigger on auth signup.
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.users (
+  id          uuid  PRIMARY KEY DEFAULT gen_random_uuid(),
+  auth_id     uuid  NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  role_id     uuid  NOT NULL REFERENCES public.roles(id),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+
+  first_name  text NOT NULL,
+  last_name   text NOT NULL,
+  email       text NOT NULL,
+  phone       text,
+  active      boolean NOT NULL DEFAULT true,
+
+  -- Invite state
+  invited_by  uuid  REFERENCES public.users(id),
+  invited_at  timestamptz
+);
+
+CREATE INDEX idx_users_auth_id ON public.users (auth_id);
+CREATE INDEX idx_users_role_id ON public.users (role_id);
+CREATE INDEX idx_users_email   ON public.users (email);
+
+CREATE TRIGGER users_updated_at
+  BEFORE UPDATE ON public.users
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- Back-fill FKs in core tables now that users exists
+ALTER TABLE public.matters
+  ADD CONSTRAINT fk_matters_attorney
+  FOREIGN KEY (assigned_attorney_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.documents
+  ADD CONSTRAINT fk_documents_uploaded_by
+  FOREIGN KEY (uploaded_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.tasks
+  ADD CONSTRAINT fk_tasks_assigned_to
+  FOREIGN KEY (assigned_to) REFERENCES public.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.tasks
+  ADD CONSTRAINT fk_tasks_created_by
+  FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- MODULES  (registry — the extension contract)
+-- Modules self-register here. Adding a module = INSERT + append to registry.js.
+-- Migration number ranges: core 001-099, billing 100-199, ai_brain 200-299,
+--   messaging 300-399, uploads 400-499, esign 500-599, draft_forms 600-699,
+--   dashboard 700-799, word_embed 800-899, (future 900-999).
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.modules (
+  key               text  PRIMARY KEY,
+  name              text  NOT NULL,
+  description       text,
+  icon              text,    -- icon name string (maps to CSS icon class or SVG id)
+  route             text,    -- hash route within portal, e.g. 'clients'
+  wave              integer  NOT NULL DEFAULT 1,
+  enabled_by_default  boolean NOT NULL DEFAULT false,
+  sort_order          integer NOT NULL DEFAULT 0
+);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- ROLE_MODULE_ACCESS  (the permission matrix)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.role_module_access (
+  role_id       uuid  NOT NULL REFERENCES public.roles(id) ON DELETE CASCADE,
+  module_key    text  NOT NULL REFERENCES public.modules(key) ON DELETE CASCADE,
+  access_level  public.access_level NOT NULL DEFAULT 'none',
+  PRIMARY KEY (role_id, module_key)
+);
+
+CREATE INDEX idx_rma_role   ON public.role_module_access (role_id);
+CREATE INDEX idx_rma_module ON public.role_module_access (module_key);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- AUTH TRIGGER  — creates profile on Supabase auth signup
+-- Default role: Paralegal (lowest privilege). Owner promotes via permissions UI.
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  default_role_id uuid;
+BEGIN
+  -- Fetch paralegal role as default (safest default)
+  SELECT id INTO default_role_id FROM public.roles WHERE name = 'Paralegal' LIMIT 1;
+  IF default_role_id IS NULL THEN
+    -- Fallback: first non-system role
+    SELECT id INTO default_role_id FROM public.roles WHERE is_system_role = false ORDER BY created_at LIMIT 1;
+  END IF;
+
+  INSERT INTO public.users (auth_id, role_id, first_name, last_name, email)
+  VALUES (
+    NEW.id,
+    default_role_id,
+    COALESCE(NEW.raw_user_meta_data->>'first_name', split_part(NEW.email, '@', 1)),
+    COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
+    NEW.email
+  );
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- SEED: DEFAULT ROLES
+-- ──────────────────────────────────────────────────────────────────────────────
+
+INSERT INTO public.roles (name, description, is_system_role) VALUES
+  ('Owner',      'Full access to all modules and settings. Cannot be deleted.', true),
+  ('Attorney',   'Client and matter management, tasks, uploads.',               false),
+  ('Paralegal',  'Client intake, document tracking, tasks.',                    false),
+  ('Staff Admin','User management and permissions.',                             false);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- SEED: MODULE REGISTRY
+-- ──────────────────────────────────────────────────────────────────────────────
+
+INSERT INTO public.modules (key, name, description, icon, route, wave, sort_order, enabled_by_default) VALUES
+  ('core',         'Clients & Matters', 'Client cards, matter management, and client card.',  'users',         'clients',     0,  10, true),
+  ('tasks',        'Tasks',             'Task list and smart reminder engine.',                'check-square',  'tasks',       0,  20, true),
+  ('uploads',      'Document Uploads',  'Client document uploads and missing-doc tracking.',  'upload',        'uploads',     1,  30, false),
+  ('messaging',    'Messaging',         'Two-way portal messaging — replaces email inbox.',   'message-square','messaging',   1,  40, false),
+  ('billing',      'Billing & Time',    'Time tracking and invoicing.',                       'dollar-sign',   'billing',     1,  50, false),
+  ('ai_brain',     'AI Assistant',      'RAG query box trained on your firm''s knowledge.',  'cpu',           'ai-brain',    1,  60, false),
+  ('draft_forms',  'Document Drafting', 'Generate forms from your Dropbox templates.',        'file-text',     'draft-forms', 1,  70, false),
+  ('esign',        'E-Signatures',      'In-portal e-sign with SHA-256 audit trail (UETA).',  'pen-tool',      'esign',       1,  80, false),
+  ('dashboard',    'Analytics',         'Dashboard aggregating data across all modules.',     'bar-chart-2',   'dashboard',   2,  90, false),
+  ('word_embed',   'Word Integration',  'Open and save Word documents without leaving portal.','file',         'word-embed',  2, 100, false);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- SEED: ROLE_MODULE_ACCESS  (default permission matrix)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+DO $$
+DECLARE
+  r_owner       uuid; r_attorney uuid; r_paralegal uuid; r_staffadmin uuid;
+BEGIN
+  SELECT id INTO r_owner       FROM public.roles WHERE name = 'Owner';
+  SELECT id INTO r_attorney    FROM public.roles WHERE name = 'Attorney';
+  SELECT id INTO r_paralegal   FROM public.roles WHERE name = 'Paralegal';
+  SELECT id INTO r_staffadmin  FROM public.roles WHERE name = 'Staff Admin';
+
+  -- Owner: admin on everything
+  INSERT INTO public.role_module_access (role_id, module_key, access_level)
+  SELECT r_owner, key, 'admin' FROM public.modules;
+
+  -- Attorney: write on core + tasks + uploads; read on billing/dashboard
+  INSERT INTO public.role_module_access (role_id, module_key, access_level) VALUES
+    (r_attorney, 'core',        'write'),
+    (r_attorney, 'tasks',       'write'),
+    (r_attorney, 'uploads',     'write'),
+    (r_attorney, 'messaging',   'write'),
+    (r_attorney, 'billing',     'read'),
+    (r_attorney, 'ai_brain',    'read'),
+    (r_attorney, 'draft_forms', 'write'),
+    (r_attorney, 'esign',       'write'),
+    (r_attorney, 'dashboard',   'read'),
+    (r_attorney, 'word_embed',  'write');
+
+  -- Paralegal: write on core + tasks + uploads; no billing/ai/settings
+  INSERT INTO public.role_module_access (role_id, module_key, access_level) VALUES
+    (r_paralegal, 'core',        'write'),
+    (r_paralegal, 'tasks',       'write'),
+    (r_paralegal, 'uploads',     'write'),
+    (r_paralegal, 'messaging',   'read'),
+    (r_paralegal, 'draft_forms', 'read'),
+    (r_paralegal, 'esign',       'read');
+
+  -- Staff Admin: admin on user/permissions settings; read on core
+  INSERT INTO public.role_module_access (role_id, module_key, access_level) VALUES
+    (r_staffadmin, 'core',      'read'),
+    (r_staffadmin, 'tasks',     'read'),
+    (r_staffadmin, 'billing',   'admin'),
+    (r_staffadmin, 'dashboard', 'read');
+END;
+$$;
+
+
+-- ===== supabase/migrations/003_rls_policies.sql =====
+-- Migration 003: Row Level Security policies
+-- Apply AFTER migrations 001 + 002.
+-- Principle: DB-level enforcement, not UI-only. Hiding menu items is UX, not security.
+-- v1: module on/off access. Record-level (DV, assigned-matter scoping) PINNED — see §16 architecture.md.
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- HELPER FUNCTIONS
+-- ──────────────────────────────────────────────────────────────────────────────
+
+-- Returns the public.users.id for the currently authenticated user.
+-- NULL if not found (user not yet synced or inactive).
+CREATE OR REPLACE FUNCTION public.my_user_id()
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT id FROM public.users WHERE auth_id = auth.uid() AND active = true LIMIT 1;
+$$;
+
+-- Returns the role_id for the current user.
+CREATE OR REPLACE FUNCTION public.my_role_id()
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT role_id FROM public.users WHERE auth_id = auth.uid() AND active = true LIMIT 1;
+$$;
+
+-- Checks whether the current user's role has at least min_level access to a module.
+-- 'none' < 'read' < 'write' < 'admin'
+CREATE OR REPLACE FUNCTION public.check_module_access(p_module_key text, p_min_level public.access_level)
+RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_role_id   uuid;
+  v_level     public.access_level;
+BEGIN
+  v_role_id := public.my_role_id();
+  IF v_role_id IS NULL THEN RETURN false; END IF;
+
+  SELECT access_level INTO v_level
+  FROM public.role_module_access
+  WHERE role_id = v_role_id AND module_key = p_module_key;
+
+  IF v_level IS NULL THEN RETURN false; END IF;
+
+  -- Enum comparison: cast to text ordinal via CASE
+  RETURN CASE p_min_level
+    WHEN 'none'  THEN true
+    WHEN 'read'  THEN v_level IN ('read',  'write', 'admin')
+    WHEN 'write' THEN v_level IN ('write', 'admin')
+    WHEN 'admin' THEN v_level = 'admin'
+    ELSE false
+  END;
+END;
+$$;
+
+-- Convenience wrappers used frequently in policies
+CREATE OR REPLACE FUNCTION public.can_read(p_module text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT public.check_module_access(p_module, 'read');
+$$;
+
+CREATE OR REPLACE FUNCTION public.can_write(p_module text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT public.check_module_access(p_module, 'write');
+$$;
+
+CREATE OR REPLACE FUNCTION public.can_admin(p_module text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT public.check_module_access(p_module, 'admin');
+$$;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- ENABLE RLS ON ALL TABLES
+-- ──────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.roles               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.modules             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.role_module_access  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clients             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.matters             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.opposing_parties    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.children            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.key_dates           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.financial_info      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.documents           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tasks               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.task_reminder_rules ENABLE ROW LEVEL SECURITY;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- ROLES TABLE
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE POLICY "roles_read"   ON public.roles FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "roles_manage" ON public.roles FOR ALL    USING (public.can_admin('core'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- USERS TABLE
+-- ──────────────────────────────────────────────────────────────────────────────
+
+-- Any authenticated active user can see the user list (needed for assignment dropdowns)
+CREATE POLICY "users_read"    ON public.users FOR SELECT USING (public.my_user_id() IS NOT NULL);
+-- Users can update their own profile (name, phone); admins can update anyone
+CREATE POLICY "users_update"  ON public.users FOR UPDATE USING (
+  auth_id = auth.uid() OR public.can_admin('core')
+);
+-- Only admins can create/delete users (invites go through Supabase Auth; this covers edge cases)
+CREATE POLICY "users_manage"  ON public.users FOR ALL    USING (public.can_admin('core'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- MODULES TABLE  (config read-only for non-admins)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE POLICY "modules_read"   ON public.modules FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "modules_manage" ON public.modules FOR ALL    USING (public.can_admin('core'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- ROLE_MODULE_ACCESS
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE POLICY "rma_read"   ON public.role_module_access FOR SELECT USING (public.my_user_id() IS NOT NULL);
+CREATE POLICY "rma_manage" ON public.role_module_access FOR ALL    USING (public.can_admin('core'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- CLIENTS
+-- DV-confidential filter: PINNED for full implementation — v1 only Owner/admin can see DV records.
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE POLICY "clients_select" ON public.clients FOR SELECT USING (
+  public.can_read('core')
+  AND (NOT is_dv_confidential OR public.can_admin('core'))  -- DV gate (PINNED — tighten in v1 build)
+);
+CREATE POLICY "clients_insert" ON public.clients FOR INSERT WITH CHECK (public.can_write('core'));
+CREATE POLICY "clients_update" ON public.clients FOR UPDATE USING (
+  public.can_write('core')
+  AND (NOT is_dv_confidential OR public.can_admin('core'))
+);
+CREATE POLICY "clients_delete" ON public.clients FOR DELETE USING (public.can_admin('core'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- MATTERS
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE POLICY "matters_select" ON public.matters FOR SELECT USING (
+  public.can_read('core')
+  AND (NOT is_dv_confidential OR public.can_admin('core'))
+);
+CREATE POLICY "matters_insert" ON public.matters FOR INSERT WITH CHECK (public.can_write('core'));
+CREATE POLICY "matters_update" ON public.matters FOR UPDATE USING (
+  public.can_write('core')
+  AND (NOT is_dv_confidential OR public.can_admin('core'))
+);
+CREATE POLICY "matters_delete" ON public.matters FOR DELETE USING (public.can_admin('core'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- CHILD TABLES  (opposing_parties, children, key_dates, financial_info)
+-- Access follows the parent matter's rules. Simplified here — full RLS inherits matter access.
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE POLICY "opposing_read"   ON public.opposing_parties FOR SELECT USING (public.can_read('core'));
+CREATE POLICY "opposing_write"  ON public.opposing_parties FOR ALL    USING (public.can_write('core'));
+
+CREATE POLICY "children_read"   ON public.children FOR SELECT USING (public.can_read('core'));
+CREATE POLICY "children_write"  ON public.children FOR ALL    USING (public.can_write('core'));
+
+CREATE POLICY "keydates_read"   ON public.key_dates FOR SELECT USING (public.can_read('core'));
+CREATE POLICY "keydates_write"  ON public.key_dates FOR ALL    USING (public.can_write('core'));
+
+CREATE POLICY "financial_read"  ON public.financial_info FOR SELECT USING (public.can_read('core'));
+CREATE POLICY "financial_write" ON public.financial_info FOR ALL    USING (public.can_write('core'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- DOCUMENTS  (core module can see; uploads module manages them)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE POLICY "docs_select" ON public.documents FOR SELECT USING (public.can_read('core'));
+CREATE POLICY "docs_insert" ON public.documents FOR INSERT WITH CHECK (
+  public.can_write('uploads') OR public.can_write('core')
+);
+CREATE POLICY "docs_update" ON public.documents FOR UPDATE USING (
+  public.can_write('uploads') OR public.can_write('core')
+);
+CREATE POLICY "docs_delete" ON public.documents FOR DELETE USING (public.can_admin('core'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- TASKS
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE POLICY "tasks_select" ON public.tasks FOR SELECT USING (public.can_read('tasks'));
+CREATE POLICY "tasks_insert" ON public.tasks FOR INSERT WITH CHECK (public.can_write('tasks'));
+CREATE POLICY "tasks_update" ON public.tasks FOR UPDATE USING (
+  public.can_write('tasks')
+  OR assigned_to = public.my_user_id()  -- assignees can update their own tasks
+);
+CREATE POLICY "tasks_delete" ON public.tasks FOR DELETE USING (public.can_admin('tasks'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- TASK REMINDER RULES  (config — admin only to edit)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE POLICY "reminder_rules_read"   ON public.task_reminder_rules FOR SELECT USING (public.can_read('tasks'));
+CREATE POLICY "reminder_rules_manage" ON public.task_reminder_rules FOR ALL    USING (public.can_admin('core'));
+
+
+-- ===== supabase/migrations/004_client_card_full.sql =====
+-- Migration 004: Full client card schema — family-law fields
+-- Source: divorce, modification, enforcement, and premarital matter types.
+-- Apply AFTER migrations 001, 002, 003.
+--
+-- What this migration does:
+--   1. Expands case_type enum (Texas-specific types)
+--   2. Expands clients table (middle name, SSN, DL, phone breakdown, employer detail, etc.)
+--   3. Expands opposing_parties table (same fields as client + SSN)
+--   4. Expands children table (SSN, health insurance, sex, dispute flags)
+--   5. Expands matters table (marriage/separation detail, circumstances, enforcement/modification fields)
+--   6. Expands financial_info table (property sketch from divorce intake)
+--   7. New table: previous_marriages
+--   8. New table: children_other_relationships
+--   9. New table: conflict_questionnaire (DV screening — 15 questions)
+--  10. RLS policies for new tables
+
+-- ============================================================================
+-- 1. CASE TYPE ENUM ADDITIONS
+-- NOTE: PostgreSQL does not allow removing enum values. 'legal_separation' is
+-- kept in the DB but excluded from all UI dropdowns (not used in Texas).
+-- ============================================================================
+
+ALTER TYPE public.case_type ADD VALUE IF NOT EXISTS 'sapcr_original';
+      -- Original Suit Affecting Parent-Child Relationship (unmarried parents)
+ALTER TYPE public.case_type ADD VALUE IF NOT EXISTS 'sapcr_modification';
+      -- Modification SAPCR (custody/support/possession changes)
+ALTER TYPE public.case_type ADD VALUE IF NOT EXISTS 'enforcement';
+      -- Enforcement of existing orders (support, possession, property division)
+
+COMMENT ON TYPE public.case_type IS
+  'Texas family-law case types. legal_separation is deprecated (does not exist in TX) — exclude from UI dropdowns.';
+
+-- ============================================================================
+-- 2. CLIENTS TABLE EXPANSION
+-- ============================================================================
+
+-- Identity
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS middle_name        text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS former_maiden_name text;
+
+-- Contact — break phone into home/work/cell/fax
+-- Existing `phone` column = primary / cell (preserved for backward compat)
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS home_phone  text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS work_phone  text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS cell_phone  text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS fax         text;
+
+-- Address additions
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS county             text;  -- Texas county (important for filing)
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS length_of_residence text;
+
+-- Sensitive identifiers (server-side encrypted, never raw)
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS ssn_encrypted          text;  -- AES-256-GCM, managed by server function only
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS driver_license_number  text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS driver_license_state   text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS place_of_birth         text;
+
+-- Employment detail
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS gross_annual_income    numeric(10,2);
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS employer_address_line1 text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS employer_city          text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS employer_state         text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS employer_zip           text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS length_of_employment   text;
+
+-- Background
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS education          text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS living_with_others text;  -- people other than spouse/children living with client
+
+-- Name restoration (divorce only)
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS name_restoration_requested boolean NOT NULL DEFAULT false;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS name_restored_to           text;
+
+-- Intake meta
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS referral_source text
+  CHECK (referral_source IN ('advertisement','attorney','client','financial_advisor','internet','other'));
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS referral_name text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS intake_date   date;
+
+COMMENT ON COLUMN public.clients.ssn_encrypted IS
+  'AES-256-GCM encrypted SSN. NEVER store plain text. Only accessible via server-side function. Last 4 digits may be shown in UI.';
+COMMENT ON COLUMN public.clients.phone IS
+  'Legacy primary contact phone. New records should use cell_phone/home_phone/work_phone.';
+
+-- ============================================================================
+-- 3. OPPOSING PARTIES TABLE EXPANSION
+-- ============================================================================
+
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS middle_name         text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS former_maiden_name  text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS county              text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS length_of_residence text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS mailing_address_line1 text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS mailing_city        text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS mailing_state       text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS mailing_zip         text;
+
+-- Contact
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS home_phone  text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS work_phone  text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS cell_phone  text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS fax         text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS email       text;
+
+-- Sensitive identifiers
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS ssn_encrypted          text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS driver_license_number  text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS driver_license_state   text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS place_of_birth         text;
+
+-- Employment detail
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS gross_annual_income    numeric(10,2);
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS employer_address_line1 text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS employer_city          text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS employer_state         text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS employer_zip           text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS length_of_employment   text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS education              text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS living_with_others     text;
+
+-- Opposing counsel address (forms include full address)
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS opposing_counsel_address text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS opposing_counsel_city    text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS opposing_counsel_state   text;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS opposing_counsel_zip     text;
+
+-- Financial separation
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS physically_separated       boolean;
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS financial_arrangement      text
+  CHECK (financial_arrangement IN ('joint_account','separate','other'));
+ALTER TABLE public.opposing_parties ADD COLUMN IF NOT EXISTS financial_arrangement_notes text;
+
+COMMENT ON COLUMN public.opposing_parties.ssn_encrypted IS
+  'AES-256-GCM encrypted SSN. Required for vital statistics filings. Same security policy as clients.ssn_encrypted.';
+
+-- ============================================================================
+-- 4. CHILDREN TABLE EXPANSION
+-- ============================================================================
+
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS sex                text CHECK (sex IN ('M','F','other'));
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS place_of_birth     text;
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS ssn_encrypted      text;
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS current_residence  text;
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS special_needs      text;  -- health care problems, medical conditions
+
+-- Health insurance (collected on all forms with children)
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS health_ins_company       text;
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS health_ins_id            text;
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS health_ins_group         text;
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS health_ins_type          text CHECK (health_ins_type IN ('employer','individual','other'));
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS health_ins_type_other    text;
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS health_ins_premium       numeric(10,2);
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS health_ins_premium_payer text;  -- who pays the premium
+
+-- Dispute flags
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS paternity_dispute boolean NOT NULL DEFAULT false;
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS custody_dispute   boolean NOT NULL DEFAULT false;
+
+-- Third-party custody / visitation claimants (free text)
+ALTER TABLE public.children ADD COLUMN IF NOT EXISTS third_party_custody_notes text;
+
+-- ============================================================================
+-- 5. MATTERS TABLE EXPANSION
+-- ============================================================================
+
+-- Marriage detail
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS place_of_marriage     text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS has_prenup             boolean NOT NULL DEFAULT false;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS prior_divorce_filed    boolean;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS prior_protective_order boolean;
+
+-- Separation
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS separation_status    text
+  CHECK (separation_status IN ('not_separated','separated','counseling'));
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS separation_date       date;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS marriage_counselor    text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS separation_agreement  text
+  CHECK (separation_agreement IN ('none','written','oral'));
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS separation_agreement_notes text;
+
+-- Marriage circumstances (checkboxes from intake form)
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS involves_adultery         boolean NOT NULL DEFAULT false;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS involves_physical_abuse   boolean NOT NULL DEFAULT false;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS involves_cruelty          boolean NOT NULL DEFAULT false;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS involves_insupportibility boolean NOT NULL DEFAULT false;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS involves_mental_health    boolean NOT NULL DEFAULT false;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS involves_felony           boolean NOT NULL DEFAULT false;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS involves_std              boolean NOT NULL DEFAULT false;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS marital_difficulties      text;
+
+-- Active suit / opposing counsel
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS suit_filed          boolean NOT NULL DEFAULT false;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS been_served         boolean;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS prior_attorney_consulted text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS prior_attorney_retained  text;
+
+-- Child support tracking (modification + enforcement cases)
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS child_support_monthly      numeric(10,2);
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS child_support_current      boolean;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS child_support_via_office   boolean;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS child_support_withheld     boolean;  -- withheld from obligor's paycheck
+
+-- Modification-specific
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS modification_possession_notes    text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS modification_conservatorship_notes text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS modification_support_notes       text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS modification_medical_notes       text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS children_county_changed          boolean;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS children_county_previous         text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS primary_custody_rationale        text;
+
+-- Enforcement-specific
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS enforcement_order_title  text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS enforcement_order_date   date;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS enforcement_court_number text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS enforcement_violations   text[];
+  -- array of: 'child_support','possession','health_insurance','alimony','property_division','other'
+
+-- Premarital-specific
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS expected_marriage_date  date;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS expected_marriage_place text;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS client_has_will         boolean;
+ALTER TABLE public.matters ADD COLUMN IF NOT EXISTS client_will_date        date;
+
+-- ============================================================================
+-- 6. FINANCIAL_INFO TABLE EXPANSION
+-- (property sketch from divorce intake form section H)
+-- ============================================================================
+
+ALTER TABLE public.financial_info ADD COLUMN IF NOT EXISTS real_estate_gross_value   numeric(12,2);
+ALTER TABLE public.financial_info ADD COLUMN IF NOT EXISTS liquid_assets_value       numeric(12,2);
+ALTER TABLE public.financial_info ADD COLUMN IF NOT EXISTS retirement_description    text;
+ALTER TABLE public.financial_info ADD COLUMN IF NOT EXISTS retirement_estimated_value numeric(12,2);
+ALTER TABLE public.financial_info ADD COLUMN IF NOT EXISTS frequent_flyer_miles      text;
+ALTER TABLE public.financial_info ADD COLUMN IF NOT EXISTS vehicles_description      text;  -- free text: make/model/value/title for each vehicle
+ALTER TABLE public.financial_info ADD COLUMN IF NOT EXISTS other_assets_description  text;
+ALTER TABLE public.financial_info ADD COLUMN IF NOT EXISTS total_liabilities         numeric(12,2);
+ALTER TABLE public.financial_info ADD COLUMN IF NOT EXISTS weapons_description       text;
+
+-- ============================================================================
+-- 7. PREVIOUS MARRIAGES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.previous_marriages (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id   uuid NOT NULL REFERENCES public.matters(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+
+  party                text NOT NULL CHECK (party IN ('client','opposing')),
+  former_spouse_name   text NOT NULL,
+  termination_date     date,
+  termination_method   text  -- 'death', 'divorce', 'annulment', etc.
+);
+
+CREATE INDEX idx_prev_marriages_matter ON public.previous_marriages (matter_id);
+
+-- ============================================================================
+-- 8. CHILDREN FROM OTHER RELATIONSHIPS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.children_other_relationships (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id   uuid NOT NULL REFERENCES public.matters(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+
+  party        text NOT NULL CHECK (party IN ('client','opposing')),
+  first_name   text NOT NULL,
+  last_name    text,
+  dob          date,
+  ssn_encrypted text,
+  current_residence text
+);
+
+CREATE INDEX idx_children_other_matter ON public.children_other_relationships (matter_id);
+
+-- ============================================================================
+-- 9. CONFLICT QUESTIONNAIRE  (DV screening — administered at initial interview)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.conflict_questionnaire (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id       uuid NOT NULL REFERENCES public.matters(id) ON DELETE CASCADE,
+  administered_at timestamptz NOT NULL DEFAULT now(),
+  administered_by uuid REFERENCES public.users(id) ON DELETE SET NULL,
+
+  -- Q1: How do you and your spouse argue? (sub-questions)
+  q1a_name_calling   text CHECK (q1a_name_calling   IN ('never','sometimes','frequently')),
+  q1b_threats        text CHECK (q1b_threats        IN ('never','sometimes','frequently')),
+  q1c_throw_hit      text CHECK (q1c_throw_hit      IN ('never','sometimes','frequently')),
+  q1d_physical       text CHECK (q1d_physical       IN ('never','sometimes','frequently')),
+  q1e_silent         text CHECK (q1e_silent         IN ('never','sometimes','frequently')),
+  q1_comments        text,
+
+  q2_feel_safe       text CHECK (q2_feel_safe       IN ('never','sometimes','frequently','always')),
+  q2_comments        text,
+
+  q3_threatened      text CHECK (q3_threatened      IN ('never','sometimes','frequently','always')),
+  q3_comments        text,
+
+  q4_isolated        text CHECK (q4_isolated        IN ('never','sometimes','frequently','always')),
+  q4_comments        text,
+
+  q5_hurt_threat     text CHECK (q5_hurt_threat     IN ('never','sometimes','frequently')),
+  q5_comments        text,
+
+  q6_family_pet      text CHECK (q6_family_pet      IN ('never','sometimes','frequently')),
+  q6_comments        text,
+
+  q7_forced          text CHECK (q7_forced          IN ('never','sometimes','frequently')),
+  q7_comments        text,
+
+  q8_property        text CHECK (q8_property        IN ('never','sometimes','frequently')),
+  q8_comments        text,
+
+  q9_weapon_threat   boolean,
+  q9_weapon_type     text,
+
+  q10_taken_children text CHECK (q10_taken_children IN ('never','sometimes','frequently')),
+  q10_comments       text,
+
+  q11_suicide        text CHECK (q11_suicide        IN ('never','sometimes','frequently')),
+  q11_comments       text,
+
+  q12_controls_money text CHECK (q12_controls_money IN ('never','sometimes','frequently')),
+  q12_comments       text,
+
+  q13_alcohol        text CHECK (q13_alcohol        IN ('never','sometimes','frequently')),
+  q13_comments       text,
+
+  q14_drugs          text CHECK (q14_drugs          IN ('never','sometimes','frequently')),
+  q14_comments       text,
+
+  q15_police         text CHECK (q15_police         IN ('never','sometimes','frequently')),
+  q15_comments       text,
+
+  -- Computed: flag for DV review if any high-risk indicators present
+  dv_flag_review     boolean GENERATED ALWAYS AS (
+    q1d_physical   = 'frequently'                          OR
+    q5_hurt_threat IN ('sometimes','frequently')           OR
+    q9_weapon_threat = true                                OR
+    q15_police     IN ('sometimes','frequently')
+  ) STORED
+);
+
+CREATE INDEX idx_conflict_q_matter ON public.conflict_questionnaire (matter_id);
+CREATE INDEX idx_conflict_q_dv     ON public.conflict_questionnaire (dv_flag_review)
+  WHERE dv_flag_review = true;
+
+-- ============================================================================
+-- 10. RLS POLICIES FOR NEW TABLES
+-- ============================================================================
+
+ALTER TABLE public.previous_marriages             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.children_other_relationships   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.conflict_questionnaire         ENABLE ROW LEVEL SECURITY;
+
+-- All three tables: staff read/write (mirrors the pattern from 003_rls_policies.sql)
+-- Use the same can_read / can_write helper functions defined in migration 003.
+
+CREATE POLICY "prev_marriages_select" ON public.previous_marriages
+  FOR SELECT USING (public.can_read('core'));
+
+CREATE POLICY "prev_marriages_write" ON public.previous_marriages
+  FOR ALL USING (public.can_write('core'));
+
+CREATE POLICY "children_other_select" ON public.children_other_relationships
+  FOR SELECT USING (public.can_read('core'));
+
+CREATE POLICY "children_other_write" ON public.children_other_relationships
+  FOR ALL USING (public.can_write('core'));
+
+-- Conflict questionnaire: read requires write-level (sensitive DV data)
+CREATE POLICY "conflict_q_select" ON public.conflict_questionnaire
+  FOR SELECT USING (public.can_write('core'));
+
+CREATE POLICY "conflict_q_write" ON public.conflict_questionnaire
+  FOR ALL USING (public.can_write('core'));
+
+
+-- ===== supabase/migrations/005_client_portal.sql =====
+-- Migration 005: Client portal foundation
+-- Adds: auth_id on clients, Client role, Partner Attorney role,
+--       client_portal module, RLS SELECT policies for client self-service.
+-- Apply AFTER migrations 001–004.
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 1. LINK CLIENTS TO AUTH USERS
+-- ──────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.clients
+  ADD COLUMN IF NOT EXISTS auth_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_clients_auth_id ON public.clients (auth_id);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 2. NEW ROLES
+-- ──────────────────────────────────────────────────────────────────────────────
+
+INSERT INTO public.roles (name, description, is_system_role) VALUES
+  ('Client',
+   'Portal access for firm clients — view own matter, upload documents. Cannot see other clients.',
+   true),
+  ('Partner Attorney',
+   'Full attorney access. Cannot manage users or firm settings.',
+   false)
+ON CONFLICT (name) DO NOTHING;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 3. CLIENT PORTAL MODULE
+-- ──────────────────────────────────────────────────────────────────────────────
+
+INSERT INTO public.modules (key, name, description, icon, route, wave, sort_order, enabled_by_default)
+VALUES ('client_portal', 'My Matter', 'Client-facing view of their own matter and documents.',
+        'user', 'client-portal', 0, 5, true)
+ON CONFLICT (key) DO NOTHING;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 4. ROLE → MODULE ACCESS
+-- ──────────────────────────────────────────────────────────────────────────────
+
+DO $$
+DECLARE
+  r_client  uuid;
+  r_partner uuid;
+BEGIN
+  SELECT id INTO r_client  FROM public.roles WHERE name = 'Client';
+  SELECT id INTO r_partner FROM public.roles WHERE name = 'Partner Attorney';
+
+  -- Client: only the client_portal module (uploads happen through functions, not module access)
+  INSERT INTO public.role_module_access (role_id, module_key, access_level)
+  VALUES (r_client, 'client_portal', 'write')
+  ON CONFLICT (role_id, module_key) DO NOTHING;
+
+  -- Partner Attorney: same access as Attorney
+  INSERT INTO public.role_module_access (role_id, module_key, access_level) VALUES
+    (r_partner, 'core',         'write'),
+    (r_partner, 'tasks',        'write'),
+    (r_partner, 'uploads',      'write'),
+    (r_partner, 'messaging',    'write'),
+    (r_partner, 'billing',      'read'),
+    (r_partner, 'ai_brain',     'read'),
+    (r_partner, 'draft_forms',  'write'),
+    (r_partner, 'esign',        'write'),
+    (r_partner, 'dashboard',    'read'),
+    (r_partner, 'word_embed',   'write')
+  ON CONFLICT (role_id, module_key) DO NOTHING;
+END $$;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 5. RLS HELPER: identify the current user's client record
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.my_client_id()
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT id FROM public.clients WHERE auth_id = auth.uid() AND active = true LIMIT 1;
+$$;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 6. ADDITIVE RLS SELECT POLICIES FOR CLIENTS
+-- Postgres ORs multiple permissive policies — these add to existing staff policies,
+-- not replace them. Staff see all rows via existing policies; clients only see their own.
+-- ──────────────────────────────────────────────────────────────────────────────
+
+-- Clients can read their own client record
+CREATE POLICY "clients_select_own"
+  ON public.clients FOR SELECT
+  USING (auth_id = auth.uid());
+
+-- Clients can read their own matters (DV records excluded)
+CREATE POLICY "matters_select_client"
+  ON public.matters FOR SELECT
+  USING (
+    client_id = public.my_client_id()
+    AND NOT is_dv_confidential
+  );
+
+-- Clients can read key dates for their matters
+CREATE POLICY "keydates_select_client"
+  ON public.key_dates FOR SELECT
+  USING (
+    matter_id IN (
+      SELECT id FROM public.matters
+      WHERE client_id = public.my_client_id() AND NOT is_dv_confidential
+    )
+  );
+
+-- Add deleted_at here so the policy below can reference it.
+-- Migration 400 adds it idempotently; doing it here ensures ordering safety.
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+
+-- Clients can read documents for their matters (non-deleted only)
+CREATE POLICY "docs_select_client"
+  ON public.documents FOR SELECT
+  USING (
+    deleted_at IS NULL
+    AND matter_id IN (
+      SELECT id FROM public.matters
+      WHERE client_id = public.my_client_id() AND NOT is_dv_confidential
+    )
+  );
+
+-- Clients can read the modules table (needed for menu rendering)
+-- Note: "modules_read" already covers auth.uid() IS NOT NULL, so this is redundant
+-- but explicit for clarity — no change needed.
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 7. ENABLE RLS ON client_portal tables (modules already has RLS from migration 003)
+-- Nothing new to enable — client_portal is a UI route, not a new table.
+-- ──────────────────────────────────────────────────────────────────────────────
+
+
+-- ===== supabase/migrations/006_client_self_service.sql =====
+-- Migration 006: Client portal self-service intake
+-- Adds profile_completed_at so staff can see whether a client has filled in
+-- their own contact/address details via the "My Profile" tab.
+-- Apply AFTER migration 005.
+
+ALTER TABLE public.clients
+  ADD COLUMN IF NOT EXISTS profile_completed_at timestamptz DEFAULT NULL;
+
+COMMENT ON COLUMN public.clients.profile_completed_at IS
+  'Set by update-client-profile function when client saves their profile via the portal. NULL = not yet submitted.';
+
+
+-- ===== supabase/migrations/007_practice_areas.sql =====
+-- Migration 007: Practice Areas & Case Types
+-- Replaces the hardcoded case_type enum with a table-driven system.
+-- Supports multiple practice areas per firm (family law, immigration, etc.)
+-- Enabled practice areas are controlled via enabled_practice_areas (mirrors enabled_modules pattern).
+
+-- ── Reference tables ─────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.practice_areas (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  key         text UNIQUE NOT NULL,
+  name        text NOT NULL,
+  description text,
+  sort_order  integer NOT NULL DEFAULT 0,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.case_types (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  practice_area_id uuid NOT NULL REFERENCES public.practice_areas(id) ON DELETE CASCADE,
+  key              text NOT NULL,
+  name             text NOT NULL,
+  sort_order       integer NOT NULL DEFAULT 0,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (practice_area_id, key)
+);
+
+-- ── Enabled practice areas (per-firm gate, like enabled_modules) ──────────────
+
+CREATE TABLE IF NOT EXISTS public.enabled_practice_areas (
+  practice_area_key text PRIMARY KEY,
+  enabled_at        timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── Convert case_type columns from ENUM to text ───────────────────────────────
+-- The practice area refactor supersedes the case_type ENUM.
+-- We keep matters.case_type as a text column for backward compat (doc template filtering still uses it).
+-- task_reminder_rules.applies_to_case_types becomes text[] for the same reason.
+
+ALTER TABLE public.matters
+  ALTER COLUMN case_type TYPE text USING case_type::text,
+  ALTER COLUMN case_type DROP NOT NULL;
+
+ALTER TABLE public.task_reminder_rules
+  ALTER COLUMN applies_to_case_types TYPE text[] USING applies_to_case_types::text[];
+
+-- ── Extend matters with FK columns ────────────────────────────────────────────
+
+ALTER TABLE public.matters
+  ADD COLUMN IF NOT EXISTS practice_area_id uuid REFERENCES public.practice_areas(id),
+  ADD COLUMN IF NOT EXISTS case_type_id     uuid REFERENCES public.case_types(id);
+
+-- ── Practice-area extension tables (stubs) ────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.client_family_law (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id  uuid NOT NULL REFERENCES public.matters(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.client_immigration (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  matter_id             uuid NOT NULL REFERENCES public.matters(id) ON DELETE CASCADE,
+  a_number              text,
+  visa_category         text,
+  priority_date         date,
+  receipt_number        text,
+  petitioner_name       text,
+  beneficiary_name      text,
+  nationality           text,
+  country_of_birth      text,
+  last_entry_date       date,
+  authorized_stay_until date,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── Seed: Family Law ──────────────────────────────────────────────────────────
+
+INSERT INTO public.practice_areas (key, name, description, sort_order) VALUES
+  ('family_law',  'Family Law',   'Divorce, custody, child support, adoption, and related matters', 10),
+  ('immigration', 'Immigration',  'Visas, green cards, naturalization, removal defense, and related matters', 20)
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO public.case_types (practice_area_id, key, name, sort_order)
+SELECT pa.id, ct.key, ct.name, ct.sort_order
+FROM public.practice_areas pa
+CROSS JOIN (VALUES
+  ('divorce',                   'Divorce',                          10),
+  ('sapcr_original',            'SAPCR – Original',                 20),
+  ('sapcr_modification',        'SAPCR – Modification',             30),
+  ('enforcement',               'Enforcement',                      40),
+  ('custody',                   'Custody',                          50),
+  ('custody_modification',      'Custody Modification',             60),
+  ('child_support',             'Child Support',                    70),
+  ('child_support_modification','Child Support Modification',       80),
+  ('paternity',                 'Paternity',                        90),
+  ('prenuptial_agreement',      'Prenuptial Agreement',            100),
+  ('postnuptial_agreement',     'Postnuptial Agreement',           110),
+  ('protective_order',          'Protective Order',                120),
+  ('adoption',                  'Adoption',                        130),
+  ('other',                     'Other',                           999)
+) AS ct(key, name, sort_order)
+WHERE pa.key = 'family_law'
+ON CONFLICT (practice_area_id, key) DO NOTHING;
+
+-- ── Seed: Immigration ─────────────────────────────────────────────────────────
+
+INSERT INTO public.case_types (practice_area_id, key, name, sort_order)
+SELECT pa.id, ct.key, ct.name, ct.sort_order
+FROM public.practice_areas pa
+CROSS JOIN (VALUES
+  ('family_based_petition',   'Family-Based Petition',         10),
+  ('adjustment_of_status',    'Adjustment of Status',          20),
+  ('consular_processing',     'Consular Processing',           30),
+  ('naturalization',          'Naturalization / Citizenship',  40),
+  ('daca',                    'DACA / Deferred Action',        50),
+  ('asylum',                  'Asylum',                        60),
+  ('removal_defense',         'Removal Defense',               70),
+  ('nonimmigrant_visa',       'Nonimmigrant Visa',             80),
+  ('u_visa',                  'U Visa / VAWA',                 90),
+  ('t_visa',                  'T Visa (Human Trafficking)',   100),
+  ('employment_authorization','Employment Authorization',      110),
+  ('other',                   'Other',                        999)
+) AS ct(key, name, sort_order)
+WHERE pa.key = 'immigration'
+ON CONFLICT (practice_area_id, key) DO NOTHING;
+
+-- ── RLS ───────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.practice_areas         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.case_types             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.enabled_practice_areas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.client_family_law      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.client_immigration     ENABLE ROW LEVEL SECURITY;
+
+-- Reference tables: readable by all authenticated users, writable by admins only
+CREATE POLICY "practice_areas_select" ON public.practice_areas
+  FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "case_types_select" ON public.case_types
+  FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "enabled_practice_areas_select" ON public.enabled_practice_areas
+  FOR SELECT TO authenticated USING (true);
+
+-- Extension tables: firm staff read/write their own matters
+CREATE POLICY "client_immigration_select" ON public.client_immigration
+  FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "client_immigration_insert" ON public.client_immigration
+  FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "client_immigration_update" ON public.client_immigration
+  FOR UPDATE TO authenticated USING (true);
+
+CREATE POLICY "client_immigration_delete" ON public.client_immigration
+  FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "client_family_law_select" ON public.client_family_law
+  FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "client_family_law_insert" ON public.client_family_law
+  FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "client_family_law_update" ON public.client_family_law
+  FOR UPDATE TO authenticated USING (true);
+
+CREATE POLICY "client_family_law_delete" ON public.client_family_law
+  FOR DELETE TO authenticated USING (true);
+
+
+-- ===== supabase/migrations/400_uploads_init.sql =====
+-- Migration 400: Uploads module — document_checklists table + soft-delete on documents
+-- Module: uploads | Branch: module/uploads | Range: 400-499
+-- Apply AFTER migrations 001, 002, 003, 004.
+
+-- ============================================================================
+-- 1. SOFT-DELETE SUPPORT ON documents
+--    The uploads module owns the document lifecycle. Soft-delete is correct for
+--    a law firm (Texas retention ≥5 years). Hard-delete is Owner-only via the
+--    delete-document function + explicit confirmation.
+-- ============================================================================
+
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+
+CREATE INDEX IF NOT EXISTS idx_documents_deleted
+  ON public.documents (deleted_at) WHERE deleted_at IS NOT NULL;
+
+-- ============================================================================
+-- 2. DOCUMENT CHECKLISTS
+--    Per-case-type list of standard documents to request. When staff applies
+--    the checklist to a matter, one documents row (status='pending') is created
+--    per checklist item. NULL case_type = applies to every case type.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.document_checklists (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_type   public.case_type,
+  doc_name    text NOT NULL,
+  doc_category text CHECK (doc_category IN ('pleading','agreement','correspondence','financial','id','court_order','other')),
+  description text,
+  is_required_by_default boolean NOT NULL DEFAULT true,
+  sort_order  integer NOT NULL DEFAULT 0
+);
+
+ALTER TABLE public.document_checklists ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "checklists_read" ON public.document_checklists
+  FOR SELECT USING (public.can_read('uploads') OR public.can_read('core'));
+
+CREATE POLICY "checklists_manage" ON public.document_checklists
+  FOR ALL USING (public.can_admin('core'));
+
+-- ============================================================================
+-- 3. SEED — family-law standard document checklist (factory defaults)
+--    Owner role can edit in-app via Settings → Doc Templates.
+-- ============================================================================
+
+INSERT INTO public.document_checklists (case_type, doc_name, doc_category, description, is_required_by_default, sort_order) VALUES
+
+  -- ── Universal (all case types) ──────────────────────────────────────────
+  (NULL, 'Photo ID (Driver''s License or Passport)',  'id',        'Government-issued photo ID',                                        true,   10),
+  (NULL, 'Social Security Card',                      'id',        'Or documentation confirming SSN',                                   false,  20),
+  (NULL, 'Financial Affidavit',                       'financial', 'Texas Family Code Form — income, expenses, assets, debts',          true,   30),
+  (NULL, 'Last 3 months pay stubs',                   'financial', 'All employment income sources',                                     true,   40),
+  (NULL, 'Last 2 years W-2 / 1099',                   'financial', 'All sources of income',                                             true,   50),
+  (NULL, 'Last 2 years federal tax returns',           'financial', 'All pages including all schedules',                                 true,   60),
+  (NULL, 'Last 3 months bank statements',             'financial', 'All accounts (checking, savings, money market)',                    true,   70),
+
+  -- ── Divorce ─────────────────────────────────────────────────────────────
+  ('divorce', 'Marriage Certificate',                          'id',          'Original or certified copy',                             true,  100),
+  ('divorce', 'Petition for Divorce',                          'pleading',    'Filed petition (certified if available)',                 true,  110),
+  ('divorce', 'Decree of Divorce (draft/final)',               'agreement',   'Proposed or signed final decree',                        true,  120),
+  ('divorce', 'Real estate deed(s) and mortgage statement(s)', 'financial',   'All real property — deed and current mortgage balance',  false, 130),
+  ('divorce', 'Retirement account statements',                 'financial',   '401(k), IRA, pension — most recent statement',           false, 140),
+  ('divorce', 'Vehicle titles',                                'financial',   'All vehicles marital or community property',             false, 150),
+  ('divorce', 'QDRO (if applicable)',                          'court_order', 'Qualified Domestic Relations Order for retirement split', false, 160),
+  ('divorce', 'Closing letter',                                'correspondence','Closing letter to client on matter conclusion',         true,  170),
+
+  -- ── SAPCR Original ──────────────────────────────────────────────────────
+  ('sapcr_original', 'Original Petition (SAPCR)',              'pleading',    'Filed original suit affecting parent-child relationship', true,  200),
+  ('sapcr_original', 'Birth certificate(s) — child(ren)',      'id',          'All children subject to the suit',                       true,  210),
+  ('sapcr_original', 'SAPCR Final Order',                      'court_order', 'Signed final order for conservatorship and support',     true,  220),
+
+  -- ── SAPCR Modification ──────────────────────────────────────────────────
+  ('sapcr_modification', 'Existing SAPCR Order',               'court_order', 'Certified copy of the order being modified',             true,  300),
+  ('sapcr_modification', 'Petition to Modify',                 'pleading',    'Filed modification petition',                            true,  310),
+  ('sapcr_modification', 'Birth certificate(s) — child(ren)',  'id',          'All children subject to modification',                   true,  320),
+
+  -- ── Custody ─────────────────────────────────────────────────────────────
+  ('custody', 'Birth certificate(s) — child(ren)',             'id',          'All children involved',                                  true,  400),
+  ('custody', 'Existing custody order (if any)',               'court_order', 'Prior orders regarding conservatorship',                 false, 410),
+
+  -- ── Child Support ────────────────────────────────────────────────────────
+  ('child_support', 'Birth certificate(s) — child(ren)',       'id',          'All children subject to support order',                  true,  500),
+  ('child_support', 'Proof of paternity (if applicable)',       'court_order', 'AOP or paternity order',                                 false, 510),
+
+  -- ── Enforcement ─────────────────────────────────────────────────────────
+  ('enforcement', 'Order being enforced',                      'court_order', 'Certified copy of the court order to enforce',           true,  600),
+  ('enforcement', 'Motion for Enforcement',                    'pleading',    'Filed enforcement motion',                               true,  610),
+  ('enforcement', 'Evidence of violation',                     'other',       'Bank records, communications, or other proof',           false, 620),
+
+  -- ── Protective Order ────────────────────────────────────────────────────
+  ('protective_order', 'Application for Protective Order',     'pleading',    'Filed application',                                      true,  700),
+  ('protective_order', 'Police or incident report(s)',         'other',       'If available and relevant',                              false, 710),
+
+  -- ── Prenuptial Agreement ─────────────────────────────────────────────────
+  ('prenuptial_agreement', 'Prenuptial agreement draft',       'agreement',   'Initial draft for review',                               true,  800),
+  ('prenuptial_agreement', 'Asset and liability schedule',     'financial',   'Full disclosure — both parties',                         true,  810);
+
+
+-- ===== supabase/migrations/401_uploads_cron_cleanup.sql =====
+-- Migration 401: Orphaned pending upload cleanup (pg_cron job)
+-- Problem: if a browser closes after the R2 PUT succeeds but before confirm-upload
+-- runs, the document row is stuck as status='pending' forever and appears as a ghost
+-- in the missing-docs panel.
+-- Solution: hourly pg_cron job soft-deletes pending rows older than 2 hours that are
+-- not checklist placeholders (placeholders have r2_key starting with 'pending/').
+--
+-- pg_cron is available on Supabase Pro. This migration checks for the extension
+-- before scheduling so it is safe to apply on the free-tier dev project too.
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+
+    -- Remove old job if it exists (idempotent re-run)
+    PERFORM cron.unschedule('cleanup-orphaned-uploads')
+      FROM cron.job WHERE jobname = 'cleanup-orphaned-uploads';
+
+    PERFORM cron.schedule(
+      'cleanup-orphaned-uploads',
+      '0 * * * *',   -- every hour on the hour
+      $cron$
+        UPDATE public.documents
+        SET    deleted_at = now()
+        WHERE  status     = 'pending'
+          AND  r2_key     NOT LIKE 'pending/%'   -- skip checklist placeholders
+          AND  created_at < now() - interval '2 hours'
+          AND  deleted_at IS NULL;
+      $cron$
+    );
+
+    RAISE NOTICE 'pg_cron job "cleanup-orphaned-uploads" scheduled (hourly).';
+
+  ELSE
+    RAISE NOTICE 'pg_cron extension not found — skipping orphaned upload cleanup job. Enable pg_cron on Supabase Pro to activate this.';
+  END IF;
+END;
+$$;
+
+
+-- ===== supabase/migrations/402_ssn_encryption.sql =====
+-- Migration 402: SSN last-4 columns + sensitive field audit log
+--
+-- ssn_last4 (4 chars, plaintext) lets the UI show ●●●–●●–XXXX without a
+-- server round-trip on every page load.  Full SSN is only accessible via
+-- the reveal-ssn Netlify function, which logs every read.
+--
+-- Apply AFTER migrations 001–004 and 400–401.
+
+-- ── ssn_last4 columns ────────────────────────────────────────────────────────
+
+ALTER TABLE public.clients                      ADD COLUMN IF NOT EXISTS ssn_last4 char(4);
+ALTER TABLE public.opposing_parties             ADD COLUMN IF NOT EXISTS ssn_last4 char(4);
+ALTER TABLE public.children                     ADD COLUMN IF NOT EXISTS ssn_last4 char(4);
+ALTER TABLE public.children_other_relationships ADD COLUMN IF NOT EXISTS ssn_last4 char(4);
+
+COMMENT ON COLUMN public.clients.ssn_last4                      IS 'Last 4 digits of SSN — plaintext, safe for display. Full SSN in ssn_encrypted.';
+COMMENT ON COLUMN public.opposing_parties.ssn_last4             IS 'Last 4 digits of SSN — plaintext, safe for display.';
+COMMENT ON COLUMN public.children.ssn_last4                     IS 'Last 4 digits of SSN — plaintext, safe for display.';
+COMMENT ON COLUMN public.children_other_relationships.ssn_last4 IS 'Last 4 digits of SSN — plaintext, safe for display.';
+
+-- ── Sensitive field audit log ─────────────────────────────────────────────────
+-- Logs every write (save) and read (reveal) of encrypted fields.
+-- Inserted by server-side functions using the service_role key (bypasses RLS).
+-- Readable by any portal user with write-level core access.
+
+CREATE TABLE IF NOT EXISTS public.sensitive_field_audit (
+  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  entity_type  text        NOT NULL,   -- 'clients' | 'opposing_parties' | 'children' | 'children_other_relationships'
+  entity_id    uuid        NOT NULL,
+  field_name   text        NOT NULL DEFAULT 'ssn',
+  action       text        NOT NULL CHECK (action IN ('write', 'read')),
+  performed_by uuid        REFERENCES public.users(id) ON DELETE SET NULL,
+  ip_address   text
+);
+
+CREATE INDEX IF NOT EXISTS idx_ssn_audit_entity ON public.sensitive_field_audit (entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_ssn_audit_user   ON public.sensitive_field_audit (performed_by);
+CREATE INDEX IF NOT EXISTS idx_ssn_audit_time   ON public.sensitive_field_audit (created_at DESC);
+
+ALTER TABLE public.sensitive_field_audit ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "audit_insert" ON public.sensitive_field_audit
+  FOR INSERT WITH CHECK (public.can_write('core'));
+
+CREATE POLICY "audit_select" ON public.sensitive_field_audit
+  FOR SELECT USING (public.can_write('core'));
+
+
+-- ===== supabase/migrations/403_malware_scanning.sql =====
+-- Migration 403: Malware scanning columns on documents
+-- Module: uploads | Range: 400-499
+--
+-- Uploads are scanned in confirm-upload (after the browser PUTs to R2, before
+-- the document ever becomes visible/downloadable). Scanner: attachmentAV
+-- (Sophos engine) — the Worker hands it a short-lived presigned R2 GET URL via
+-- the synchronous /v1/scan/sync/download endpoint; file bytes never flow
+-- through the Worker and attachmentAV deletes them immediately after scanning.
+--
+-- scan_status values:
+--   pending   — not yet scanned (default; also restored on an infected
+--               checklist fulfillment so the placeholder can be re-used)
+--   clean     — scanner verdict: clean
+--   infected  — scanner verdict: infected. File deleted from R2; freeform
+--               uploads are soft-deleted (the row is the quarantine record),
+--               checklist fulfillments revert to placeholder state.
+--   skipped   — scanner unreachable / not configured / file unscannable
+--               (e.g. password-protected). Upload allowed (graceful
+--               degradation); reason recorded in scan_detail.
+--
+-- Apply AFTER migrations 400-402.
+
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS scan_status text NOT NULL DEFAULT 'pending'
+  CHECK (scan_status IN ('pending', 'clean', 'infected', 'skipped'));
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS scan_detail jsonb;
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS scanned_at  timestamptz;
+
+COMMENT ON COLUMN public.documents.scan_status IS 'Malware scan verdict: pending | clean | infected | skipped.';
+COMMENT ON COLUMN public.documents.scan_detail IS 'Scanner verdict detail: provider, finding, real file type, or skip/error reason.';
+COMMENT ON COLUMN public.documents.scanned_at  IS 'When the scan verdict was recorded.';
+
+-- Quarantined uploads: find them even though they are soft-deleted.
+CREATE INDEX IF NOT EXISTS idx_documents_scan_infected
+  ON public.documents (scanned_at)
+  WHERE scan_status = 'infected';
+
+
+-- ===== supabase/migrations/500_esign_init.sql =====
+-- Migration 500: E-sign module — initial schema
+-- Module: esign | Branch: module/esign
+-- Number range for this module: 500–599
+-- Apply AFTER migrations 001–005 (core schema, RBAC, RLS, uploads, client portal).
+
+-- ── TABLES ─────────────────────────────────────────────────────────────────────
+
+-- Signature requests: one row per document sent for signing.
+-- Supports 1-signer (client only) and 2-signer (client → attorney counter-sign).
+CREATE TABLE public.signature_requests (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id           uuid NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  matter_id             uuid NOT NULL REFERENCES public.matters(id)   ON DELETE CASCADE,
+  requested_by          uuid NOT NULL REFERENCES public.users(id),
+  status                text NOT NULL DEFAULT 'pending_client'
+                          CHECK (status IN ('pending_client','pending_attorney','completed','declined','expired')),
+  requires_countersign  boolean NOT NULL DEFAULT true,
+  token                 text NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
+  message               text,
+  expires_at            timestamptz NOT NULL DEFAULT (now() + interval '30 days'),
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now()
+);
+
+-- Individual signature events: one row per signer.
+CREATE TABLE public.signatures (
+  id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  signature_request_id     uuid NOT NULL REFERENCES public.signature_requests(id) ON DELETE CASCADE,
+  signer_user_id           uuid REFERENCES public.users(id),
+  signer_client_id         uuid REFERENCES public.clients(id),
+  signer_role              text NOT NULL CHECK (signer_role IN ('client','attorney')),
+  signed_at                timestamptz NOT NULL DEFAULT now(),
+  ip_address               text,
+  user_agent               text,
+  document_hash_before     text NOT NULL,
+  document_hash_after      text,
+  signature_image          text NOT NULL,
+  audit_log                jsonb NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX ON public.signature_requests (document_id);
+CREATE INDEX ON public.signature_requests (matter_id);
+CREATE INDEX ON public.signature_requests (status);
+CREATE INDEX ON public.signatures (signature_request_id);
+
+CREATE OR REPLACE FUNCTION public.set_esign_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = now(); RETURN NEW; END;
+$$;
+
+CREATE TRIGGER signature_requests_updated_at
+  BEFORE UPDATE ON public.signature_requests
+  FOR EACH ROW EXECUTE FUNCTION public.set_esign_updated_at();
+
+-- ── MODULE REGISTRATION ─────────────────────────────────────────────────────────
+
+INSERT INTO public.modules (key, name, description)
+VALUES ('esign', 'E-Sign', 'Request and capture legally-binding e-signatures with SHA-256 audit trail')
+ON CONFLICT (key) DO NOTHING;
+
+-- ── RLS ────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.signature_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.signatures         ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "esign_requests_staff_select"
+  ON public.signature_requests FOR SELECT
+  USING (public.can_read('esign'));
+
+CREATE POLICY "esign_requests_staff_write"
+  ON public.signature_requests FOR ALL
+  USING (public.can_write('esign'));
+
+-- Clients see their own requests via matter linkage
+CREATE POLICY "esign_requests_client_select"
+  ON public.signature_requests FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.clients c
+        JOIN public.matters m ON m.client_id = c.id
+      WHERE c.auth_id = auth.uid()
+        AND m.id = signature_requests.matter_id
+    )
+  );
+
+CREATE POLICY "esign_signatures_staff_select"
+  ON public.signatures FOR SELECT
+  USING (public.can_read('esign'));
+
+CREATE POLICY "esign_signatures_staff_write"
+  ON public.signatures FOR ALL
+  USING (public.can_write('esign'));
+
+CREATE POLICY "esign_signatures_client_select"
+  ON public.signatures FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.signature_requests sr
+        JOIN public.matters m ON m.id = sr.matter_id
+        JOIN public.clients c ON c.id = m.client_id
+      WHERE sr.id = signatures.signature_request_id
+        AND c.auth_id = auth.uid()
+    )
+  );
+
+
+-- ===== supabase/migrations/501_esign_access.sql =====
+-- Migration 501: esign module — seed role_module_access
+-- Grants write access to Owner, Attorney, Partner Attorney, Staff Admin.
+-- Read access to Paralegal (can view requests, not create them).
+
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT r.id, 'esign', 'admin' FROM public.roles r WHERE r.name = 'Owner'
+ON CONFLICT (role_id, module_key) DO UPDATE SET access_level = 'admin';
+
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT r.id, 'esign', 'write' FROM public.roles r WHERE r.name IN ('Attorney', 'Partner Attorney', 'Staff Admin')
+ON CONFLICT (role_id, module_key) DO UPDATE SET access_level = 'write';
+
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT r.id, 'esign', 'read' FROM public.roles r WHERE r.name = 'Paralegal'
+ON CONFLICT (role_id, module_key) DO UPDATE SET access_level = 'read';
+
+
+-- ===== supabase/migrations/502_esign_paralegal_write.sql =====
+-- Migration 502: upgrade Paralegal esign access from read → write
+-- Texas law allows all firm staff (including paralegals) to send e-sign requests.
+-- Counter-signing remains attorney-only (enforced in sign-document.js, not here).
+
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT r.id, 'esign', 'write' FROM public.roles r WHERE r.name = 'Paralegal'
+ON CONFLICT (role_id, module_key) DO UPDATE SET access_level = 'write';
+
+
+-- ===== supabase/migrations/600_conflict_checker.sql =====
+-- Migration 600: Conflict checker module
+-- Adds conflict_checks audit table and registers the module for staff access.
+-- "Conflict check" = checking whether the firm has prior/current relationships
+--  with a prospective new client or their opposing party (conflict of interest).
+-- Apply AFTER migrations 001–003.
+
+-- ============================================================================
+-- 1. AUDIT TABLE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.conflict_checks (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  checked_at   timestamptz NOT NULL DEFAULT now(),
+  checked_by   uuid REFERENCES public.users(id) ON DELETE SET NULL,
+
+  -- Names searched
+  prospective_client_name  text NOT NULL,
+  opposing_party_name      text,
+  additional_names         text[],
+
+  -- Snapshot of search results (for audit trail)
+  matches_found            jsonb NOT NULL DEFAULT '[]',
+
+  -- Staff decision
+  outcome   text CHECK (outcome IN ('clear', 'conflict', 'review_needed')),
+  notes     text,
+
+  -- Optional link once client is accepted
+  client_id uuid REFERENCES public.clients(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_conflict_checks_by   ON public.conflict_checks (checked_by);
+CREATE INDEX idx_conflict_checks_at   ON public.conflict_checks (checked_at DESC);
+CREATE INDEX idx_conflict_checks_name ON public.conflict_checks
+  USING gin (to_tsvector('simple', prospective_client_name));
+
+ALTER TABLE public.conflict_checks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "conflict_checks_select" ON public.conflict_checks
+  FOR SELECT USING (public.can_read('core'));
+
+CREATE POLICY "conflict_checks_write" ON public.conflict_checks
+  FOR ALL USING (public.can_write('core'));
+
+-- ============================================================================
+-- 2. MODULE REGISTRATION
+-- ============================================================================
+
+INSERT INTO public.modules (key, name, description, icon, route, wave, sort_order, enabled_by_default)
+VALUES (
+  'conflict_checker',
+  'Conflict Check',
+  'Search for conflicts of interest before accepting a new client.',
+  'shield',
+  'conflict-checker',
+  1,
+  25,
+  true
+)
+ON CONFLICT (key) DO NOTHING;
+
+-- ============================================================================
+-- 3. ROLE ACCESS — all staff roles except Client
+-- ============================================================================
+
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT id, 'conflict_checker', 'write'
+FROM public.roles
+WHERE name != 'Client'
+ON CONFLICT (role_id, module_key) DO NOTHING;
+
+
+-- ===== supabase/migrations/700_attorney_color.sql =====
+-- Migration 700: Attorney color coding
+-- Adds a hex color to staff user records for visual identification in the portal.
+-- Displayed as a colored dot next to attorney names in the client list.
+-- Apply in any order after migration 002.
+
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS color text DEFAULT NULL;
+
+COMMENT ON COLUMN public.users.color IS
+  'Hex color string (e.g. #3B82F6) for visual identification in client list. Owner/admin sets in Settings > Users.';
+
+
+-- ===== supabase/migrations/800_messaging.sql =====
+-- Migration 800: Messaging module (v1 — portal channel + email notifications)
+-- Two tables: conversations (one per client) + messages (channel-aware).
+-- Twilio channels (sms, whatsapp, email) are schema-ready but not wired yet.
+-- Apply AFTER migrations 001–006 and 500–502.
+
+-- ── CONVERSATIONS ─────────────────────────────────────────────────────────────
+
+CREATE TABLE public.conversations (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id       UUID        NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_message_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(client_id)  -- one conversation thread per client
+);
+
+CREATE INDEX idx_conversations_client_id   ON public.conversations(client_id);
+CREATE INDEX idx_conversations_last_msg    ON public.conversations(last_message_at DESC);
+
+-- ── MESSAGES ──────────────────────────────────────────────────────────────────
+
+CREATE TABLE public.messages (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID        NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  direction       TEXT        NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+  channel         TEXT        NOT NULL DEFAULT 'portal'
+                              CHECK (channel IN ('portal', 'sms', 'whatsapp', 'email')),
+  body            TEXT        NOT NULL CHECK (char_length(trim(body)) > 0),
+  sender_id       UUID        REFERENCES public.users(id) ON DELETE SET NULL,
+  read_at         TIMESTAMPTZ,        -- when staff marked inbound message read
+  client_read_at  TIMESTAMPTZ,        -- when client viewed outbound message
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_messages_conversation     ON public.messages(conversation_id, created_at);
+CREATE INDEX idx_messages_unread_inbound   ON public.messages(conversation_id, read_at)
+  WHERE direction = 'inbound' AND read_at IS NULL;
+
+-- ── RLS ───────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages      ENABLE ROW LEVEL SECURITY;
+
+-- Staff: full access via module permissions
+CREATE POLICY "convos_staff_select" ON public.conversations
+  FOR SELECT USING (public.can_read('messaging'));
+
+CREATE POLICY "convos_staff_insert" ON public.conversations
+  FOR INSERT WITH CHECK (public.can_write('messaging'));
+
+CREATE POLICY "convos_staff_update" ON public.conversations
+  FOR UPDATE USING (public.can_write('messaging'));
+
+-- Clients: only their own conversation (additive — ORed with staff policy)
+CREATE POLICY "convos_client_select" ON public.conversations
+  FOR SELECT USING (client_id = public.my_client_id());
+
+-- Messages — staff
+CREATE POLICY "msgs_staff_select" ON public.messages
+  FOR SELECT USING (public.can_read('messaging'));
+
+CREATE POLICY "msgs_staff_insert" ON public.messages
+  FOR INSERT WITH CHECK (public.can_write('messaging'));
+
+CREATE POLICY "msgs_staff_update" ON public.messages
+  FOR UPDATE USING (public.can_write('messaging'));
+
+-- Messages — client sees only their own conversation's messages
+CREATE POLICY "msgs_client_select" ON public.messages
+  FOR SELECT USING (
+    conversation_id IN (
+      SELECT id FROM public.conversations WHERE client_id = public.my_client_id()
+    )
+  );
+
+-- Client can insert inbound portal messages only
+CREATE POLICY "msgs_client_insert" ON public.messages
+  FOR INSERT WITH CHECK (
+    direction = 'inbound'
+    AND channel = 'portal'
+    AND conversation_id IN (
+      SELECT id FROM public.conversations WHERE client_id = public.my_client_id()
+    )
+  );
+
+-- ── MODULE REGISTRATION ───────────────────────────────────────────────────────
+
+INSERT INTO public.modules (key, name, description, icon, route, wave, sort_order, enabled_by_default)
+VALUES (
+  'messaging',
+  'Messages',
+  'Two-way messaging with clients via the portal and email notifications.',
+  'message-circle',
+  'messaging',
+  1,
+  4,
+  true
+)
+ON CONFLICT (key) DO NOTHING;
+
+-- ── ROLE ACCESS ───────────────────────────────────────────────────────────────
+-- Uses SELECT approach so missing roles are silently skipped (safe on any instance).
+
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT r.id,
+       'messaging',
+       CASE r.name
+         WHEN 'Owner'            THEN 'admin'::public.access_level
+         WHEN 'Attorney'         THEN 'write'::public.access_level
+         WHEN 'Partner Attorney' THEN 'write'::public.access_level
+         WHEN 'Paralegal'        THEN 'write'::public.access_level
+         WHEN 'Legal Assistant'  THEN 'read'::public.access_level
+         WHEN 'Client'           THEN 'write'::public.access_level
+       END
+FROM public.roles r
+WHERE r.name IN ('Owner','Attorney','Partner Attorney','Paralegal','Legal Assistant','Client')
+ON CONFLICT (role_id, module_key) DO NOTHING;
+
+
+-- ===== supabase/migrations/901_doc_discovery.sql =====
+-- Migration 901: Document Discovery — offline receipt tracking + reminder infrastructure
+-- Extends the documents + matters tables. document_checklists already seeded in 400.
+-- Apply AFTER migrations 001–800.
+
+-- ── Add columns to documents ──────────────────────────────────────────────────
+
+ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS received_note    TEXT,
+  ADD COLUMN IF NOT EXISTS received_by      UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMPTZ;
+
+-- ── Add reminder cadence to matters ──────────────────────────────────────────
+
+ALTER TABLE public.matters
+  ADD COLUMN IF NOT EXISTS reminder_interval_days INT NOT NULL DEFAULT 7;
+
+-- ── Module registration ───────────────────────────────────────────────────────
+
+INSERT INTO public.modules (key, name, description, icon, route, wave, sort_order, enabled_by_default)
+VALUES (
+  'doc_templates',
+  'Doc Templates',
+  'Configure required document checklists per case type.',
+  'file-text',
+  'settings/doc-templates',
+  1,
+  85,
+  true
+)
+ON CONFLICT (key) DO NOTHING;
+
+-- Owner + Attorney manage templates; Paralegal/Legal Assistant read-only
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT r.id, 'doc_templates',
+  CASE r.name
+    WHEN 'Owner'            THEN 'admin'::public.access_level
+    WHEN 'Attorney'         THEN 'write'::public.access_level
+    WHEN 'Partner Attorney' THEN 'write'::public.access_level
+    WHEN 'Paralegal'        THEN 'read'::public.access_level
+    WHEN 'Legal Assistant'  THEN 'read'::public.access_level
+  END
+FROM public.roles r
+WHERE r.name IN ('Owner','Attorney','Partner Attorney','Paralegal','Legal Assistant')
+ON CONFLICT (role_id, module_key) DO NOTHING;
+
+
+-- ===== supabase/migrations/902_doc_template_case_types.sql =====
+-- Migration 902: Document template multi-case-type support
+-- Adds case_types text[] to document_checklists.
+-- NULL = universal (all case types). Array = applies to listed types only.
+-- Backfills existing rows from the single case_type column.
+-- The old case_type column is left in place for safety but is no longer written by the app.
+
+ALTER TABLE public.document_checklists
+  ADD COLUMN IF NOT EXISTS case_types text[];
+
+-- Backfill: specific-type rows get a single-element array
+UPDATE public.document_checklists
+  SET case_types = ARRAY[case_type::text]
+  WHERE case_type IS NOT NULL;
+
+-- Universal rows (case_type IS NULL) remain with case_types = NULL → still universal.
+
+
+-- ===== supabase/migrations/950_dashboard.sql =====
+-- Migration 950: Dashboard module — activate + extend access to later-added roles
+-- The dashboard module row was seeded in migration 002 as 'Analytics' (disabled).
+-- This migration renames it, moves it first in nav, enables it by default, and
+-- grants access to Partner Attorney + Legal Assistant (added after the 002 seed).
+-- Apply AFTER migrations 001–901.
+
+-- Activate the module and rename it
+UPDATE public.modules
+SET
+  name               = 'Dashboard',
+  description        = 'Morning triage view — overdue tasks, missing docs, unread messages, pending signatures.',
+  sort_order         = 1,
+  enabled_by_default = true
+WHERE key = 'dashboard';
+
+-- Extend access to roles added after the migration 002 seed
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT r.id, 'dashboard',
+  CASE r.name
+    WHEN 'Partner Attorney' THEN 'read'::public.access_level
+    WHEN 'Legal Assistant'  THEN 'read'::public.access_level
+    ELSE                         'none'::public.access_level
+  END
+FROM public.roles r
+WHERE r.name IN ('Partner Attorney', 'Legal Assistant')
+ON CONFLICT (role_id, module_key) DO UPDATE SET access_level = EXCLUDED.access_level;
+
+
+-- ===== supabase/migrations/1000_calendar_oauth.sql =====
+-- Migration 1000: Calendar module — Google (and future Microsoft) OAuth integration
+-- Stores per-user OAuth tokens and short-lived CSRF state for the OAuth redirect flow.
+-- Apply AFTER migrations 001–003.
+
+-- ============================================================================
+-- 1. OAUTH TOKEN STORAGE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.oauth_tokens (
+  id            uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       uuid         NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  provider      text         NOT NULL CHECK (provider IN ('google', 'microsoft')),
+  access_token  text,
+  refresh_token text         NOT NULL,
+  token_expiry  timestamptz,
+  account_email text,
+  created_at    timestamptz  DEFAULT now(),
+  updated_at    timestamptz  DEFAULT now(),
+  UNIQUE(user_id, provider)
+);
+
+CREATE INDEX idx_oauth_tokens_user ON public.oauth_tokens (user_id);
+
+ALTER TABLE public.oauth_tokens ENABLE ROW LEVEL SECURITY;
+-- Service key only — no client-facing RLS needed
+
+-- ============================================================================
+-- 2. OAUTH STATE (CSRF protection for redirect flow)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.oauth_state (
+  state      text         PRIMARY KEY,
+  user_id    uuid         NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  provider   text         NOT NULL DEFAULT 'google',
+  expires_at timestamptz  NOT NULL DEFAULT (now() + interval '10 minutes')
+);
+
+ALTER TABLE public.oauth_state ENABLE ROW LEVEL SECURITY;
+-- Service key only
+
+-- ============================================================================
+-- 3. MODULE REGISTRATION
+-- ============================================================================
+
+INSERT INTO public.modules (key, name, description, icon, route, wave, sort_order, enabled_by_default)
+VALUES (
+  'calendar',
+  'Calendar',
+  'Google Calendar integration — view and create events from the portal.',
+  'calendar',
+  'calendar',
+  1,
+  45,
+  false
+)
+ON CONFLICT (key) DO NOTHING;
+
+-- ============================================================================
+-- 4. ROLE ACCESS — all staff (not Client); premium module, disabled by default
+-- ============================================================================
+
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT id, 'calendar', 'write'
+FROM public.roles
+WHERE name != 'Client'
+ON CONFLICT (role_id, module_key) DO NOTHING;
+
+
+-- ===== supabase/migrations/1001_calendar_key_dates.sql =====
+-- Migration 1001: Link key_dates to Google Calendar events
+-- Adds google_event_id so staff can track which key dates have been pushed to Google Calendar.
+
+ALTER TABLE public.key_dates
+  ADD COLUMN IF NOT EXISTS google_event_id TEXT;
+
+
+-- ===== supabase/migrations/1002_calendar_outlook_provider.sql =====
+-- Migration 1002: Fix oauth_tokens provider check constraint.
+-- The original migration used 'microsoft' but all code uses 'outlook'. Align the constraint.
+
+ALTER TABLE public.oauth_tokens
+  DROP CONSTRAINT IF EXISTS oauth_tokens_provider_check;
+
+ALTER TABLE public.oauth_tokens
+  ADD CONSTRAINT oauth_tokens_provider_check
+  CHECK (provider IN ('google', 'outlook'));
+
+
+-- ===== supabase/migrations/1003_messaging_debounced_notifications.sql =====
+-- Migration 1003: add client_notified_at to conversations
+-- Enables debounced email notifications — cron checks this to avoid re-notifying
+-- for messages that were already batched into a prior email.
+
+ALTER TABLE public.conversations
+  ADD COLUMN IF NOT EXISTS client_notified_at TIMESTAMPTZ;
+
+
+-- ===== supabase/migrations/1050_enabled_modules.sql =====
+-- Migration 1050: IurisIQ tier model
+-- Adds modules.tier column (core | premium) and enabled_modules table.
+-- Premium modules are off by default; a row in enabled_modules activates them per firm.
+-- Applied: dev ☐  prod ☐
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 1. ADD tier COLUMN TO modules
+-- ──────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.modules
+  ADD COLUMN IF NOT EXISTS tier text NOT NULL DEFAULT 'core'
+  CHECK (tier IN ('core', 'premium'));
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 2. SET TIER FOR ALL EXISTING MODULES
+--    core: core, tasks, uploads, client_portal, doc_templates, dashboard
+--    premium: everything else (messaging, esign, conflict_checker, calendar,
+--             billing, ai_brain, draft_forms, word_embed)
+-- ──────────────────────────────────────────────────────────────────────────────
+
+UPDATE public.modules
+SET tier = 'premium'
+WHERE key IN (
+  'messaging',
+  'esign',
+  'conflict_checker',
+  'calendar',
+  'billing',
+  'ai_brain',
+  'draft_forms',
+  'word_embed'
+);
+
+-- core/tasks/uploads/client_portal/doc_templates/dashboard keep DEFAULT 'core'
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 3. CREATE enabled_modules TABLE
+--    One row per active premium module for this firm.
+--    For multi-tenant future: add firm_id column here before template extraction.
+-- ──────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.enabled_modules (
+  module_key   text        PRIMARY KEY REFERENCES public.modules(key) ON DELETE CASCADE,
+  enabled_at   timestamptz NOT NULL DEFAULT now(),
+  enabled_by   uuid        REFERENCES public.users(id) ON DELETE SET NULL
+);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 4. ROW-LEVEL SECURITY
+-- ──────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.enabled_modules ENABLE ROW LEVEL SECURITY;
+
+-- All authenticated users can read (menu.js needs this to build the nav)
+CREATE POLICY "authenticated can read enabled_modules"
+  ON public.enabled_modules FOR SELECT
+  USING (auth.uid() IS NOT NULL);
+
+-- Only Owners can add / remove enabled modules
+CREATE POLICY "owners can manage enabled_modules"
+  ON public.enabled_modules FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.users u
+      JOIN public.roles r ON u.role_id = r.id
+      WHERE u.auth_id = auth.uid() AND r.name = 'Owner'
+    )
+  );
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- 5. SEED — enable built premium modules for this deployment
+--    Edit this list to match what the client has purchased.
+--    comingSoon modules (billing, ai_brain, draft_forms, word_embed) excluded until built.
+-- ──────────────────────────────────────────────────────────────────────────────
+
+INSERT INTO public.enabled_modules (module_key) VALUES
+  ('messaging'),
+  ('esign'),
+  ('conflict_checker'),
+  ('calendar')
+ON CONFLICT (module_key) DO NOTHING;
+
+
+-- ===== supabase/migrations/1103_email_log.sql =====
+-- 1103_email_log.sql
+-- Tracks every outbound email sent via Resend for monitoring purposes.
+-- Logged server-side via service key; staff can read via portal monitoring page.
+
+CREATE TABLE IF NOT EXISTS public.email_log (
+  id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  type       TEXT        NOT NULL,
+  to_email   TEXT        NOT NULL,
+  subject    TEXT,
+  status     TEXT        NOT NULL DEFAULT 'sent' CHECK (status IN ('sent', 'failed')),
+  error      TEXT
+);
+
+ALTER TABLE public.email_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "staff read email_log" ON public.email_log
+  FOR SELECT USING (can_read('core'));
+
+
+-- ===== supabase/migrations/1104_ical_token.sql =====
+-- Migration 1104: iCal feed token per user
+-- Each user gets a secret UUID token; the feed URL is /api/calendar/ical-feed?token=<uuid>
+-- The token is stable (survives server restarts) and can be regenerated to invalidate old URLs.
+-- Apply AFTER migration 1103.
+
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS ical_token UUID DEFAULT gen_random_uuid();
+
+-- Populate existing users who got NULL (shouldn't happen with DEFAULT, but just in case)
+UPDATE public.users SET ical_token = gen_random_uuid() WHERE ical_token IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ical_token ON public.users (ical_token);
+
+
+-- ===== supabase/migrations/1105_practice_areas_backfill.sql =====
+-- Migration 1105: Backfill practice_area_id and case_type_id on existing matters
+-- Maps old case_type text values to the new FK columns added in 007_practice_areas.sql.
+-- Safe to run multiple times (WHERE clause skips already-migrated rows).
+-- Also enables both practice areas in the sandbox.
+
+-- Enable practice areas for this deployment
+INSERT INTO public.enabled_practice_areas (practice_area_key)
+  VALUES ('family_law'), ('immigration')
+ON CONFLICT DO NOTHING;
+
+-- Backfill matters that have an old case_type text value
+UPDATE public.matters m
+SET
+  case_type_id     = ct.id,
+  practice_area_id = ct.practice_area_id
+FROM public.case_types ct
+WHERE m.case_type = ct.key
+  AND (m.case_type_id IS NULL OR m.practice_area_id IS NULL);
+
+

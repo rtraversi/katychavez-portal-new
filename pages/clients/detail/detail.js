@@ -17,22 +17,10 @@
   let users             = [];
   let _calPendingDateId = null;  // tracks which key_date is being added to calendar
 
-  const CASE_TYPES = [
-    ['divorce',                  'Divorce'],
-    ['sapcr_original',           'SAPCR – Original'],
-    ['sapcr_modification',       'SAPCR – Modification'],
-    ['enforcement',              'Enforcement'],
-    ['custody',                  'Custody'],
-    ['custody_modification',     'Custody Modification'],
-    ['child_support',            'Child Support'],
-    ['child_support_modification','Child Support Modification'],
-    ['paternity',                'Paternity'],
-    ['prenuptial_agreement',     'Prenuptial Agreement'],
-    ['postnuptial_agreement',    'Postnuptial Agreement'],
-    ['protective_order',         'Protective Order'],
-    ['adoption',                 'Adoption'],
-    ['other',                    'Other'],
-  ];
+  let practiceAreas    = [];
+  let caseTypesData    = [];
+  let practiceAreaMap  = new Map();  // id → practice_area row
+  let caseTypeMap      = new Map();  // id → case_type row
 
   const DATE_TYPES = [
     ['marriage',     'Marriage'],
@@ -62,9 +50,30 @@
     return `<div class="detail-field"><label>${Utils.esc(label)}</label>${val(v, fmt)}</div>`;
   }
 
-  function caseTypeLabel(ct) {
-    const found = CASE_TYPES.find(([k]) => k === ct);
-    return found ? found[1] : Utils.titleCase(ct);
+  function caseTypeLabel(id) {
+    if (!id) return null;
+    const ct = caseTypeMap.get(id);
+    if (ct) return ct.name;
+    // Fallback for old text enum values stored in matter.case_type
+    const LEGACY = {
+      divorce: 'Divorce', sapcr_original: 'SAPCR – Original', sapcr_modification: 'SAPCR – Modification',
+      enforcement: 'Enforcement', custody: 'Custody', custody_modification: 'Custody Modification',
+      child_support: 'Child Support', child_support_modification: 'Child Support Modification',
+      paternity: 'Paternity', prenuptial_agreement: 'Prenuptial Agreement',
+      postnuptial_agreement: 'Postnuptial Agreement', protective_order: 'Protective Order',
+      adoption: 'Adoption', other: 'Other',
+    };
+    return LEGACY[id] || Utils.titleCase(id);
+  }
+
+  function practiceAreaLabel(id) {
+    if (!id) return null;
+    return practiceAreaMap.get(id)?.name || null;
+  }
+
+  function matterCaseTypeKey() {
+    if (matter?.case_type_id) return caseTypeMap.get(matter.case_type_id)?.key || matter?.case_type;
+    return matter?.case_type || null;
   }
 
   function userName(id) {
@@ -129,13 +138,21 @@
     const [
       { data: c },
       { data: u },
+      { data: pa },
+      { data: ct },
     ] = await Promise.all([
       db.from('clients').select('*').eq('id', clientId).single(),
       db.from('users').select('id, first_name, last_name, roles(name)').eq('active', true).order('first_name'),
+      db.from('practice_areas').select('*').order('sort_order'),
+      db.from('case_types').select('*').order('sort_order'),
     ]);
 
-    client = c;
-    users  = u || [];
+    client        = c;
+    users         = u || [];
+    practiceAreas = pa || [];
+    caseTypesData = ct || [];
+    practiceAreaMap = new Map(practiceAreas.map(p => [p.id, p]));
+    caseTypeMap     = new Map(caseTypesData.map(t => [t.id, t]));
 
     if (!client) { Utils.toast('Client not found.', 'error'); return; }
 
@@ -181,18 +198,42 @@
 
     const metaParts = [];
     if (matter) {
-      metaParts.push(`<span class="badge badge--${matter.status}">${Utils.titleCase(matter.status)}</span>`);
-      metaParts.push(`<span>${caseTypeLabel(matter.case_type)}</span>`);
+      const statusOpts = [['intake','Intake'],['active','Active'],['on_hold','On Hold'],['closed','Closed']];
+      metaParts.push(`<select id="status-quick-select" class="status-quick-select status-quick-select--${matter.status}">${statusOpts.map(([v,l]) => `<option value="${v}"${matter.status===v?' selected':''}>${l}</option>`).join('')}</select>`);
+      metaParts.push(`<span>${caseTypeLabel(matter.case_type_id) || caseTypeLabel(matter.case_type) || ''}</span>`);
       if (matter.case_number) metaParts.push(`<span>Case #${Utils.esc(matter.case_number)}</span>`);
       const atty = userName(matter.assigned_attorney_id);
       if (atty) metaParts.push(`<span>${Utils.esc(atty)}</span>`);
     }
     document.getElementById('detail-meta').innerHTML = metaParts.join('<span style="color:var(--color-border-mid)">·</span>');
 
+    const statusSel = document.getElementById('status-quick-select');
+    if (statusSel) {
+      statusSel.addEventListener('change', async () => {
+        const newStatus = statusSel.value;
+        statusSel.className = `status-quick-select status-quick-select--${newStatus}`;
+        const { error } = await db.from('matters').update({ status: newStatus }).eq('id', matter.id);
+        if (error) {
+          Utils.toast('Failed to update status', 'error');
+          statusSel.value = matter.status;
+          statusSel.className = `status-quick-select status-quick-select--${matter.status}`;
+        } else {
+          matter.status = newStatus;
+          Utils.toast('Status updated', 'success');
+        }
+      });
+    }
+
     document.getElementById('btn-open-docs').addEventListener('click', () => {
       if (matter) window._uploadsMatterId = matter.id;
       window.location.hash = '#uploads';
     });
+
+    if (matter) {
+      const draftBtn = document.getElementById('btn-draft-doc');
+      draftBtn.classList.remove('hidden');
+      draftBtn.addEventListener('click', openDraftModal);
+    }
 
     const inviteBtn = document.getElementById('btn-invite-portal');
     if (client.email && !client.auth_id) {
@@ -309,7 +350,8 @@
     }
     const m = matter;
     setGrid('grid-case', [
-      field('Case type',       caseTypeLabel(m.case_type)),
+      field('Practice area',   practiceAreaLabel(m.practice_area_id)),
+      field('Case type',       caseTypeLabel(m.case_type_id) || caseTypeLabel(m.case_type)),
       field('Status',          Utils.titleCase(m.status)),
       field('Case number',     m.case_number),
       field('Court / County',  m.court_county),
@@ -361,7 +403,8 @@
     const m = matter;
     const rows = [];
 
-    if (['sapcr_modification','custody_modification','child_support_modification'].includes(m.case_type)) {
+    const ctKey = matterCaseTypeKey();
+    if (['sapcr_modification','custody_modification','child_support_modification'].includes(ctKey)) {
       rows.push(field('Child support (monthly)', m.child_support_monthly, 'money'));
       rows.push(field('CS current?', m.child_support_current, 'bool'));
       rows.push(field('CS via state office', m.child_support_via_office, 'bool'));
@@ -374,13 +417,13 @@
       rows.push(field('Prior county', m.children_county_previous));
       rows.push(field('Primary custody rationale', m.primary_custody_rationale));
     }
-    if (m.case_type === 'enforcement') {
+    if (ctKey === 'enforcement') {
       rows.push(field('Order title', m.enforcement_order_title));
       rows.push(field('Order date',  m.enforcement_order_date, 'date'));
       rows.push(field('Court number', m.enforcement_court_number));
       rows.push(field('Violations', (m.enforcement_violations || []).map(Utils.titleCase).join(', ') || null));
     }
-    if (m.case_type === 'prenuptial_agreement' || m.case_type === 'postnuptial_agreement') {
+    if (ctKey === 'prenuptial_agreement' || ctKey === 'postnuptial_agreement') {
       rows.push(field('Expected marriage date', m.expected_marriage_date, 'date'));
       rows.push(field('Expected marriage place', m.expected_marriage_place));
       rows.push(field('Client has will', m.client_has_will, 'bool'));
@@ -1178,9 +1221,13 @@
       buildCaseFields,
       async (fd) => {
         if (!matter) return;
+        const paId  = fd.get('practice_area_id') || null;
+        const ctId  = fd.get('case_type_id')     || null;
         const payload = {
-          case_type:            fd.get('case_type') || null,
-          status:               fd.get('status') || 'intake',
+          practice_area_id: paId,
+          case_type_id:     ctId,
+          case_type:        ctId ? (caseTypeMap.get(ctId)?.key || null) : null,
+          status:           fd.get('status') || 'intake',
           case_number:          fd.get('case_number')?.trim() || null,
           court_county:         fd.get('court_county')?.trim() || null,
           judge_name:           fd.get('judge_name')?.trim() || null,
@@ -1369,24 +1416,41 @@
   }
 
   function buildCaseFields() {
-    const m = matter;
-    const caseOpts = CASE_TYPES;
-    const statusOpts = [['intake','Intake'],['active','Active'],['on_hold','On Hold'],['closed','Closed']];
+    const m        = matter;
+    const statusOpts  = [['intake','Intake'],['active','Active'],['on_hold','On Hold'],['closed','Closed']];
     const billingOpts = [['hourly','Hourly'],['flat_fee','Flat Fee'],['contingency','Contingency'],['hybrid','Hybrid']];
-    const ATTY_ROLES = new Set(['Owner', 'Attorney', 'Partner Attorney']);
-    const attyOpts = users.filter(u => ATTY_ROLES.has(u.roles?.name)).map(u => [u.id, Utils.fullName(u)]);
-    document.getElementById('fields-case').innerHTML = `
-      ${row2(sel('case_type','Case type',caseOpts,m?.case_type), sel('status','Status',statusOpts,m?.status))}
-      ${row2(inp('case_number','Case number',m?.case_number), inp('court_county','Court / County',m?.court_county))}
-      ${row2(inp('judge_name','Judge',m?.judge_name), inp('date_filed','Date filed',m?.date_filed,'date'))}
-      ${row2(sel('assigned_attorney_id','Assigned attorney',attyOpts,m?.assigned_attorney_id), sel('billing_type','Billing type',billingOpts,m?.billing_type))}
-      ${inp('retainer_balance','Retainer balance ($)',m?.retainer_balance,'number','min="0" step="0.01"')}
+    const ATTY_ROLES  = new Set(['Owner', 'Attorney', 'Partner Attorney']);
+    const attyOpts    = users.filter(u => ATTY_ROLES.has(u.roles?.name)).map(u => [u.id, Utils.fullName(u)]);
+
+    const paOpts   = practiceAreas.map(p => [p.id, p.name]);
+    const selPaId  = m?.practice_area_id || '';
+    const ctOpts   = caseTypesData
+      .filter(ct => ct.practice_area_id === selPaId)
+      .map(ct => [ct.id, ct.name]);
+
+    const fieldsEl = document.getElementById('fields-case');
+    fieldsEl.innerHTML = `
+      ${row2(sel('practice_area_id','Practice area',paOpts,selPaId), sel('case_type_id','Case type',ctOpts,m?.case_type_id))}
+      ${row2(inp('case_number','Case number',m?.case_number), sel('status','Status',statusOpts,m?.status))}
+      ${row2(inp('court_county','Court / County',m?.court_county), inp('judge_name','Judge',m?.judge_name))}
+      ${row2(inp('date_filed','Date filed',m?.date_filed,'date'), sel('assigned_attorney_id','Assigned attorney',attyOpts,m?.assigned_attorney_id))}
+      ${row2(sel('billing_type','Billing type',billingOpts,m?.billing_type), inp('retainer_balance','Retainer balance ($)',m?.retainer_balance,'number','min="0" step="0.01"'))}
       <p class="section-divider">Suit status</p>
       ${ck('suit_filed','Suit filed',m?.suit_filed)}
       ${sel('been_served','Been served',[['true','Yes'],['false','No']],m?.been_served == null ? '' : String(m.been_served))}
       ${row2(inp('prior_attorney_consulted','Prior attorney consulted',m?.prior_attorney_consulted), inp('prior_attorney_retained','Prior attorney retained',m?.prior_attorney_retained))}
       ${ta('notes','Notes',m?.notes)}
     `;
+
+    // Dynamically filter case types when practice area changes
+    fieldsEl.querySelector('[name=practice_area_id]')?.addEventListener('change', e => {
+      const paId  = e.target.value;
+      const ctSel = fieldsEl.querySelector('[name=case_type_id]');
+      const opts  = caseTypesData
+        .filter(ct => ct.practice_area_id === paId)
+        .map(ct => `<option value="${Utils.esc(ct.id)}">${Utils.esc(ct.name)}</option>`);
+      ctSel.innerHTML = `<option value="">— Select —</option>${opts.join('')}`;
+    });
   }
 
   function buildMarriageFields() {
@@ -1893,6 +1957,196 @@
         errEl.textContent = err.message || 'Save failed.';
         errEl.classList.remove('hidden');
         Utils.setLoading(saveBtn, false);
+      }
+    });
+  }
+
+  // ── Draft document modal ─────────────────────────────────────────────────────
+
+  let _draftTemplates = null;
+
+  async function openDraftModal() {
+    if (!matter) return;
+    const modalEl = document.getElementById('draft-modal');
+
+    if (!_draftTemplates) {
+      const { data, error } = await db
+        .from('draft_templates')
+        .select('id, name, description, doc_category, case_types, wizard_schema')
+        .eq('active', true)
+        .order('sort_order');
+      if (error || !data) { Utils.toast('Failed to load templates.', 'error'); return; }
+      _draftTemplates = matter.case_type
+        ? data.filter(t => !t.case_types || t.case_types.length === 0 || t.case_types.includes(matter.case_type))
+        : data;
+    }
+
+    if (_draftTemplates.length === 0) {
+      Utils.toast('No document templates available for this case type.', 'info');
+      return;
+    }
+    if (_draftTemplates.length === 1) {
+      openDraftWizard(modalEl, _draftTemplates[0]);
+    } else {
+      openDraftPicker(modalEl, _draftTemplates);
+    }
+  }
+
+  function openDraftPicker(modalEl, templates) {
+    const cards = templates.map(t => `
+      <button type="button" class="draft-template-card" data-id="${Utils.esc(t.id)}">
+        <span class="draft-template-name">${Utils.esc(t.name)}</span>
+        ${t.description ? `<span class="draft-template-desc">${Utils.esc(t.description)}</span>` : ''}
+      </button>`).join('');
+
+    modalEl.innerHTML = `
+      <div class="modal" style="max-width:500px">
+        <div class="modal-header">
+          <h2 class="modal-title">Select Document Template</h2>
+          <button class="modal-close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="draft-template-list">${cards}</div>
+        </div>
+      </div>`;
+
+    modalEl.classList.remove('hidden');
+    modalEl.querySelector('.modal-close').addEventListener('click', () => closeModal(modalEl));
+    modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(modalEl); });
+
+    modalEl.querySelectorAll('.draft-template-card').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tmpl = templates.find(t => t.id === btn.dataset.id);
+        if (tmpl) openDraftWizard(modalEl, tmpl);
+      });
+    });
+  }
+
+  function openDraftWizard(modalEl, template) {
+    const schema = Array.isArray(template.wizard_schema) ? template.wizard_schema : [];
+
+    function prefillVal(f) {
+      if (f.prefill === 'matter.date_of_marriage') {
+        const kd = keyDates.find(d => d.date_type === 'marriage');
+        if (kd) return kd.date_value;
+      }
+      if (f.prefill === 'matter.separation_date') {
+        const kd = keyDates.find(d => d.date_type === 'separation');
+        if (kd) return kd.date_value;
+      }
+      if (f.prefill) {
+        const key = f.prefill.replace('matter.', '');
+        const v = matter?.[key];
+        if (v != null) return v;
+      }
+      return f.default ?? '';
+    }
+
+    function renderWzField(f) {
+      const id  = `wz-${f.name}`;
+      const val = prefillVal(f);
+      const wrapAttrs = f.depends_on ? ` data-depends-on="${Utils.esc(f.depends_on)}"` : '';
+
+      if (f.type === 'select') {
+        const opts = (f.options || []).map(o =>
+          `<option value="${Utils.esc(String(o.value))}"${String(val) === String(o.value) ? ' selected' : ''}>${Utils.esc(o.label)}</option>`
+        ).join('');
+        return `<div class="field" id="wz-wrap-${f.name}"${wrapAttrs}>
+          <label for="${id}">${Utils.esc(f.label)}</label>
+          <select id="${id}" name="${f.name}">${opts}</select>
+        </div>`;
+      }
+      if (f.type === 'checkbox') {
+        const chk = (val === true || val === 'true') ? ' checked' : '';
+        return `<div class="field" id="wz-wrap-${f.name}"${wrapAttrs}>
+          <label class="checkbox-label" style="display:flex;align-items:center;gap:var(--space-2);font-weight:normal">
+            <input type="checkbox" id="${id}" name="${f.name}" value="true"${chk} style="width:auto">
+            ${Utils.esc(f.label)}
+          </label>
+        </div>`;
+      }
+      return `<div class="field" id="wz-wrap-${f.name}"${wrapAttrs}>
+        <label for="${id}">${Utils.esc(f.label)}</label>
+        <input type="${f.type || 'text'}" id="${id}" name="${f.name}" value="${Utils.esc(String(val ?? ''))}">
+      </div>`;
+    }
+
+    const fieldsHtml = schema.map(renderWzField).join('');
+
+    modalEl.innerHTML = `
+      <div class="modal" style="max-width:620px">
+        <div class="modal-header">
+          <h2 class="modal-title">${Utils.esc(template.name)}</h2>
+          <button class="modal-close">×</button>
+        </div>
+        <form id="draft-wz-form" novalidate>
+          <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+            ${fieldsHtml || '<p class="text-muted">No wizard fields — click Generate to draft with existing case data.</p>'}
+            <div id="draft-err" class="form-error hidden" style="margin-top:var(--space-3)"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn--ghost btn--sm modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn--primary btn--sm" id="draft-gen-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              Generate Document
+            </button>
+          </div>
+        </form>
+      </div>`;
+
+    function syncDepends() {
+      modalEl.querySelectorAll('[data-depends-on]').forEach(wrap => {
+        const ctrl = modalEl.querySelector(`[name="${wrap.dataset.dependsOn}"]`);
+        if (!ctrl) return;
+        const active = ctrl.type === 'checkbox' ? ctrl.checked : !!ctrl.value;
+        wrap.style.display = active ? '' : 'none';
+      });
+    }
+    syncDepends();
+    modalEl.querySelectorAll('input, select').forEach(el => el.addEventListener('change', syncDepends));
+
+    modalEl.classList.remove('hidden');
+    modalEl.querySelector('.modal-close').addEventListener('click', () => closeModal(modalEl));
+    modalEl.querySelector('.modal-cancel').addEventListener('click', () => closeModal(modalEl));
+    modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(modalEl); });
+
+    modalEl.querySelector('#draft-wz-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl = modalEl.querySelector('#draft-err');
+      errEl.classList.add('hidden');
+      const genBtn = modalEl.querySelector('#draft-gen-btn');
+      Utils.setLoading(genBtn, true);
+
+      const fd = new FormData(e.target);
+      const wizardData = {};
+      for (const [k, v] of fd.entries()) wizardData[k] = v;
+      schema.forEach(f => { if (f.type === 'checkbox' && !(f.name in wizardData)) wizardData[f.name] = false; });
+
+      try {
+        const session = await Auth.getSession();
+        const res = await fetch('/api/drafting/generate', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body:    JSON.stringify({ template_id: template.id, matter_id: matter.id, wizard_data: wizardData }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Server error (${res.status})`);
+        }
+
+        const html = await res.text();
+        const blob = new Blob([html], { type: 'text/html' });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+
+        closeModal(modalEl);
+        Utils.toast('Document generated — print or save as PDF from the new tab.', 'success');
+      } catch (err) {
+        errEl.textContent = err.message || 'Failed to generate document.';
+        errEl.classList.remove('hidden');
+        Utils.setLoading(genBtn, false);
       }
     });
   }

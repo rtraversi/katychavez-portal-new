@@ -24,3 +24,5 @@
 1050_enabled_modules.sql
 1103_email_log.sql
 1104_ical_token.sql
+007_practice_areas.sql
+1105_practice_areas_backfill.sql
