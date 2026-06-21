@@ -4,6 +4,7 @@
 // Only runs when B2 credentials are present (skips silently on dev).
 
 import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { verifyAuth } from './_helpers.js';
 
 function makeR2Client(env) {
   return new S3Client({
@@ -32,6 +33,9 @@ export async function onRequest(context) {
   if (request.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
   }
+
+  const auth = await verifyAuth(request, env, 'admin', 'uploads');
+  if (auth.httpError) return new Response(auth.httpError.message, { status: auth.httpError.status });
 
   if (!env.B2_KEY_ID || !env.B2_APPLICATION_KEY) {
     console.log('[r2-to-b2-sync] B2 credentials not set — skipping');

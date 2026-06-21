@@ -10,6 +10,10 @@
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
   const auth = await verifyAuth(request, env, 'admin', 'messaging');
@@ -64,7 +68,7 @@ export async function run(env) {
     const client     = convo.clients;
     const countLabel = msgs.length === 1 ? '1 new message' : `${msgs.length} new messages`;
     const msgItems   = msgs.map(m =>
-      `<li style="margin-bottom:8px;line-height:1.5">${m.body.trim().replace(/\n/g, '<br>')}</li>`
+      `<li style="margin-bottom:8px;line-height:1.5">${escHtml(m.body.trim()).replace(/\n/g, '<br>')}</li>`
     ).join('');
 
     try {
@@ -100,9 +104,11 @@ export async function run(env) {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         console.error('[process-message-notifications] resend error for', client.email, res.status, body);
+        admin.from('email_log').insert({ type: 'message_notification', to_email: client.email, subject: `${countLabel} from ${firmName}`, status: 'failed', error: body.slice(0, 500) }).catch(() => {});
         continue;
       }
 
+      admin.from('email_log').insert({ type: 'message_notification', to_email: client.email, subject: `${countLabel} from ${firmName}`, status: 'sent' }).catch(() => {});
       await admin
         .from('conversations')
         .update({ client_notified_at: new Date().toISOString() })

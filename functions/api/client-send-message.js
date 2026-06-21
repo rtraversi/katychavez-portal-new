@@ -7,6 +7,10 @@
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
 
@@ -106,7 +110,7 @@ export async function onRequest({ request, env }) {
           html: `
             <p>A new message has arrived from client <strong>${clientName}</strong>.</p>
             <blockquote style="border-left:3px solid #ccc;padding-left:12px;color:#555;margin:16px 0;">
-              ${msgBody.trim().replace(/\n/g, '<br>')}
+              ${escHtml(msgBody.trim()).replace(/\n/g, '<br>')}
             </blockquote>
             <p><a href="${portalUrl}/portal" style="background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;">View in portal</a></p>
             <p style="color:#888;font-size:12px;margin-top:24px;">IurisIQ — ${firmName}</p>

@@ -27,6 +27,7 @@ export async function onRequest({ request, env }) {
   const { file_base64, content_type, file_name } = body;
   if (!file_base64)  return json(400, { error: 'file_base64 is required.' });
   if (!content_type) return json(400, { error: 'content_type is required.' });
+  if (file_base64.length > 50 * 1024 * 1024) return json(413, { error: 'File too large for analysis.' });
 
   const mediaType = content_type.split(';')[0].trim().toLowerCase();
 

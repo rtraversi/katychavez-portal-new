@@ -115,6 +115,7 @@ async function handleSign(request, env) {
   const { request_id, signature_image } = body;
   if (!request_id)      return json(400, { error: 'request_id is required' });
   if (!signature_image) return json(400, { error: 'signature_image is required' });
+  if (signature_image.length > 500_000) return json(400, { error: 'Signature image too large.' });
 
   let req;
   try {

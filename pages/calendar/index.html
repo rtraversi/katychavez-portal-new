@@ -2,7 +2,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Calendar</h1>
-    <p class="page-subtitle">Upcoming events from your connected Google Calendar.</p>
+    <p class="page-subtitle">Upcoming events from your connected calendar.</p>
   </div>
   <div style="display:flex;gap:var(--space-2)">
     <button class="btn btn--ghost btn--sm" id="cal-settings-btn">
@@ -30,8 +30,11 @@
     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
   </svg>
   <h2 style="font-size:var(--font-size-lg);font-weight:600;margin-bottom:var(--space-2)">No calendar connected</h2>
-  <p class="text-muted" style="margin-bottom:var(--space-5)">Connect your Google Calendar to view and create events from the portal.</p>
-  <button class="btn btn--primary" id="cal-connect-cta">Connect Google Calendar</button>
+  <p class="text-muted" style="margin-bottom:var(--space-5)">Connect your Google or Outlook calendar to view and create events from the portal.</p>
+  <div style="display:flex;gap:var(--space-3);justify-content:center;flex-wrap:wrap">
+    <button class="btn btn--primary" id="cal-connect-google">Connect Google Calendar</button>
+    <button class="btn btn--secondary" id="cal-connect-outlook">Connect Outlook Calendar</button>
+  </div>
 </div>
 
 <!-- Loading state -->

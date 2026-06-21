@@ -99,9 +99,11 @@ export async function onRequest({ request, env }) {
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
     console.error('[send-doc-reminder] resend HTTP error:', res.status, errBody);
+    admin.from('email_log').insert({ type: 'doc_reminder', to_email: client.email, subject: `Action required: documents needed for your matter — ${firmName}`, status: 'failed', error: errBody.slice(0, 500) }).catch(() => {});
     return json(502, { error: 'Failed to send reminder email. Check Resend configuration.' });
   }
 
+  admin.from('email_log').insert({ type: 'doc_reminder', to_email: client.email, subject: `Action required: documents needed for your matter — ${firmName}`, status: 'sent' }).catch(() => {});
   console.log('[send-doc-reminder] sent to:', client.email, 'docs:', pendingDocs.length);
 
   // Mark reminded

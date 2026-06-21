@@ -65,8 +65,28 @@
   document.getElementById('cal-settings-btn').addEventListener('click', () => {
     window.location.hash = 'settings/calendar';
   });
-  document.getElementById('cal-connect-cta').addEventListener('click', () => {
-    window.location.hash = 'settings/calendar';
+
+  async function startOAuth(endpoint, btn, label) {
+    btn.disabled    = true;
+    btn.textContent = 'Connecting…';
+    try {
+      const session = await Auth.getSession();
+      const res     = await fetch(endpoint, { headers: { 'Authorization': `Bearer ${session.access_token}` } });
+      const data    = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      window.location.href = data.url;
+    } catch (err) {
+      Utils.toast(err.message || 'Failed to start authorization.', 'error');
+      btn.disabled    = false;
+      btn.textContent = label;
+    }
+  }
+
+  document.getElementById('cal-connect-google').addEventListener('click', function() {
+    startOAuth('/api/calendar/oauth-url', this, 'Connect Google Calendar');
+  });
+  document.getElementById('cal-connect-outlook').addEventListener('click', function() {
+    startOAuth('/api/calendar/outlook-oauth-url', this, 'Connect Outlook Calendar');
   });
 
   // ── Tabs ──────────────────────────────────────────────────────────────────────
