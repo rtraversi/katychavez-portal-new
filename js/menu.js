@@ -94,6 +94,29 @@ window.Menu = (function () {
     });
   }
 
+  // ── Settings sub-navigation ──────────────────────────────────────────────────
+
+  const SETTINGS_NAV = [
+    { route: 'settings/users',          name: 'Users' },
+    { route: 'settings/permissions',    name: 'Permissions' },
+    { route: 'settings/practice-areas', name: 'Practice Areas' },
+    { route: 'settings/doc-templates',  name: 'Doc Templates' },
+    { route: 'settings/calendar',       name: 'Calendar Sync' },
+  ];
+
+  function buildSettingsNav(activeRoute) {
+    const tabs = SETTINGS_NAV.map(item => {
+      const isActive = item.route === activeRoute;
+      return `<a href="#${item.route}"
+        style="padding:var(--space-2) var(--space-4);font-size:var(--text-sm);font-weight:${isActive ? '600' : '500'};
+               text-decoration:none;border-bottom:2px solid ${isActive ? 'var(--color-primary)' : 'transparent'};
+               color:${isActive ? 'var(--color-primary)' : 'var(--color-text-muted)'};white-space:nowrap;
+               transition:color .15s,border-color .15s"
+        ${isActive ? 'aria-current="page"' : ''}>${item.name}</a>`;
+    }).join('');
+    return `<div style="display:flex;gap:0;border-bottom:1px solid var(--color-border);margin-bottom:var(--space-6);overflow-x:auto">${tabs}</div>`;
+  }
+
   // ── Page loader ──────────────────────────────────────────────────────────────
 
   let _currentScript = null;
@@ -110,7 +133,9 @@ window.Menu = (function () {
     try {
       const res = await fetch(`/pages/${route}/index.html`);
       if (!res.ok) throw new Error(`Page not found: ${route}`);
-      main.innerHTML = await res.text();
+      let pageHtml = await res.text();
+      if (route.startsWith('settings/')) pageHtml = buildSettingsNav(route) + pageHtml;
+      main.innerHTML = pageHtml;
 
       // Load page JS (non-blocking; ignore if missing)
       const scriptSrc = `/pages/${route}/${route.split('/').pop()}.js`;
