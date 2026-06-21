@@ -5,14 +5,19 @@
 (async function ClientsPage() {
 
   // ── State ────────────────────────────────────────────────────────────────────
-  let allClients   = [];
-  let users        = [];
-  let unreadMap    = {};   // client_id → unread message count
-  let searchQuery  = '';
-  let filterStatus = '';
-  let filterType   = '';
-  const PAGE_SIZE  = 25;
-  let offset       = 0;
+  let allClients    = [];
+  let users         = [];
+  let unreadMap     = {};   // client_id → unread message count
+  let searchQuery   = '';
+  let filterStatus  = '';
+  let filterType    = '';
+  const PAGE_SIZE   = 25;
+  let offset        = 0;
+
+  let practiceAreas   = [];
+  let caseTypesData   = [];
+  let caseTypeMap     = new Map();  // id → case_type row
+  let caseTypePaKey   = new Map();  // case_type key → practice_area key (for badge colors)
 
   const tbody      = document.getElementById('clients-tbody');
   const searchEl   = document.getElementById('client-search');
@@ -26,6 +31,43 @@
   async function loadUsers() {
     const { data } = await db.from('users').select('id, first_name, last_name, color, roles(name)').eq('active', true).order('first_name');
     users = data || [];
+  }
+
+  async function loadPracticeAreas() {
+    const [{ data: pa }, { data: ct }, { data: enabled }] = await Promise.all([
+      db.from('practice_areas').select('*').order('sort_order'),
+      db.from('case_types').select('*').order('sort_order'),
+      db.from('enabled_practice_areas').select('practice_area_key'),
+    ]);
+    const enabledKeys = new Set((enabled || []).map(r => r.practice_area_key));
+    practiceAreas = (pa || []).filter(p => enabledKeys.has(p.key));
+    caseTypesData = ct || [];
+    caseTypeMap   = new Map(caseTypesData.map(c => [c.id, c]));
+    // Build case_type_key → pa_key for badge coloring
+    const paKeyMap = new Map((pa || []).map(p => [p.id, p.key]));
+    caseTypePaKey = new Map(caseTypesData.map(c => [c.key, paKeyMap.get(c.practice_area_id) || '']));
+    populateCaseTypeFilter();
+  }
+
+  function populateCaseTypeFilter() {
+    const sel = document.getElementById('filter-case-type');
+    if (!sel) return;
+    const paMap = new Map(practiceAreas.map(p => [p.id, p]));
+    let html = '<option value="">All case types</option>';
+    practiceAreas.forEach(pa => {
+      const paCts = caseTypesData.filter(ct => ct.practice_area_id === pa.id);
+      if (!paCts.length) return;
+      html += `<optgroup label="${Utils.esc(pa.name)}">`;
+      paCts.forEach(ct => { html += `<option value="${Utils.esc(ct.key)}">${Utils.esc(ct.name)}</option>`; });
+      html += '</optgroup>';
+    });
+    sel.innerHTML = html;
+  }
+
+  function buildCaseTypeOptions(paId) {
+    const cts = caseTypesData.filter(ct => ct.practice_area_id === paId);
+    return '<option value="">— Select —</option>' +
+      cts.map(ct => `<option value="${Utils.esc(ct.id)}">${Utils.esc(ct.name)}</option>`).join('');
   }
 
   async function loadUnreadCounts() {
@@ -138,64 +180,21 @@
       <button class="btn btn--secondary btn--sm" ${current === pages ? 'disabled' : ''} onclick="ClientsPage.goPage(${current})">Next →</button>`;
   }
 
-  // Case type options (Texas-specific; legal_separation excluded per migration 004 note)
-  const CASE_TYPES = [
-    ['divorce',                  'Divorce'],
-    ['sapcr_original',           'SAPCR – Original'],
-    ['sapcr_modification',       'SAPCR – Modification'],
-    ['enforcement',              'Enforcement'],
-    ['custody',                  'Custody'],
-    ['custody_modification',     'Custody Modification'],
-    ['child_support',            'Child Support'],
-    ['child_support_modification','Child Support Modification'],
-    ['paternity',                'Paternity'],
-    ['prenuptial_agreement',     'Prenuptial Agreement'],
-    ['postnuptial_agreement',    'Postnuptial Agreement'],
-    ['protective_order',         'Protective Order'],
-    ['adoption',                 'Adoption'],
-    ['other',                    'Other'],
-  ];
-
-  // [bg, text] pairs — each case type gets a distinct color
-  const CASE_TYPE_COLORS = {
-    divorce:                    ['#fef3c7','#92400e'],
-    sapcr_original:             ['#ede9fe','#5b21b6'],
-    sapcr_modification:         ['#f5f3ff','#6d28d9'],
-    enforcement:                ['#ffedd5','#c2410c'],
-    custody:                    ['#dbeafe','#1e40af'],
-    custody_modification:       ['#e0f2fe','#0369a1'],
-    child_support:              ['#d1fae5','#065f46'],
-    child_support_modification: ['#ccfbf1','#0f766e'],
-    paternity:                  ['#e0e7ff','#3730a3'],
-    prenuptial_agreement:       ['#fce7f3','#9d174d'],
-    postnuptial_agreement:      ['#ffe4e6','#9f1239'],
-    protective_order:           ['#fee2e2','#dc2626'],
-    adoption:                   ['#ecfccb','#3f6212'],
-    other:                      ['#f1f5f9','#475569'],
+  // Badge colors keyed by practice area
+  const PA_BADGE_COLORS = {
+    family_law:      ['#ede9fe','#5b21b6'],
+    immigration:     ['#dbeafe','#1e40af'],
+    personal_injury: ['#ffedd5','#c2410c'],
+    criminal:        ['#fee2e2','#b91c1c'],
   };
 
-  // Abbreviated labels so badges stay compact in the table
-  const CASE_TYPE_SHORT = {
-    divorce:                    'Divorce',
-    sapcr_original:             'SAPCR',
-    sapcr_modification:         'SAPCR Mod.',
-    enforcement:                'Enforcement',
-    custody:                    'Custody',
-    custody_modification:       'Custody Mod.',
-    child_support:              'Child Support',
-    child_support_modification: 'Child Supp. Mod.',
-    paternity:                  'Paternity',
-    prenuptial_agreement:       'Prenup',
-    postnuptial_agreement:      'Postnup',
-    protective_order:           'Protective Order',
-    adoption:                   'Adoption',
-    other:                      'Other',
-  };
-
-  function caseTypeBadge(caseType) {
-    if (!caseType) return '<span class="text-muted">—</span>';
-    const [bg, color] = CASE_TYPE_COLORS[caseType] || ['#f1f5f9','#475569'];
-    const label = CASE_TYPE_SHORT[caseType] || Utils.titleCase(caseType);
+  function caseTypeBadge(caseTypeKey) {
+    if (!caseTypeKey) return '<span class="text-muted">—</span>';
+    // Look up display name from loaded case types; fall back to title-casing the key
+    const ctRow = caseTypesData.find(c => c.key === caseTypeKey);
+    const label  = ctRow?.name || Utils.titleCase(caseTypeKey.replace(/_/g, ' '));
+    const paKey  = caseTypePaKey.get(caseTypeKey) || '';
+    const [bg, color] = PA_BADGE_COLORS[paKey] || ['#f1f5f9','#475569'];
     return `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:var(--text-xs);font-weight:500;line-height:1.6;background:${bg};color:${color};white-space:nowrap">${Utils.esc(label)}</span>`;
   }
 
@@ -205,6 +204,11 @@
     modalEl.innerHTML = buildModalHTML(clientId);
     modalEl.classList.remove('hidden');
     document.getElementById('client-first-name').focus();
+
+    // Wire PA → case type cascade
+    document.getElementById('matter-practice-area').addEventListener('change', e => {
+      document.getElementById('matter-case-type').innerHTML = buildCaseTypeOptions(e.target.value);
+    });
 
     if (clientId) loadClientIntoForm(clientId);
 
@@ -217,8 +221,8 @@
   function closeModal() { modalEl.classList.add('hidden'); modalEl.innerHTML = ''; }
 
   function buildModalHTML(clientId) {
-    const caseTypeOptions = CASE_TYPES.map(([v, l]) =>
-      `<option value="${v}">${l}</option>`
+    const paOptions = practiceAreas.map(pa =>
+      `<option value="${Utils.esc(pa.id)}">${Utils.esc(pa.name)}</option>`
     ).join('');
 
     const ATTY_ROLES = new Set(['Owner', 'Attorney', 'Partner Attorney']);
@@ -316,12 +320,21 @@
           <input type="hidden" id="matter-id" name="matter_id">
           <div class="field-row">
             <div class="field">
-              <label for="matter-case-type">Case type <span class="required">*</span></label>
-              <select id="matter-case-type" name="case_type" required>
+              <label for="matter-practice-area">Practice area <span class="required">*</span></label>
+              <select id="matter-practice-area" name="practice_area_id" required>
                 <option value="">— Select —</option>
-                ${caseTypeOptions}
+                ${paOptions}
               </select>
             </div>
+            <div class="field">
+              <label for="matter-case-type">Case type <span class="required">*</span></label>
+              <select id="matter-case-type" name="case_type_id" required>
+                <option value="">— Select practice area first —</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field" style="visibility:hidden"></div>
             <div class="field">
               <label for="matter-status">Status</label>
               <select id="matter-status" name="matter_status">
@@ -430,7 +443,6 @@
     if (matter) {
       document.getElementById('matter-id').value = matter.id;
       const matterFields = [
-        ['case_type',            'matter-case-type'],
         ['matter_status',        'matter-status'],
         ['case_number',          'matter-case-number'],
         ['court_county',         'matter-court-county'],
@@ -443,6 +455,26 @@
         const el = document.getElementById(elId);
         if (el && matter[key] != null) el.value = matter[key];
       });
+
+      // Two-step PA → case type
+      const paEl = document.getElementById('matter-practice-area');
+      const ctEl = document.getElementById('matter-case-type');
+      let paId = matter.practice_area_id;
+      let ctId = matter.case_type_id;
+
+      // Legacy fallback: resolve from case_type text key if UUIDs missing
+      if (!paId && matter.case_type) {
+        const legacyCt = caseTypesData.find(c => c.key === matter.case_type);
+        if (legacyCt) { paId = legacyCt.practice_area_id; ctId = legacyCt.id; }
+      }
+
+      if (paId && paEl) {
+        paEl.value = paId;
+        if (ctEl) {
+          ctEl.innerHTML = buildCaseTypeOptions(paId);
+          if (ctId) ctEl.value = ctId;
+        }
+      }
     }
   }
 
@@ -477,9 +509,13 @@
       notes:                  f.elements['notes'].value.trim() || null,
     };
 
-    const caseType = f.elements['case_type'].value;
+    const paId   = f.elements['practice_area_id'].value;
+    const ctId   = f.elements['case_type_id'].value;
+    const ctRow  = caseTypeMap.get(ctId);
     const matterPayload = {
-      case_type:            caseType || null,
+      practice_area_id:     paId   || null,
+      case_type_id:         ctId   || null,
+      case_type:            ctRow?.key || null,  // text key for backward compat
       status:               f.elements['matter_status'].value || 'intake',
       case_number:          f.elements['case_number'].value.trim() || null,
       court_county:         f.elements['court_county'].value.trim() || null,
@@ -496,8 +532,8 @@
       Utils.setLoading(saveBtn, false);
       return;
     }
-    if (!caseType) {
-      errEl.textContent = 'Case type is required.';
+    if (!paId || !ctId) {
+      errEl.textContent = 'Practice area and case type are required.';
       errEl.classList.remove('hidden');
       Utils.setLoading(saveBtn, false);
       return;
@@ -583,7 +619,7 @@
   window.ClientsPage = { goPage(page) { offset = page * PAGE_SIZE; loadClients(); } };
 
   // ── Init ─────────────────────────────────────────────────────────────────────
-  await Promise.all([loadUsers(), loadUnreadCounts()]);
+  await Promise.all([loadUsers(), loadPracticeAreas(), loadUnreadCounts()]);
   await loadClients();
 
 })();
