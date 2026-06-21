@@ -6,7 +6,8 @@
   let practiceAreas   = [];
   let caseTypesData   = [];
   let caseTypeKeyMap  = new Map();  // key → name
-  let activeFilter    = 'all';
+  let activePa        = 'all';     // 'all' | '__universal__' | practice_area id
+  let activeCt        = null;      // null | case_type key (only when a PA is active)
   let canWrite        = false;
 
   const tbody     = document.getElementById('templates-tbody');
@@ -22,6 +23,12 @@
     court_order:    'Court Order',
     other:          'Other',
   };
+
+  // Tab/chip styles (inline so no global CSS changes needed)
+  const TAB_BASE  = 'padding:var(--space-2) var(--space-4);font-size:var(--text-sm);font-weight:500;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:var(--color-text-muted);transition:color .15s,border-color .15s;white-space:nowrap';
+  const TAB_ACTV  = 'padding:var(--space-2) var(--space-4);font-size:var(--text-sm);font-weight:600;background:none;border:none;border-bottom:2px solid var(--color-primary);cursor:pointer;color:var(--color-primary);white-space:nowrap';
+  const CHIP_BASE = 'padding:var(--space-1) var(--space-3);font-size:var(--text-xs);font-weight:500;background:var(--color-bg-subtle);border:1px solid var(--color-border);border-radius:999px;cursor:pointer;color:var(--color-text-muted);white-space:nowrap;transition:background .15s,color .15s,border-color .15s';
+  const CHIP_ACTV = 'padding:var(--space-1) var(--space-3);font-size:var(--text-xs);font-weight:600;background:var(--color-primary);border:1px solid var(--color-primary);border-radius:999px;cursor:pointer;color:#fff;white-space:nowrap';
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -40,39 +47,54 @@
     practiceAreas  = pa || [];
     caseTypesData  = ct || [];
     caseTypeKeyMap = new Map(caseTypesData.map(c => [c.key, c.name]));
-    renderFilterButtons();
+    renderFilters();
   }
 
-  // ── Filter buttons ────────────────────────────────────────────────────────────
+  // ── Two-level filter: PA tabs + case type chips ───────────────────────────────
 
-  function renderFilterButtons() {
-    let html = `
-      <span class="text-sm text-muted" style="margin-right:var(--space-2)">Filter:</span>
-      <button class="btn btn--ghost btn--sm dt-filter-btn active" data-filter="all">All</button>
-      <button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="">Universal</button>`;
-
+  function renderFilters() {
+    // Row 1: Practice area tabs
+    let tabsHtml = `<div style="display:flex;gap:0;border-bottom:1px solid var(--color-border);margin-bottom:var(--space-3)">`;
+    tabsHtml += `<button class="dt-pa-tab" data-pa="all" style="${activePa === 'all' ? TAB_ACTV : TAB_BASE}">All</button>`;
+    tabsHtml += `<button class="dt-pa-tab" data-pa="__universal__" style="${activePa === '__universal__' ? TAB_ACTV : TAB_BASE}">Universal</button>`;
     practiceAreas.forEach(pa => {
-      const paCts = caseTypesData.filter(ct => ct.practice_area_id === pa.id);
-      if (!paCts.length) return;
-      html += `<span style="color:var(--color-border);margin:0 var(--space-1)">|</span>
-               <span class="text-sm text-muted">${Utils.esc(pa.name)}:</span>`;
+      if (!caseTypesData.some(ct => ct.practice_area_id === pa.id)) return;
+      tabsHtml += `<button class="dt-pa-tab" data-pa="${Utils.esc(pa.id)}" style="${activePa === pa.id ? TAB_ACTV : TAB_BASE}">${Utils.esc(pa.name)}</button>`;
+    });
+    tabsHtml += `</div>`;
+
+    // Row 2: Case type chips — only shown when a specific PA is selected
+    let chipsHtml = '';
+    if (activePa !== 'all' && activePa !== '__universal__') {
+      const pa    = practiceAreas.find(p => p.id === activePa);
+      const paCts = caseTypesData.filter(ct => ct.practice_area_id === activePa);
+      chipsHtml = `<div style="display:flex;gap:var(--space-2);flex-wrap:wrap;padding-bottom:var(--space-1)">`;
+      chipsHtml += `<button class="dt-ct-chip" data-ct="" style="${activeCt === null ? CHIP_ACTV : CHIP_BASE}">All ${Utils.esc(pa?.name || '')}</button>`;
       paCts.forEach(ct => {
-        html += `<button class="btn btn--ghost btn--sm dt-filter-btn" data-filter="${Utils.esc(ct.key)}">${Utils.esc(ct.name)}</button>`;
+        chipsHtml += `<button class="dt-ct-chip" data-ct="${Utils.esc(ct.key)}" style="${activeCt === ct.key ? CHIP_ACTV : CHIP_BASE}">${Utils.esc(ct.name)}</button>`;
       });
-    });
+      chipsHtml += `</div>`;
+    }
 
-    filterBar.innerHTML = html;
-
-    // Event delegation — no re-wiring needed when buttons change
-    filterBar.addEventListener('click', e => {
-      const btn = e.target.closest('.dt-filter-btn');
-      if (!btn) return;
-      filterBar.querySelectorAll('.dt-filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeFilter = btn.dataset.filter;
-      render();
-    });
+    filterBar.innerHTML = tabsHtml + chipsHtml;
   }
+
+  // Single delegated listener on filterBar (survives innerHTML replacement since
+  // the listener is on the container element, not the buttons inside it)
+  filterBar.addEventListener('click', e => {
+    const tab  = e.target.closest('.dt-pa-tab');
+    const chip = e.target.closest('.dt-ct-chip');
+    if (tab) {
+      activePa = tab.dataset.pa;
+      activeCt = null;
+      renderFilters();
+      render();
+    } else if (chip) {
+      activeCt = chip.dataset.ct || null;
+      renderFilters();
+      render();
+    }
+  });
 
   // ── Load templates ────────────────────────────────────────────────────────────
 
@@ -99,11 +121,22 @@
   // ── Render ────────────────────────────────────────────────────────────────────
 
   function render() {
-    const filtered = activeFilter === 'all'
-      ? templates
-      : activeFilter === ''
-        ? templates.filter(t => !t.case_types || t.case_types.length === 0)
-        : templates.filter(t => Array.isArray(t.case_types) && t.case_types.includes(activeFilter));
+    let filtered;
+    if (activePa === 'all') {
+      filtered = templates;
+    } else if (activePa === '__universal__') {
+      filtered = templates.filter(t => !t.case_types || t.case_types.length === 0);
+    } else {
+      // Specific practice area
+      const paCts = new Set(caseTypesData.filter(ct => ct.practice_area_id === activePa).map(ct => ct.key));
+      if (activeCt) {
+        // Specific case type chip selected
+        filtered = templates.filter(t => Array.isArray(t.case_types) && t.case_types.includes(activeCt));
+      } else {
+        // "All [PA]" chip — any template touching this PA's case types
+        filtered = templates.filter(t => Array.isArray(t.case_types) && t.case_types.some(k => paCts.has(k)));
+      }
+    }
 
     if (!filtered.length) {
       tbody.innerHTML = `<tr><td colspan="5" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">No templates found.</td></tr>`;
