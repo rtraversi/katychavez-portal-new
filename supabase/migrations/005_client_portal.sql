@@ -104,6 +104,10 @@ CREATE POLICY "keydates_select_client"
     )
   );
 
+-- Add deleted_at here so the policy below can reference it.
+-- Migration 400 adds it idempotently; doing it here ensures ordering safety.
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+
 -- Clients can read documents for their matters (non-deleted only)
 CREATE POLICY "docs_select_client"
   ON public.documents FOR SELECT
