@@ -23,6 +23,9 @@
   let caseTypeMap      = new Map();  // id → case_type row
   let piDetails        = null;       // client_personal_injury row
   let criminalDetails  = null;       // client_criminal row
+  let immigrationData  = null;       // client_immigration row
+  let immigrationFamilyMembers = []; // client_immigration_family_members rows
+  let enabledImmCaseTypes = new Set(); // enabled_immigration_case_types keys
 
   const DATE_TYPES = [
     ['marriage',     'Marriage'],
@@ -148,13 +151,16 @@
       { data: pa },
       { data: ct },
       { data: enabledPa },
+      { data: immEnabled },
     ] = await Promise.all([
       db.from('clients').select('*').eq('id', clientId).single(),
       db.from('users').select('id, first_name, last_name, roles(name)').eq('active', true).order('first_name'),
       db.from('practice_areas').select('*').order('sort_order'),
       db.from('case_types').select('*').order('sort_order'),
       db.from('enabled_practice_areas').select('practice_area_key'),
+      db.from('enabled_immigration_case_types').select('sub_tab_key'),
     ]);
+    enabledImmCaseTypes = new Set((immEnabled || []).map(r => r.sub_tab_key));
 
     client        = c;
     users         = u || [];
@@ -184,6 +190,8 @@
         { data: kd },
         { data: pi },
         { data: crim },
+        { data: imm },
+        { data: immFam },
       ] = await Promise.all([
         db.from('opposing_parties').select('*').eq('matter_id', matter.id).maybeSingle(),
         db.from('children').select('*').eq('matter_id', matter.id).order('dob'),
@@ -191,13 +199,17 @@
         db.from('key_dates').select('*').eq('matter_id', matter.id).order('date_value'),
         db.from('client_personal_injury').select('*').eq('matter_id', matter.id).maybeSingle(),
         db.from('client_criminal').select('*').eq('matter_id', matter.id).maybeSingle(),
+        db.from('client_immigration').select('*').eq('matter_id', matter.id).maybeSingle(),
+        db.from('client_immigration_family_members').select('*').eq('matter_id', matter.id).order('created_at'),
       ]);
-      oppParty        = op;
-      children        = ch || [];
-      financial       = fi;
-      keyDates        = kd || [];
-      piDetails       = pi;
-      criminalDetails = crim;
+      oppParty                 = op;
+      children                 = ch || [];
+      financial                = fi;
+      keyDates                 = kd || [];
+      piDetails                = pi;
+      criminalDetails          = crim;
+      immigrationData          = imm;
+      immigrationFamilyMembers = immFam || [];
     }
 
     renderAll();
@@ -734,6 +746,8 @@
     renderChildren();
     renderFinancial();
     renderDates();
+    updateTabVisibility();
+    renderImmigration();
     wireEdits();
     wireTabs();
     wireEsignTab();
@@ -2425,6 +2439,502 @@
     } catch (err) {
       Utils.toast(err.message || 'Failed to reveal SSN.', 'error');
       if (revealBtn) revealBtn.disabled = false;
+    }
+  }
+
+  // ── Immigration tab ──────────────────────────────────────────────────────────
+
+  const IMM_CASE_PANELS = {
+    family_based: {
+      title: 'Family-Based Petition',
+      fields: [
+        { key: 'petitioner_name',         label: 'Petitioner Name' },
+        { key: 'petitioner_relationship', label: 'Petitioner Relationship' },
+        { key: 'petitioner_a_number',     label: 'Petitioner A-Number' },
+        { key: 'visa_category',           label: 'Visa Category (IR-1, F-2A…)' },
+        { key: 'priority_date',           label: 'Priority Date',     fmt: 'date' },
+        { key: 'i130_receipt',            label: 'I-130 Receipt #' },
+        { key: 'i485_receipt',            label: 'I-485 Receipt #' },
+        { key: 'nvc_case_number',         label: 'NVC Case Number' },
+        { key: 'dos_case_number',         label: 'DOS Case Number' },
+        { key: 'interview_date',          label: 'Interview Date',    fmt: 'date' },
+        { key: 'interview_location',      label: 'Interview Location' },
+      ],
+    },
+    employment_based: {
+      title: 'Employment-Based',
+      fields: [
+        { key: 'employer_name',    label: 'Employer Name' },
+        { key: 'employer_address', label: 'Employer Address' },
+        { key: 'job_title',        label: 'Job Title' },
+        { key: 'soc_code',         label: 'SOC Code' },
+        { key: 'visa_category',    label: 'Visa / Petition Category' },
+        { key: 'i140_receipt',     label: 'I-140 Receipt #' },
+        { key: 'perm_case_number', label: 'PERM Case Number' },
+        { key: 'priority_date',    label: 'Priority Date',      fmt: 'date' },
+        { key: 'i485_receipt',     label: 'I-485 Receipt #' },
+        { key: 'consular_post',    label: 'Consular Post (if CP)' },
+      ],
+    },
+    humanitarian: {
+      title: 'Asylum & Humanitarian',
+      fields: [
+        { key: 'form_type',            label: 'Form Type (I-589, I-821D, I-821, I-918…)' },
+        { key: 'receipt_number',       label: 'Receipt Number' },
+        { key: 'filing_date',          label: 'Filing Date',          fmt: 'date' },
+        { key: 'asylum_grounds',       label: 'Asylum Grounds' },
+        { key: 'tps_country',          label: 'TPS Country (I-821)' },
+        { key: 'tps_designation_date', label: 'TPS Designation Date', fmt: 'date' },
+        { key: 'daca_expiry',          label: 'DACA Expiry',          fmt: 'date' },
+        { key: 'interview_date',       label: 'Interview Date',       fmt: 'date' },
+        { key: 'country_conditions',   label: 'Country Conditions Notes' },
+      ],
+    },
+    removal_defense: {
+      title: 'Removal Defense',
+      fields: [
+        { key: 'eoir_court',        label: 'EOIR Court' },
+        { key: 'judge_name',        label: 'Judge' },
+        { key: 'next_hearing_date', label: 'Next Hearing Date', fmt: 'date' },
+        { key: 'hearing_type',      label: 'Hearing Type' },
+        { key: 'ina_charges',       label: 'INA Charges' },
+        { key: 'case_stage',        label: 'Case Stage (IJ / BIA / Circuit)' },
+        { key: 'ij_decision_date',  label: 'IJ Decision Date',  fmt: 'date' },
+        { key: 'bia_decision_date', label: 'BIA Decision Date', fmt: 'date' },
+      ],
+    },
+    nonimmigrant: {
+      title: 'Nonimmigrant Visa',
+      fields: [
+        { key: 'visa_type',          label: 'Visa Type' },
+        { key: 'visa_number',        label: 'Visa Number' },
+        { key: 'visa_expiry',        label: 'Visa Expiry',           fmt: 'date' },
+        { key: 'status_expiry',      label: 'Status Expiry (I-94)',  fmt: 'date' },
+        { key: 'ds160_confirmation', label: 'DS-160 Confirmation' },
+        { key: 'cos_to',             label: 'Change of Status To' },
+      ],
+    },
+    naturalization: {
+      title: 'Naturalization & Citizenship',
+      fields: [
+        { key: 'lpr_date',           label: 'LPR Date',           fmt: 'date' },
+        { key: 'n400_filing_date',   label: 'N-400 Filing Date',  fmt: 'date' },
+        { key: 'n400_receipt',       label: 'N-400 Receipt #' },
+        { key: 'biometrics_date',    label: 'Biometrics Date',    fmt: 'date' },
+        { key: 'interview_date',     label: 'Interview Date',     fmt: 'date' },
+        { key: 'oath_ceremony_date', label: 'Oath Ceremony Date', fmt: 'date' },
+        { key: 'certificate_number', label: 'Certificate Number' },
+      ],
+    },
+    habeas: {
+      title: 'Habeas Corpus',
+      fields: [
+        { key: 'district_court',   label: 'District Court' },
+        { key: 'case_number',      label: 'Case Number' },
+        { key: 'filing_date',      label: 'Filing Date',     fmt: 'date' },
+        { key: 'detention_since',  label: 'Detention Since', fmt: 'date' },
+        { key: 'prior_eoir_case',  label: 'Prior EOIR Case #' },
+      ],
+    },
+  };
+
+  function updateTabVisibility() {
+    const hasFamilyLaw   = practiceAreas.some(p => p.key === 'family_law');
+    const hasImmigration = practiceAreas.some(p => p.key === 'immigration');
+
+    ['opposing', 'children', 'financial'].forEach(tabKey => {
+      const btn   = document.querySelector(`.detail-tab[data-tab="${tabKey}"]`);
+      const panel = document.getElementById(`tab-${tabKey}`);
+      if (btn)   btn.classList.toggle('hidden', !hasFamilyLaw);
+      if (panel) panel.classList.toggle('hidden', !hasFamilyLaw);
+    });
+
+    const immBtn   = document.querySelector('.detail-tab[data-tab="immigration"]');
+    const immPanel = document.getElementById('tab-immigration');
+    if (immBtn)   immBtn.classList.toggle('hidden', !hasImmigration);
+    if (immPanel) immPanel.classList.toggle('hidden', !hasImmigration);
+  }
+
+  function wireImmSubtabs() {
+    const allBtns = document.querySelectorAll('.imm-subtab');
+    allBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        allBtns.forEach(b => b.classList.remove('imm-subtab--active'));
+        document.querySelectorAll('.imm-subtab-panel').forEach(p => { p.style.display = 'none'; });
+        btn.classList.add('imm-subtab--active');
+        const panel = document.getElementById('imm-panel-' + btn.dataset.subtab);
+        if (panel) panel.style.display = 'block';
+      });
+    });
+  }
+
+  function renderImmigration() {
+    if (!practiceAreas.some(p => p.key === 'immigration')) return;
+
+    const subtabKeys = ['family_based', 'employment_based', 'humanitarian', 'removal_defense', 'nonimmigrant', 'naturalization', 'habeas'];
+    subtabKeys.forEach(key => {
+      const btn = document.querySelector(`.imm-subtab[data-subtab="${key}"]`);
+      if (btn) btn.classList.toggle('hidden', !enabledImmCaseTypes.has(key));
+    });
+
+    renderImmGeneral();
+    renderImmFamilyMembers();
+    subtabKeys.forEach(key => renderImmCasePanel(key));
+    wireImmSubtabs();
+    wireImmEdits();
+  }
+
+  function renderImmGeneral() {
+    const d = immigrationData || {};
+    if (!matter) {
+      setGrid('grid-imm-general', '<p class="text-muted text-sm">No matter on record.</p>');
+      return;
+    }
+    setGrid('grid-imm-general', [
+      field('A-Number',                  d.a_number),
+      field('Immigration Status',        d.immigration_status),
+      field('Country of Birth',          d.country_of_birth),
+      field('Country of Citizenship',    d.country_of_citizenship),
+      field('Languages',                 d.languages),
+      field('Date of Last Entry',        d.last_entry_date,  'date'),
+      field('Port of Entry',             d.port_of_entry),
+      field('I-94 Number',               d.i94_number),
+      field('I-94 / Auth Stay Until',    d.i94_expiry,       'date'),
+      field('Currently Detained',        d.is_detained ?? null, 'bool'),
+      d.is_detained    ? field('Detention Facility',    d.detention_facility)          : '',
+      field('Prior Removal Order',       d.has_prior_removal_order ?? null, 'bool'),
+      d.has_prior_removal_order ? field('Removal Order Notes', d.prior_removal_order_notes) : '',
+      field('Criminal History',          d.has_criminal_history ?? null, 'bool'),
+      d.has_criminal_history ? field('Criminal History Notes', d.criminal_history_notes) : '',
+    ].join(''));
+  }
+
+  function renderImmFamilyMembers() {
+    const container = document.getElementById('imm-family-list');
+    if (!container) return;
+    if (!matter) {
+      container.innerHTML = '<p class="text-muted text-sm">No matter on record.</p>';
+      return;
+    }
+    if (!immigrationFamilyMembers.length) {
+      container.innerHTML = '<p class="text-muted text-sm" style="padding:var(--space-2) 0">No family members or dependents on record.</p>';
+      return;
+    }
+    container.innerHTML = `<div class="children-list">${
+      immigrationFamilyMembers.map(m => `
+        <div class="child-card">
+          <div class="child-card-header">
+            <strong>${Utils.esc(m.first_name + (m.last_name ? ' ' + m.last_name : ''))}</strong>
+            <div style="display:flex;gap:var(--space-2)">
+              <button class="btn btn--ghost btn--sm btn-edit-imm-member" data-id="${m.id}">Edit</button>
+            </div>
+          </div>
+          <div class="detail-grid">
+            ${field('Relationship',       m.relationship)}
+            ${field('Date of Birth',      m.dob,               'date')}
+            ${field('Country of Birth',   m.country_of_birth)}
+            ${field('Nationality',        m.nationality)}
+            ${field('A-Number',           m.a_number)}
+            ${field('Immigration Status', m.immigration_status)}
+            ${m.is_derivative_beneficiary ? field('Derivative Beneficiary', true, 'bool') : ''}
+            ${m.notes ? field('Notes',    m.notes) : ''}
+          </div>
+        </div>`
+      ).join('')
+    }</div>`;
+  }
+
+  function renderImmCasePanel(key) {
+    const def     = IMM_CASE_PANELS[key];
+    const gridId  = `grid-imm-${key}`;
+    const gridEl  = document.getElementById(gridId);
+    if (!def || !gridEl) return;
+    if (!matter) { gridEl.innerHTML = '<p class="text-muted text-sm">No matter on record.</p>'; return; }
+    const cd = immigrationData?.case_data || {};
+    gridEl.innerHTML = def.fields.map(f => field(f.label, cd[f.key], f.fmt)).join('');
+  }
+
+  function buildImmGeneralFields() {
+    const d  = immigrationData || {};
+    const yn = (name, v) => `
+      <div class="field">
+        <label>${name}</label>
+        <select name="${name.toLowerCase().replace(/ /g,'_').replace(/\?/g,'')}">
+          <option value="">—</option>
+          <option value="true"${v===true||v==='true'?' selected':''}>Yes</option>
+          <option value="false"${v===false||v==='false'?' selected':''}>No</option>
+        </select>
+      </div>`;
+    document.getElementById('fields-imm-general').innerHTML = `
+      <div class="detail-grid" style="margin-bottom:var(--space-4)">
+        <div class="field"><label>A-Number</label><input type="text" name="a_number" value="${Utils.esc(d.a_number||'')}"></div>
+        <div class="field"><label>Immigration Status</label>
+          <select name="immigration_status">
+            ${['','Undocumented','LPR','US Citizen','DACA Recipient','TPS','Asylum Pending','Asylum Granted','H-1B','L-1','O-1','F-1','B-1/B-2','J-1','TN','Detained','Other'].map(s =>
+              `<option value="${s}"${(d.immigration_status||'')=== s?' selected':''}>${s||'— Select —'}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Country of Birth</label><input type="text" name="country_of_birth" value="${Utils.esc(d.country_of_birth||'')}"></div>
+        <div class="field"><label>Country of Citizenship</label><input type="text" name="country_of_citizenship" value="${Utils.esc(d.country_of_citizenship||'')}"></div>
+        <div class="field"><label>Languages</label><input type="text" name="languages" placeholder="e.g. Spanish, English" value="${Utils.esc(d.languages||'')}"></div>
+        <div class="field"><label>Date of Last Entry</label><input type="date" name="last_entry_date" value="${d.last_entry_date||''}"></div>
+        <div class="field"><label>Port of Entry</label><input type="text" name="port_of_entry" value="${Utils.esc(d.port_of_entry||'')}"></div>
+        <div class="field"><label>I-94 Number</label><input type="text" name="i94_number" value="${Utils.esc(d.i94_number||'')}"></div>
+        <div class="field"><label>I-94 / Auth Stay Until</label><input type="date" name="i94_expiry" value="${d.i94_expiry||''}"></div>
+        <div class="field"><label>Currently Detained</label>
+          <select name="is_detained">
+            <option value="">—</option>
+            <option value="true"${d.is_detained===true?' selected':''}>Yes</option>
+            <option value="false"${d.is_detained===false?' selected':''}>No</option>
+          </select>
+        </div>
+        <div class="field"><label>Detention Facility</label><input type="text" name="detention_facility" value="${Utils.esc(d.detention_facility||'')}"></div>
+        <div class="field"><label>Prior Removal Order</label>
+          <select name="has_prior_removal_order">
+            <option value="">—</option>
+            <option value="true"${d.has_prior_removal_order===true?' selected':''}>Yes</option>
+            <option value="false"${d.has_prior_removal_order===false?' selected':''}>No</option>
+          </select>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:var(--space-3)"><label>Removal Order Notes</label><textarea name="prior_removal_order_notes" rows="2">${Utils.esc(d.prior_removal_order_notes||'')}</textarea></div>
+      <div class="detail-grid" style="margin-bottom:var(--space-3)">
+        <div class="field"><label>Criminal History</label>
+          <select name="has_criminal_history">
+            <option value="">—</option>
+            <option value="true"${d.has_criminal_history===true?' selected':''}>Yes</option>
+            <option value="false"${d.has_criminal_history===false?' selected':''}>No</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Criminal History Notes</label><textarea name="criminal_history_notes" rows="2">${Utils.esc(d.criminal_history_notes||'')}</textarea></div>`;
+  }
+
+  function buildImmCasePanelFields(key) {
+    const def = IMM_CASE_PANELS[key];
+    if (!def) return;
+    const cd = immigrationData?.case_data || {};
+    document.getElementById(`fields-imm-${key}`).innerHTML = `
+      <div class="detail-grid">
+        ${def.fields.map(f => `
+          <div class="field">
+            <label>${Utils.esc(f.label)}</label>
+            ${f.fmt === 'date'
+              ? `<input type="date" name="${f.key}" value="${Utils.esc(cd[f.key]||'')}">`
+              : `<input type="text" name="${f.key}" value="${Utils.esc(cd[f.key]||'')}">`
+            }
+          </div>`).join('')}
+      </div>`;
+  }
+
+  function wireImmEdits() {
+    if (!matter) return;
+
+    // General
+    wireSection('imm-general', 'view-imm-general', 'form-imm-general',
+      'btn-edit-imm-general', 'btn-cancel-imm-general',
+      buildImmGeneralFields,
+      async (fd) => {
+        const toBool = v => v === 'true' ? true : v === 'false' ? false : null;
+        const payload = {
+          a_number:                    fd.get('a_number')?.trim()               || null,
+          immigration_status:          fd.get('immigration_status')?.trim()     || null,
+          country_of_birth:            fd.get('country_of_birth')?.trim()       || null,
+          country_of_citizenship:      fd.get('country_of_citizenship')?.trim() || null,
+          languages:                   fd.get('languages')?.trim()              || null,
+          last_entry_date:             fd.get('last_entry_date')                || null,
+          port_of_entry:               fd.get('port_of_entry')?.trim()          || null,
+          i94_number:                  fd.get('i94_number')?.trim()             || null,
+          i94_expiry:                  fd.get('i94_expiry')                     || null,
+          is_detained:                 toBoolean(fd.get('is_detained')),
+          detention_facility:          fd.get('detention_facility')?.trim()     || null,
+          has_prior_removal_order:     toBoolean(fd.get('has_prior_removal_order')),
+          prior_removal_order_notes:   fd.get('prior_removal_order_notes')?.trim() || null,
+          has_criminal_history:        toBoolean(fd.get('has_criminal_history')),
+          criminal_history_notes:      fd.get('criminal_history_notes')?.trim() || null,
+          updated_at: new Date().toISOString(),
+        };
+        if (immigrationData) {
+          const { error } = await db.from('client_immigration').update(payload).eq('id', immigrationData.id);
+          if (error) throw error;
+          Object.assign(immigrationData, payload);
+        } else {
+          const { data: newRow, error } = await db.from('client_immigration')
+            .insert({ ...payload, matter_id: matter.id }).select().single();
+          if (error) throw error;
+          immigrationData = newRow;
+        }
+        renderImmGeneral();
+      }
+    );
+
+    // Case-type panels
+    ['family_based', 'employment_based', 'humanitarian', 'removal_defense', 'nonimmigrant', 'naturalization', 'habeas'].forEach(key => {
+      wireSection(`imm-${key}`, `view-imm-${key}`, `form-imm-${key}`,
+        `btn-edit-imm-${key}`, `btn-cancel-imm-${key}`,
+        () => buildImmCasePanelFields(key),
+        async (fd) => {
+          const def = IMM_CASE_PANELS[key];
+          const updates = {};
+          def.fields.forEach(f => { updates[f.key] = fd.get(f.key)?.trim() || null; });
+          const newCaseData = { ...(immigrationData?.case_data || {}), ...updates };
+          const payload = { case_data: newCaseData, updated_at: new Date().toISOString() };
+          if (immigrationData) {
+            const { error } = await db.from('client_immigration').update(payload).eq('id', immigrationData.id);
+            if (error) throw error;
+            Object.assign(immigrationData, payload);
+          } else {
+            const { data: newRow, error } = await db.from('client_immigration')
+              .insert({ matter_id: matter.id, case_data: newCaseData }).select().single();
+            if (error) throw error;
+            immigrationData = newRow;
+          }
+          renderImmCasePanel(key);
+        }
+      );
+    });
+
+    // Family member buttons — delegated so they survive re-renders
+    const immTabPanel = document.getElementById('tab-immigration');
+    if (immTabPanel) {
+      immTabPanel.addEventListener('click', e => {
+        if (e.target.closest('#btn-add-imm-member'))   openImmMemberModal(null);
+        const editBtn = e.target.closest('.btn-edit-imm-member');
+        if (editBtn) {
+          const member = immigrationFamilyMembers.find(m => m.id === editBtn.dataset.id);
+          if (member) openImmMemberModal(member);
+        }
+      });
+    }
+  }
+
+  function toBoolean(v) {
+    if (v === 'true')  return true;
+    if (v === 'false') return false;
+    return null;
+  }
+
+  async function openImmMemberModal(existing = null) {
+    const modalEl = document.getElementById('imm-member-modal');
+    const isEdit  = !!existing;
+    const m       = existing || {};
+
+    modalEl.innerHTML = `
+      <div class="modal" style="max-width:520px">
+        <div class="modal-header">
+          <h2 class="modal-title">${isEdit ? 'Edit' : 'Add'} Family Member / Dependent</h2>
+          <button class="modal-close" id="imm-member-close" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="imm-member-form" novalidate>
+            <div class="detail-grid" style="margin-bottom:var(--space-4)">
+              <div class="field"><label>First Name <span class="required">*</span></label><input type="text" name="first_name" value="${Utils.esc(m.first_name||'')}" required></div>
+              <div class="field"><label>Last Name</label><input type="text" name="last_name" value="${Utils.esc(m.last_name||'')}"></div>
+              <div class="field"><label>Relationship <span class="required">*</span></label>
+                <select name="relationship" required>
+                  ${['','Spouse','Child','Parent','Sibling','Other'].map(r =>
+                    `<option value="${r}"${(m.relationship||'')=== r?' selected':''}>${r||'— Select —'}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div class="field"><label>Date of Birth</label><input type="date" name="dob" value="${m.dob||''}"></div>
+              <div class="field"><label>Country of Birth</label><input type="text" name="country_of_birth" value="${Utils.esc(m.country_of_birth||'')}"></div>
+              <div class="field"><label>Nationality</label><input type="text" name="nationality" value="${Utils.esc(m.nationality||'')}"></div>
+              <div class="field"><label>A-Number</label><input type="text" name="a_number" value="${Utils.esc(m.a_number||'')}"></div>
+              <div class="field"><label>Immigration Status</label><input type="text" name="immigration_status" value="${Utils.esc(m.immigration_status||'')}"></div>
+            </div>
+            <div class="flag-row" style="margin-bottom:var(--space-4)">
+              <input type="checkbox" id="imm-member-deriv" name="is_derivative_beneficiary" ${m.is_derivative_beneficiary?'checked':''}>
+              <label for="imm-member-deriv">Derivative beneficiary on this petition</label>
+            </div>
+            <div class="field" style="margin-bottom:var(--space-4)"><label>Notes</label><textarea name="notes" rows="2">${Utils.esc(m.notes||'')}</textarea></div>
+            <div id="imm-member-err" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+            <div style="display:flex;gap:var(--space-3);justify-content:flex-end;align-items:center">
+              ${isEdit ? `<button type="button" class="btn btn--danger btn--sm" id="imm-member-delete">Delete</button><span style="flex:1"></span>` : ''}
+              <button type="button" class="btn btn--secondary btn--sm" id="imm-member-cancel">Cancel</button>
+              <button type="submit" class="btn btn--primary btn--sm" id="imm-member-save">${isEdit ? 'Save changes' : 'Add member'}</button>
+            </div>
+          </form>
+        </div>
+      </div>`;
+    modalEl.classList.remove('hidden');
+
+    document.getElementById('imm-member-close').onclick  = () => closeModal(modalEl);
+    document.getElementById('imm-member-cancel').onclick = () => closeModal(modalEl);
+
+    if (isEdit) {
+      document.getElementById('imm-member-delete').onclick = async () => {
+        if (!await Utils.confirm('Delete this family member?', { confirmLabel: 'Delete' })) return;
+        await doDeleteImmMember(existing.id);
+        closeModal(modalEl);
+      };
+    }
+
+    document.getElementById('imm-member-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const saveBtn = document.getElementById('imm-member-save');
+      const errEl   = document.getElementById('imm-member-err');
+      Utils.setLoading(saveBtn, true);
+      const fd = new FormData(e.target);
+      try {
+        // Ensure a client_immigration row exists before inserting a family member
+        if (!immigrationData) {
+          const { data: newRow, error: immErr } = await db.from('client_immigration')
+            .insert({ matter_id: matter.id }).select().single();
+          if (immErr) throw immErr;
+          immigrationData = newRow;
+        }
+        const payload = {
+          immigration_id:            immigrationData.id,
+          matter_id:                 matter.id,
+          first_name:                fd.get('first_name')?.trim(),
+          last_name:                 fd.get('last_name')?.trim()          || null,
+          relationship:              fd.get('relationship'),
+          dob:                       fd.get('dob')                        || null,
+          country_of_birth:          fd.get('country_of_birth')?.trim()  || null,
+          nationality:               fd.get('nationality')?.trim()        || null,
+          a_number:                  fd.get('a_number')?.trim()           || null,
+          immigration_status:        fd.get('immigration_status')?.trim() || null,
+          is_derivative_beneficiary: fd.get('is_derivative_beneficiary') === 'on',
+          notes:                     fd.get('notes')?.trim()              || null,
+        };
+        if (!payload.first_name) throw new Error('First name is required.');
+        if (!payload.relationship) throw new Error('Relationship is required.');
+
+        if (isEdit) {
+          const { error } = await db.from('client_immigration_family_members').update(payload).eq('id', existing.id);
+          if (error) throw error;
+          const idx = immigrationFamilyMembers.findIndex(row => row.id === existing.id);
+          if (idx !== -1) immigrationFamilyMembers[idx] = { ...immigrationFamilyMembers[idx], ...payload };
+        } else {
+          const { data: newMember, error } = await db.from('client_immigration_family_members')
+            .insert(payload).select().single();
+          if (error) throw error;
+          immigrationFamilyMembers.push(newMember);
+        }
+        closeModal(modalEl);
+        renderImmFamilyMembers();
+        Utils.toast(isEdit ? 'Member updated.' : 'Member added.', 'success');
+      } catch (err) {
+        errEl.textContent = err.message || 'Save failed.';
+        errEl.classList.remove('hidden');
+        Utils.setLoading(saveBtn, false);
+      }
+    });
+  }
+
+  async function doDeleteImmMember(memberId) {
+    try {
+      const { error } = await db.from('client_immigration_family_members').delete().eq('id', memberId);
+      if (error) throw error;
+      immigrationFamilyMembers = immigrationFamilyMembers.filter(m => m.id !== memberId);
+      renderImmFamilyMembers();
+      Utils.toast('Member deleted.', 'success');
+    } catch (err) {
+      Utils.toast(err.message || 'Delete failed.', 'error');
     }
   }
 

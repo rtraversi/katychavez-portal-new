@@ -47,6 +47,7 @@
   <button class="detail-tab" data-tab="dates">Key Dates</button>
   <button class="detail-tab" data-tab="esign">E-Signatures</button>
   <button class="detail-tab" data-tab="messages">Messages</button>
+  <button class="detail-tab hidden" data-tab="immigration">Immigration</button>
 </div>
 
 <style>
@@ -303,6 +304,208 @@
   </div>
 </div>
 
+<!-- ── Immigration tab ─────────────────────────────────────────────────────── -->
+<div id="tab-immigration" class="tab-panel">
+
+  <!-- Immigration sub-tab nav -->
+  <div style="display:flex;gap:0;border-bottom:1px solid var(--color-border);margin-bottom:var(--space-5);overflow-x:auto">
+    <button class="imm-subtab imm-subtab--active" data-subtab="general">General</button>
+    <button class="imm-subtab hidden" data-subtab="family_based">Family-Based</button>
+    <button class="imm-subtab hidden" data-subtab="employment_based">Employment</button>
+    <button class="imm-subtab hidden" data-subtab="humanitarian">Humanitarian</button>
+    <button class="imm-subtab hidden" data-subtab="removal_defense">Removal Defense</button>
+    <button class="imm-subtab hidden" data-subtab="nonimmigrant">Nonimmigrant</button>
+    <button class="imm-subtab hidden" data-subtab="naturalization">Naturalization</button>
+    <button class="imm-subtab hidden" data-subtab="habeas">Habeas</button>
+  </div>
+
+  <!-- General sub-tab -->
+  <div id="imm-panel-general" class="imm-subtab-panel">
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h2 class="detail-section-title">Immigration Status</h2>
+        <button class="btn btn--secondary btn--sm" id="btn-edit-imm-general">Edit</button>
+      </div>
+      <div id="view-imm-general" class="inline-view">
+        <div class="detail-grid" id="grid-imm-general"></div>
+      </div>
+      <form id="form-imm-general" class="inline-edit-form" novalidate>
+        <div id="fields-imm-general"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end;margin-top:var(--space-5)">
+          <div id="err-imm-general" class="form-error hidden" style="flex:1;margin-right:auto"></div>
+          <button type="button" class="btn btn--secondary btn--sm" id="btn-cancel-imm-general">Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Save changes</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h2 class="detail-section-title">Family Members &amp; Dependents</h2>
+        <button class="btn btn--primary btn--sm" id="btn-add-imm-member">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add member
+        </button>
+      </div>
+      <div id="imm-family-list"></div>
+    </div>
+  </div>
+
+  <!-- Family-Based sub-tab -->
+  <div id="imm-panel-family_based" class="imm-subtab-panel" style="display:none">
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h2 class="detail-section-title">Family-Based Petition</h2>
+        <button class="btn btn--secondary btn--sm" id="btn-edit-imm-family_based">Edit</button>
+      </div>
+      <div id="view-imm-family_based" class="inline-view">
+        <div class="detail-grid" id="grid-imm-family_based"></div>
+      </div>
+      <form id="form-imm-family_based" class="inline-edit-form" novalidate>
+        <div id="fields-imm-family_based"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end;margin-top:var(--space-5)">
+          <button type="button" class="btn btn--secondary btn--sm" id="btn-cancel-imm-family_based">Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Employment-Based sub-tab -->
+  <div id="imm-panel-employment_based" class="imm-subtab-panel" style="display:none">
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h2 class="detail-section-title">Employment-Based</h2>
+        <button class="btn btn--secondary btn--sm" id="btn-edit-imm-employment_based">Edit</button>
+      </div>
+      <div id="view-imm-employment_based" class="inline-view">
+        <div class="detail-grid" id="grid-imm-employment_based"></div>
+      </div>
+      <form id="form-imm-employment_based" class="inline-edit-form" novalidate>
+        <div id="fields-imm-employment_based"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end;margin-top:var(--space-5)">
+          <button type="button" class="btn btn--secondary btn--sm" id="btn-cancel-imm-employment_based">Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Humanitarian sub-tab -->
+  <div id="imm-panel-humanitarian" class="imm-subtab-panel" style="display:none">
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h2 class="detail-section-title">Asylum &amp; Humanitarian</h2>
+        <button class="btn btn--secondary btn--sm" id="btn-edit-imm-humanitarian">Edit</button>
+      </div>
+      <div id="view-imm-humanitarian" class="inline-view">
+        <div class="detail-grid" id="grid-imm-humanitarian"></div>
+      </div>
+      <form id="form-imm-humanitarian" class="inline-edit-form" novalidate>
+        <div id="fields-imm-humanitarian"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end;margin-top:var(--space-5)">
+          <button type="button" class="btn btn--secondary btn--sm" id="btn-cancel-imm-humanitarian">Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Removal Defense sub-tab -->
+  <div id="imm-panel-removal_defense" class="imm-subtab-panel" style="display:none">
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h2 class="detail-section-title">Removal Defense</h2>
+        <button class="btn btn--secondary btn--sm" id="btn-edit-imm-removal_defense">Edit</button>
+      </div>
+      <div id="view-imm-removal_defense" class="inline-view">
+        <div class="detail-grid" id="grid-imm-removal_defense"></div>
+      </div>
+      <form id="form-imm-removal_defense" class="inline-edit-form" novalidate>
+        <div id="fields-imm-removal_defense"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end;margin-top:var(--space-5)">
+          <button type="button" class="btn btn--secondary btn--sm" id="btn-cancel-imm-removal_defense">Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Nonimmigrant sub-tab -->
+  <div id="imm-panel-nonimmigrant" class="imm-subtab-panel" style="display:none">
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h2 class="detail-section-title">Nonimmigrant Visa</h2>
+        <button class="btn btn--secondary btn--sm" id="btn-edit-imm-nonimmigrant">Edit</button>
+      </div>
+      <div id="view-imm-nonimmigrant" class="inline-view">
+        <div class="detail-grid" id="grid-imm-nonimmigrant"></div>
+      </div>
+      <form id="form-imm-nonimmigrant" class="inline-edit-form" novalidate>
+        <div id="fields-imm-nonimmigrant"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end;margin-top:var(--space-5)">
+          <button type="button" class="btn btn--secondary btn--sm" id="btn-cancel-imm-nonimmigrant">Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Naturalization sub-tab -->
+  <div id="imm-panel-naturalization" class="imm-subtab-panel" style="display:none">
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h2 class="detail-section-title">Naturalization &amp; Citizenship</h2>
+        <button class="btn btn--secondary btn--sm" id="btn-edit-imm-naturalization">Edit</button>
+      </div>
+      <div id="view-imm-naturalization" class="inline-view">
+        <div class="detail-grid" id="grid-imm-naturalization"></div>
+      </div>
+      <form id="form-imm-naturalization" class="inline-edit-form" novalidate>
+        <div id="fields-imm-naturalization"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end;margin-top:var(--space-5)">
+          <button type="button" class="btn btn--secondary btn--sm" id="btn-cancel-imm-naturalization">Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Habeas sub-tab -->
+  <div id="imm-panel-habeas" class="imm-subtab-panel" style="display:none">
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <h2 class="detail-section-title">Habeas Corpus</h2>
+        <button class="btn btn--secondary btn--sm" id="btn-edit-imm-habeas">Edit</button>
+      </div>
+      <div id="view-imm-habeas" class="inline-view">
+        <div class="detail-grid" id="grid-imm-habeas"></div>
+      </div>
+      <form id="form-imm-habeas" class="inline-edit-form" novalidate>
+        <div id="fields-imm-habeas"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end;margin-top:var(--space-5)">
+          <button type="button" class="btn btn--secondary btn--sm" id="btn-cancel-imm-habeas">Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div><!-- end #tab-immigration -->
+
+<style>
+.imm-subtab {
+  padding: var(--space-2) var(--space-4);
+  border: none; background: transparent;
+  font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500;
+  color: var(--color-text-muted); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  white-space: nowrap; transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.imm-subtab:hover { color: var(--color-text); }
+.imm-subtab--active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+</style>
+
 <!-- Date modal -->
 <div id="date-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
 <!-- Child modal -->
@@ -313,6 +516,8 @@
 <div id="ssn-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
 <!-- E-sign modal -->
 <div id="esign-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
+<!-- Immigration family member modal -->
+<div id="imm-member-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
 <!-- Draft document modal -->
 <div id="draft-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"></div>
 
