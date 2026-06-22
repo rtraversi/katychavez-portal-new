@@ -2992,8 +2992,14 @@ ALTER TABLE public.client_immigration
   ADD COLUMN IF NOT EXISTS criminal_history_notes    text,
   ADD COLUMN IF NOT EXISTS case_data                 jsonb NOT NULL DEFAULT '{}';
 
-ALTER TABLE public.client_immigration
-  ADD CONSTRAINT IF NOT EXISTS client_immigration_matter_id_unique UNIQUE (matter_id);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'client_immigration_matter_id_unique'
+  ) THEN
+    ALTER TABLE public.client_immigration
+      ADD CONSTRAINT client_immigration_matter_id_unique UNIQUE (matter_id);
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.client_immigration_family_members (
   id                        uuid        PRIMARY KEY DEFAULT gen_random_uuid(),

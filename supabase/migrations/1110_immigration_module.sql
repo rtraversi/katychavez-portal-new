@@ -46,8 +46,14 @@ ALTER TABLE public.client_immigration
   ADD COLUMN IF NOT EXISTS case_data                 jsonb NOT NULL DEFAULT '{}';
 
 -- Ensure one row per matter
-ALTER TABLE public.client_immigration
-  ADD CONSTRAINT IF NOT EXISTS client_immigration_matter_id_unique UNIQUE (matter_id);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'client_immigration_matter_id_unique'
+  ) THEN
+    ALTER TABLE public.client_immigration
+      ADD CONSTRAINT client_immigration_matter_id_unique UNIQUE (matter_id);
+  END IF;
+END $$;
 
 -- ── Immigration family members / dependents ───────────────────────────────────
 
