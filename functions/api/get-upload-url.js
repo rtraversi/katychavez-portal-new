@@ -2,7 +2,7 @@
 // POST { matter_id, file_name, file_size, content_type, doc_type, name }
 // Returns { upload_url, document_id, r2_key } — browser PUTs directly to R2.
 
-import { verifyAuth, presignedPut, sanitizeFilename, json } from './_helpers.js';
+import { verifyAuth, sanitizeFilename, json } from './_helpers.js';
 import { MAX_UPLOAD_BYTES } from './_scan.js';
 
 const ALLOWED_TYPES = new Set([
@@ -99,15 +99,7 @@ async function handleRequest(request, env) {
 
   if (insertErr) return json(500, { error: insertErr.message });
 
-  let uploadUrl;
-  try {
-    uploadUrl = await presignedPut(env, r2Key, content_type, 900);
-  } catch (err) {
-    await admin.from('documents').update({ deleted_at: new Date().toISOString() }).eq('id', documentId);
-    return json(500, { error: 'Failed to generate upload URL' });
-  }
-
-  return json(200, { upload_url: uploadUrl, document_id: documentId, r2_key: r2Key });
+  return json(200, { upload_url: `/api/upload-proxy?doc=${documentId}`, document_id: documentId, r2_key: r2Key });
 }
 
 async function fulfillPlaceholder({ admin, env, profile, fulfill_document_id, file_name, file_size, content_type, doc_type, name }) {
@@ -120,7 +112,10 @@ async function fulfillPlaceholder({ admin, env, profile, fulfill_document_id, fi
   if (fetchErr || !doc)         return json(404, { error: 'Document not found' });
   if (doc.deleted_at)           return json(410, { error: 'Document has been deleted' });
   if (doc.status !== 'pending') return json(409, { error: 'Document is no longer pending' });
-  if (!doc.r2_key.startsWith('pending/')) return json(409, { error: 'Document is not a checklist placeholder' });
+  // Allow retry when a prior attempt updated r2_key before the upload confirmed
+  if (!doc.r2_key.startsWith('pending/') && !doc.r2_key.startsWith('matters/')) {
+    return json(409, { error: 'Document is not a checklist placeholder' });
+  }
 
   const safe  = sanitizeFilename(file_name);
   const r2Key = `matters/${doc.matter_id}/${fulfill_document_id}/${safe}`;
@@ -133,13 +128,5 @@ async function fulfillPlaceholder({ admin, env, profile, fulfill_document_id, fi
   const { error: updateErr } = await admin.from('documents').update(update).eq('id', fulfill_document_id);
   if (updateErr) return json(500, { error: updateErr.message });
 
-  let uploadUrl;
-  try {
-    uploadUrl = await presignedPut(env, r2Key, content_type, 900);
-  } catch {
-    await admin.from('documents').update({ r2_key: doc.r2_key }).eq('id', fulfill_document_id);
-    return json(500, { error: 'Failed to generate upload URL' });
-  }
-
-  return json(200, { upload_url: uploadUrl, document_id: fulfill_document_id, r2_key: r2Key });
+  return json(200, { upload_url: `/api/upload-proxy?doc=${fulfill_document_id}`, document_id: fulfill_document_id, r2_key: r2Key });
 }

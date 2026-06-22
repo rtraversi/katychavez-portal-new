@@ -121,7 +121,7 @@
         .gte('date_value', new Date().toISOString().slice(0, 10))
         .order('date_value'),
       db.from('documents')
-        .select('id, name, file_name, status, r2_key, created_at, doc_type')
+        .select('id, name, file_name, status, r2_key, created_at, doc_type, is_required')
         .eq('matter_id', matter.id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false }),
@@ -333,8 +333,9 @@
   // ── Render documents ──────────────────────────────────────────────────────
 
   function renderDocuments(matterId, docs) {
-    const checklist = docs.filter(d => d.r2_key?.startsWith('pending/'));
-    const uploaded  = docs.filter(d => !d.r2_key?.startsWith('pending/'));
+    // Checklist: pending/ placeholders + stuck items (upload started but never confirmed)
+    const checklist = docs.filter(d => d.r2_key?.startsWith('pending/') || (d.is_required && d.status === 'pending'));
+    const uploaded  = docs.filter(d => !d.r2_key?.startsWith('pending/') && !(d.is_required && d.status === 'pending'));
     docsCard.classList.remove('hidden');
 
     if (!checklist.length && !uploaded.length) {

@@ -69,7 +69,7 @@ function row(label, value) {
     : '';
 }
 
-export async function notifyClientInvited(env, { toEmail, clientName }) {
+export async function notifyClientInvited(env, { toEmail, clientName, inviteLink }) {
   const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   const firmName  = env.PORTAL_FIRM_NAME || 'Your Law Firm';
   await sendEmail(env, toEmail, `You've been invited to the ${firmName} client portal`,
@@ -82,8 +82,10 @@ export async function notifyClientInvited(env, { toEmail, clientName }) {
         <li>Upload requested documents securely</li>
         <li>Track your document checklist</li>
       </ul>
-      <p style="margin:0;color:#374151">A separate email with your sign-in link has been sent. Use that link to set your password — <strong>the link expires in 20 minutes.</strong> If it expires before you can use it, reply to this email and we'll send a new one.</p>
-      ${btn(`${portalUrl}/portal`, 'Open portal')}
+      ${inviteLink
+        ? `<p style="margin:0 0 16px;color:#374151">Click the button below to set your password and access the portal. <strong>This link expires in 20 minutes.</strong></p>${btn(inviteLink, 'Access your portal')}`
+        : `<p style="margin:0;color:#374151">A separate email with your sign-in link has been sent. Use that link to set your password — <strong>the link expires in 20 minutes.</strong> If it expires before you can use it, reply to this email and we'll send a new one.</p>${btn(`${portalUrl}/portal`, 'Open portal')}`
+      }
     `), 'client_invite'
   );
 }

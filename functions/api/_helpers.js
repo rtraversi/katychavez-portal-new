@@ -97,6 +97,10 @@ export function makeR2Client(env) {
       accessKeyId: env.R2_ACCESS_KEY_ID,
       secretAccessKey: env.R2_SECRET_ACCESS_KEY,
     },
+    // Disable auto-checksum: AWS SDK v3 injects x-amz-checksum-crc32=AAAAAA== into
+    // presigned URLs, causing R2 to 403 before it can serve CORS headers.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   });
 }
 
@@ -108,6 +112,7 @@ export async function presignedPut(env, r2Key, contentType, ttlSeconds = 900) {
     Bucket: env.R2_BUCKET_NAME,
     Key: r2Key,
     ContentType: contentType,
+    ChecksumAlgorithm: undefined,
   });
   return getSignedUrl(r2, cmd, { expiresIn: ttlSeconds });
 }
@@ -126,6 +131,10 @@ export async function presignedGet(env, r2Key, ttlSeconds = 3600) {
 // ── Delete R2 object ──────────────────────────────────────────────────────
 
 export async function deleteR2Object(env, r2Key) {
+  if (env.R2) {
+    await env.R2.delete(r2Key);
+    return;
+  }
   const r2 = makeR2Client(env);
   const cmd = new DeleteObjectCommand({
     Bucket: env.R2_BUCKET_NAME,

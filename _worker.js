@@ -5,6 +5,7 @@ import { onRequest as deleteDocument } from './functions/api/delete-document.js'
 import { onRequest as getDownloadUrl } from './functions/api/get-download-url.js';
 import { onRequest as getSignatureRequest } from './functions/api/get-signature-request.js';
 import { onRequest as getUploadUrl } from './functions/api/get-upload-url.js';
+import { onRequest as uploadProxy }  from './functions/api/upload-proxy.js';
 import { onRequest as inviteClient } from './functions/api/invite-client.js';
 import { onRequest as inviteUser } from './functions/api/invite-user.js';
 import { onRequest as r2ToB2Sync } from './functions/api/r2-to-b2-sync.js';
@@ -47,6 +48,7 @@ const routes = {
   '/api/get-download-url': getDownloadUrl,
   '/api/get-signature-request': getSignatureRequest,
   '/api/get-upload-url': getUploadUrl,
+  '/api/upload-proxy':   uploadProxy,
   '/api/invite-client': inviteClient,
   '/api/invite-user': inviteUser,
   '/api/r2-to-b2-sync': r2ToB2Sync,

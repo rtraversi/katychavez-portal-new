@@ -557,8 +557,14 @@
 
     if (error) { Utils.handleError(error, 'load checklist'); Utils.setLoading(btn, false); return; }
 
-    // Filter out docs already in the matter (by name match)
-    const existingNames = new Set(documents.map(d => d.name.toLowerCase()));
+    // Filter out docs already in the matter (by name match).
+    // Exclude limbo docs (upload started but never confirmed — r2_key moved to matters/ but status still pending)
+    // so that re-applying the checklist can recover them.
+    const existingNames = new Set(
+      documents
+        .filter(d => d.status === 'received' || d.r2_key?.startsWith('pending/'))
+        .map(d => d.name.toLowerCase())
+    );
     const toCreate = (items || []).filter(item => !existingNames.has(item.doc_name.toLowerCase()));
 
     if (!toCreate.length) {

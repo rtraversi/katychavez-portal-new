@@ -11,6 +11,13 @@ main = "./_worker.js"
 directory = "."
 binding = "ASSETS"
 
+# ── R2 native binding (required for browser file uploads) ────────────────────
+# The S3-compatible API cannot be used for Worker→R2 PUTs (CF same-zone restriction).
+# The native binding bypasses HTTP entirely and is the only reliable write path.
+[[r2_buckets]]
+binding    = "R2"
+bucket_name = "CLIENT-SLUG-portal-prod"   # must match R2_BUCKET_NAME var
+
 [triggers]
 crons = ["0 14 * * *", "*/5 * * * *"]   # Daily 9am CST: doc reminders | Every 5 min: message notifications
 

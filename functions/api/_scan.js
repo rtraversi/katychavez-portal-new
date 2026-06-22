@@ -27,6 +27,10 @@ export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;   // 25MB policy cap
 // Returns size in bytes, or null if the object doesn't exist.
 
 export async function getR2ObjectSize(env, r2Key) {
+  if (env.R2) {
+    const obj = await env.R2.head(r2Key);
+    return obj ? obj.size : null;
+  }
   const r2 = makeR2Client(env);
   try {
     const head = await r2.send(new HeadObjectCommand({

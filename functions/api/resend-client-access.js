@@ -82,7 +82,7 @@ export async function onRequest(context) {
   console.log(`[resend-client-access] access link for ${client.email}: ${actionLink}`);
 
   const clientName = `${client.first_name} ${client.last_name}`.trim();
-  await notifyClientInvited(env, { toEmail: client.email, clientName }).catch(err =>
+  await notifyClientInvited(env, { toEmail: client.email, clientName, inviteLink: actionLink }).catch(err =>
     console.error('[resend-client-access] notification error:', err.message)
   );
 
