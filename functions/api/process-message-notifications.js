@@ -104,11 +104,11 @@ export async function run(env) {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         console.error('[process-message-notifications] resend error for', client.email, res.status, body);
-        admin.from('email_log').insert({ type: 'message_notification', to_email: client.email, subject: `${countLabel} from ${firmName}`, status: 'failed', error: body.slice(0, 500) }).catch(() => {});
+        admin.from('email_log').insert({ type: 'message_notification', to_email: client.email, subject: `${countLabel} from ${firmName}`, status: 'failed', error: body.slice(0, 500) }).then(null, () => {});
         continue;
       }
 
-      admin.from('email_log').insert({ type: 'message_notification', to_email: client.email, subject: `${countLabel} from ${firmName}`, status: 'sent' }).catch(() => {});
+      admin.from('email_log').insert({ type: 'message_notification', to_email: client.email, subject: `${countLabel} from ${firmName}`, status: 'sent' }).then(null, () => {});
       await admin
         .from('conversations')
         .update({ client_notified_at: new Date().toISOString() })
