@@ -13,3 +13,7 @@ supabase/config.toml
 wrangler.toml
 # Claude Code project settings (machine-specific)
 .claude/
+
+.dev.vars*
+!.dev.vars.example
+!.env.example
