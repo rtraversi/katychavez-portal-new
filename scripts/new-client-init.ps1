@@ -50,6 +50,13 @@ ANTHROPIC_API_KEY=YOUR-ANTHROPIC-API-KEY
 SSN_ENCRYPTION_KEY=YOUR-32-CHAR-RANDOM-HEX
 "@ | Set-Content "$Dest\.env" -Encoding utf8
 
+# Update package.json with client-specific name
+$pkgPath = "$Dest\package.json"
+$pkg = Get-Content $pkgPath -Raw
+$pkg = $pkg -replace '"name":\s*"[^"]+"', "`"name`": `"$Slug-portal`""
+$pkg = $pkg -replace '"description":\s*"[^"]+"', "`"description`": `"IurisIQ portal — $Slug`""
+Set-Content $pkgPath $pkg -Encoding utf8
+
 Write-Host "npm install ..." -ForegroundColor Cyan
 Push-Location $Dest
 npm install --silent

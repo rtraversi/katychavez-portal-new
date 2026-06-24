@@ -1,8 +1,8 @@
 {
-  "name": "wilsonlakesavage-portal",
+  "name": "katychavez-portal",
   "version": "0.1.0",
   "private": true,
-  "description": "Wilson Lake Savage family-law client & staff portal",
+  "description": "Katy Chavez immigration law client & staff portal",
   "scripts": {
     "build": "node scripts/build-config.js",
     "dev": "node scripts/build-config.js && npx serve . -p 3000"
