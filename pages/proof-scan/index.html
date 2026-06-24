@@ -1,0 +1,100 @@
+<!-- Proof Scan — loaded dynamically into #page-content by menu.js -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Proof Scan</h1>
+    <p class="page-subtitle">Automated USCIS document package proof check</p>
+  </div>
+</div>
+
+<!-- Upload card -->
+<div class="card" style="margin-bottom:var(--space-4)">
+  <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-4)">
+    Upload a USCIS document package (PDF) to run an automated proof check. Claude will review edition dates,
+    page counts, signatures, name &amp; A-Number consistency, and bank routing numbers.
+  </p>
+
+  <div id="ps-drop-zone"
+    style="border:2px dashed var(--color-border);border-radius:var(--radius);padding:var(--space-8) var(--space-4);
+           text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:var(--space-4)"
+    tabindex="0" role="button" aria-label="Drop a PDF here to scan">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+      style="width:40px;height:40px;margin:0 auto var(--space-3);color:var(--color-text-muted)" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+    </svg>
+    <p style="font-weight:600;margin-bottom:var(--space-1)">Drop a PDF here</p>
+    <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3)">
+      PDF files only
+    </p>
+    <button type="button" class="btn btn--secondary" id="ps-choose-file-btn">Choose PDF</button>
+    <input id="ps-file-input" type="file" accept=".pdf,application/pdf" style="display:none">
+  </div>
+
+  <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
+    <button id="ps-run-btn" class="btn btn--primary" disabled>Run Proof Scan</button>
+    <span id="ps-filename" style="font-size:var(--text-sm);color:var(--color-text-muted)"></span>
+  </div>
+</div>
+
+<!-- Customizable rules section (collapsible) -->
+<div class="card" style="margin-bottom:var(--space-4)">
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <h2 style="font-size:var(--text-base);font-weight:600;margin:0">Customize Scan Rules</h2>
+    <button id="ps-rules-toggle" class="btn btn--ghost" style="display:flex;align-items:center;gap:var(--space-1)">
+      <span id="ps-rules-toggle-label">Show</span>
+      <svg id="ps-rules-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        style="width:16px;height:16px;transition:transform .2s" aria-hidden="true">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </button>
+  </div>
+
+  <div id="ps-rules-body" style="display:none;margin-top:var(--space-4)">
+    <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3)">
+      Add firm-specific instructions that will be appended to the standard proof-check rules on every scan.
+      These instructions are saved per firm and apply to all staff.
+    </p>
+    <div id="ps-rules-feedback" style="display:none;margin-bottom:var(--space-3);padding:var(--space-2) var(--space-3);border-radius:var(--radius);font-size:var(--text-sm)"></div>
+    <textarea id="ps-rules-textarea"
+      style="width:100%;min-height:140px;padding:var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius);
+             font-size:var(--text-sm);font-family:inherit;resize:vertical;box-sizing:border-box"
+      placeholder="Examples:&#10;- Flag any I-864 where the household size exceeds 6&#10;- Our firm always includes a G-1145 — flag if missing&#10;- Check that all addresses use the beneficiary's current US residence"></textarea>
+    <div style="margin-top:var(--space-2);font-size:var(--text-xs,0.75rem);color:var(--color-text-muted)">
+      These rules are added after the standard rules and take effect on the next scan.
+    </div>
+    <div style="display:flex;align-items:center;gap:var(--space-3);margin-top:var(--space-4)">
+      <button id="ps-rules-save-btn" class="btn btn--primary" disabled>Validate &amp; Save</button>
+      <button id="ps-rules-reset-btn" class="btn btn--ghost" style="color:var(--color-danger)">Reset to core rules</button>
+    </div>
+  </div>
+</div>
+
+<!-- Results area (hidden until scan runs) -->
+<div id="ps-results-wrap" class="hidden" style="margin-bottom:var(--space-4)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
+    <h2 style="font-size:var(--text-base);font-weight:600;margin:0">Scan Results</h2>
+    <button id="ps-clear-results" class="btn btn--ghost" style="font-size:var(--text-sm)">Clear</button>
+  </div>
+  <div id="ps-results-content" class="card"
+    style="font-size:var(--text-sm);line-height:1.6;overflow-x:auto"></div>
+</div>
+
+<!-- History section -->
+<div class="card">
+  <h2 style="font-size:var(--text-base);font-weight:600;margin-bottom:var(--space-4)">Recent Scans</h2>
+  <div id="ps-history-list">
+    <p style="font-size:var(--text-sm);color:var(--color-text-muted)">Loading…</p>
+  </div>
+</div>
+
+<!-- Result modal -->
+<div id="ps-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ps-modal-title">
+  <div class="modal" style="max-width:900px;width:100%;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-4);border-bottom:1px solid var(--color-border)">
+      <h3 id="ps-modal-title" style="font-size:var(--text-base);font-weight:600;margin:0">Scan Result</h3>
+      <button id="ps-modal-close" class="btn btn--ghost" style="padding:var(--space-1) var(--space-2)">&#x2715;</button>
+    </div>
+    <div id="ps-modal-body" style="padding:var(--space-4);overflow-y:auto;flex:1;font-size:var(--text-sm);line-height:1.6"></div>
+  </div>
+</div>

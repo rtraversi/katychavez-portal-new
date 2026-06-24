@@ -59,6 +59,7 @@ window.Menu = (function () {
       .filter(m => accessible.has(m.key))
       .filter(m => !m.staffOnly || !isClient)
       .filter(m => !m.premium || enabledPremium.has(m.key))
+      .filter(m => !m.requires || enabledPremium.has(m.requires))
       .sort((a, b) => a.sortOrder - b.sortOrder);
 
     // Start polling unread counts after nav is ready (30s interval)
@@ -101,6 +102,7 @@ window.Menu = (function () {
     { route: 'settings/permissions',    name: 'Permissions' },
     { route: 'settings/practice-areas', name: 'Practice Areas' },
     { route: 'settings/calendar',       name: 'Calendar Sync' },
+    { route: 'settings/signature',      name: 'Attorney Signature' },
   ];
 
   function buildSettingsNav(activeRoute) {

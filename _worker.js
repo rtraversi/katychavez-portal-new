@@ -39,6 +39,13 @@ import { onRequest as draftingGenerate }            from './functions/api/drafti
 import { onRequest as draftingToggleFinal }         from './functions/api/drafting-toggle-final.js';
 import { onRequest as calendarIcalFeed }            from './functions/api/calendar-ical-feed.js';
 import { onRequest as calendarIcalToken }           from './functions/api/calendar-ical-token.js';
+import { onRequest as mfaStoreRecovery }            from './functions/api/mfa-store-recovery.js';
+import { onRequest as mfaRecover }                  from './functions/api/mfa-recover.js';
+import { onRequest as getAttorneySig }              from './functions/api/get-attorney-signature.js';
+import { onRequest as saveAttorneySig }             from './functions/api/save-attorney-signature.js';
+import { onRequest as proofScan }                   from './functions/api/proof-scan.js';
+import { onRequest as proofScanHistory }            from './functions/api/proof-scan-history.js';
+import { onRequest as proofScanConfig }             from './functions/api/proof-scan-config.js';
 
 const routes = {
   '/api/confirm-upload': confirmUpload,
@@ -81,11 +88,19 @@ const routes = {
   '/api/drafting/toggle-final':          draftingToggleFinal,
   '/api/calendar/ical-feed':             calendarIcalFeed,
   '/api/calendar/ical-token':            calendarIcalToken,
+  '/api/mfa-store-recovery':             mfaStoreRecovery,
+  '/api/mfa-recover':                    mfaRecover,
+  '/api/get-attorney-signature':         getAttorneySig,
+  '/api/save-attorney-signature':        saveAttorneySig,
+  '/api/proof-scan':                     proofScan,
+  '/api/proof-scan-history':             proofScanHistory,
+  '/api/proof-scan-config':              proofScanConfig,
 };
 
 const HTML_REWRITES = {
   '/portal': '/portal.html',
   '/reset-password': '/reset-password.html',
+  '/account': '/account.html',
 };
 
 // ── Security headers ──────────────────────────────────────────────────────────

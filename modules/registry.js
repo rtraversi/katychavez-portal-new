@@ -43,7 +43,6 @@ window.MODULE_REGISTRY = [
     route:       'conflict-checker',
     wave:        1,
     sortOrder:   25,
-    premium:     true,
   },
   {
     key:         'uploads',
@@ -93,6 +92,14 @@ window.MODULE_REGISTRY = [
     comingSoon:  true,
   },
   {
+    key:         'trust_accounting',
+    name:        'Trust Accounting',
+    icon:        'briefcase',
+    route:       'trust',
+    wave:        1,
+    sortOrder:   55,
+  },
+  {
     key:         'ai_brain',
     name:        'AI Assistant',
     icon:        'cpu',
@@ -120,6 +127,25 @@ window.MODULE_REGISTRY = [
     wave:        1,
     sortOrder:   80,
     premium:     true,
+  },
+  {
+    key:       'sig_stamp',
+    name:      'Signature Stamp',
+    icon:      'pen-tool',
+    route:     'sig-stamp',
+    wave:      1,
+    sortOrder: 82,
+    staffOnly: true,
+  },
+  {
+    key:       'proof_scan',
+    name:      'Proof Scan',
+    icon:      'shield',
+    route:     'proof-scan',
+    wave:      1,
+    sortOrder: 57,
+    staffOnly: true,
+    requires:  'immigration',
   },
 
   // ── Wave 2 ─────────────────────────────────────────────────────────────────

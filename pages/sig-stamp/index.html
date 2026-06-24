@@ -1,0 +1,94 @@
+<!-- Signature Stamp — loaded dynamically into #page-content by menu.js -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Signature Stamp</h1>
+    <p class="page-subtitle">Apply the attorney signature to any document</p>
+  </div>
+</div>
+
+<!-- Signature warning (shown if no sig uploaded) -->
+<div id="sig-stamp-warning" class="hidden"
+  style="margin-bottom:var(--space-4);padding:var(--space-3) var(--space-4);border-radius:var(--radius);
+         background:var(--color-warning-bg,#fffbeb);border:1px solid var(--color-warning-border,#fde68a);
+         color:var(--color-warning-text,#92400e);font-size:var(--text-sm)">
+  No attorney signature uploaded yet — go to <strong>Settings &rarr; Attorney Signature</strong> to add one.
+</div>
+
+<!-- Upload card -->
+<div class="card" style="margin-bottom:var(--space-4)">
+  <div id="sig-drop-zone"
+    style="border:2px dashed var(--color-border);border-radius:var(--radius);padding:var(--space-8) var(--space-4);
+           text-align:center;cursor:pointer;transition:border-color .15s,background .15s"
+    tabindex="0" role="button" aria-label="Drop a PDF, JPEG, or PNG here to open">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+      style="width:40px;height:40px;margin:0 auto var(--space-3);color:var(--color-text-muted)" aria-hidden="true">
+      <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+    </svg>
+    <p style="font-weight:600;margin-bottom:var(--space-1)">Drop a PDF, JPEG, or PNG here</p>
+    <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3)">
+      A phone photo is fine — any format works
+    </p>
+    <button type="button" class="btn btn--secondary" id="sig-choose-file-btn">Choose File</button>
+    <input id="sig-file-input" type="file" accept=".pdf,image/jpeg,image/jpg,image/png" style="display:none">
+  </div>
+</div>
+
+<!-- Toolbar (hidden until file loaded) -->
+<div id="sig-toolbar" class="hidden card" style="margin-bottom:var(--space-4)">
+  <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap">
+    <button id="btn-prev-page" class="btn btn--ghost" title="Previous page" style="padding:var(--space-1) var(--space-2)">
+      &#8249;
+    </button>
+    <span id="page-info" style="font-size:var(--text-sm);white-space:nowrap">Page 1 of 1</span>
+    <button id="btn-next-page" class="btn btn--ghost" title="Next page" style="padding:var(--space-1) var(--space-2)">
+      &#8250;
+    </button>
+    <div style="width:1px;height:24px;background:var(--color-border);margin:0 var(--space-1)"></div>
+    <button id="btn-rotate" class="btn btn--ghost" title="Rotate 90° clockwise">Rotate</button>
+    <button id="btn-snap-g28" class="btn btn--ghost" title="Snap signature to G-28 attorney line">Snap to G-28</button>
+    <div style="width:1px;height:24px;background:var(--color-border);margin:0 var(--space-1)"></div>
+    <label style="font-size:var(--text-sm);display:flex;align-items:center;gap:var(--space-2);cursor:pointer">
+      <input id="chk-date" type="checkbox"> Add Date
+    </label>
+    <div style="width:1px;height:24px;background:var(--color-border);margin:0 var(--space-1)"></div>
+    <button id="btn-reset" class="btn btn--ghost" style="color:var(--color-text-muted)">Reset</button>
+    <button id="btn-apply-download" class="btn btn--primary" style="margin-left:auto">Apply &amp; Download</button>
+  </div>
+</div>
+
+<!-- Canvas viewer -->
+<div id="sig-viewer-wrap" class="hidden" style="position:relative;margin-bottom:var(--space-4);overflow:auto;background:var(--color-bg-subtle,#f8f9fa);border:1px solid var(--color-border);border-radius:var(--radius)">
+  <canvas id="sig-doc-canvas" style="display:block;max-width:100%"></canvas>
+
+  <!-- Signature overlay -->
+  <div id="sig-overlay"
+    style="position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);
+           cursor:move;user-select:none;touch-action:none;min-width:40px;min-height:20px">
+    <img id="sig-overlay-img" src="" alt="Signature" draggable="false"
+      style="display:block;width:100%;height:100%;object-fit:contain;pointer-events:none">
+    <!-- Resize handle -->
+    <div id="sig-resize-handle"
+      style="position:absolute;bottom:0;right:0;width:16px;height:16px;
+             background:var(--color-primary);border-radius:3px 0 3px 0;cursor:se-resize;
+             opacity:0.7"></div>
+  </div>
+
+  <!-- Date overlay -->
+  <div id="date-overlay"
+    style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+           cursor:move;user-select:none;touch-action:none;display:none;
+           font-family:serif;font-size:18px;color:#000;white-space:nowrap;
+           background:transparent;padding:2px 4px">
+    <span id="date-text"></span>
+  </div>
+</div>
+
+<!-- Status area -->
+<div id="sig-stamp-status" style="font-size:var(--text-sm);color:var(--color-text-muted);min-height:1.5em"></div>
+
+<!-- CDN libraries loaded at bottom so they don't block page render -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
+<script>if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';</script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="/pages/sig-stamp/sig-stamp.js"></script>
