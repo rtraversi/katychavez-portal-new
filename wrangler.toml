@@ -1,0 +1,53 @@
+# IurisIQ Portal — Cloudflare Workers config — Katy Chavez deployment
+name = "katychavez-portal-new"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+main = "./_worker.js"
+
+[assets]
+directory = "."
+binding = "ASSETS"
+
+# ── R2 native binding (required for browser file uploads) ────────────────────
+# The S3-compatible API cannot be used for Worker→R2 PUTs (CF same-zone restriction).
+# The native binding bypasses HTTP entirely and is the only reliable write path.
+[[r2_buckets]]
+binding    = "R2"
+bucket_name = "katychavez-portal"
+
+[triggers]
+crons = ["0 14 * * *", "*/5 * * * *"]   # Daily 9am CST: doc reminders | Every 5 min: message notifications
+
+# ── Non-sensitive vars (safe to commit once filled in) ────────────────────────
+# Secrets (listed below) are set via: npx wrangler secret put <NAME>
+[vars]
+SUPABASE_URL      = "https://syqpooenhygbkedfthwe.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_1iHAF45Itws20diDdJG0bg_O1wKk5H2"
+R2_ACCOUNT_ID     = "463b69cee7d11e6b333a14670b98c6b5"
+R2_BUCKET_NAME    = "katychavez-portal"
+PORTAL_URL        = "https://katychavez-portal-new.katycab.workers.dev"
+PORTAL_FIRM_NAME  = "Katy Chavez, Atty"
+PORTAL_FROM_EMAIL = "katychavezlaw@gmail.com"
+B2_ENDPOINT       = "s3.us-east-005.backblazeb2.com"
+B2_BUCKET_NAME    = "katychavez-portal-backup"
+ATTACHMENTAV_API_URL = "https://us.developer.attachmentav.com"
+GOOGLE_REDIRECT_URI  = "https://katychavez-portal-new.katycab.workers.dev/api/calendar/oauth-callback"
+OUTLOOK_REDIRECT_URI = "https://katychavez-portal-new.katycab.workers.dev/api/calendar/outlook-oauth-callback"
+
+
+# ── Secrets — set via CLI, never in this file ────────────────────────────────
+# npx wrangler secret put SUPABASE_SERVICE_KEY
+# npx wrangler secret put SSN_ENCRYPTION_KEY          # 32-char random string
+# npx wrangler secret put R2_ACCESS_KEY_ID
+# npx wrangler secret put R2_SECRET_ACCESS_KEY
+# npx wrangler secret put B2_KEY_ID
+# npx wrangler secret put B2_APPLICATION_KEY
+# npx wrangler secret put RESEND_API_KEY
+# npx wrangler secret put ATTACHMENTAV_API_KEY
+# npx wrangler secret put ANTHROPIC_API_KEY
+# npx wrangler secret put GOOGLE_CLIENT_ID            # if using Google Calendar
+# npx wrangler secret put GOOGLE_CLIENT_SECRET
+# npx wrangler secret put OUTLOOK_CLIENT_ID           # if using Outlook Calendar
+# npx wrangler secret put OUTLOOK_CLIENT_SECRET
+# npx wrangler secret put ILOVEAPI_PROJECT_ID         # if using Doc Translations PDF export
+# npx wrangler secret put ILOVEAPI_SECRET_KEY

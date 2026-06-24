@@ -9,7 +9,5 @@ clientdocs/
 slf_logo*.png
 supabase/.gitignore
 supabase/config.toml
-# Per-client config — copy from wrangler.toml.example and fill in; never commit with real values
-wrangler.toml
 # Claude Code project settings (machine-specific)
 .claude/
