@@ -1,10 +1,8 @@
-# One-time setup: sets CF Workers secrets from .env (prod values).
-# Run once from C:\Sites\wilsonlakesavage — secrets persist across future deploys.
+# Sets CF Workers secrets from .env — run once per deployment.
 # Usage: .\scripts\set-prod-secrets.ps1
 
 $ErrorActionPreference = 'Stop'
 
-# Parse .env — last value for each key wins (prod values are at bottom of file)
 $envVars = @{}
 Get-Content .env | ForEach-Object {
     $line = $_.Trim()
@@ -25,13 +23,15 @@ $secrets = @(
     'SSN_ENCRYPTION_KEY',
     'B2_KEY_ID',
     'B2_APPLICATION_KEY',
-    'RESEND_API_KEY'
+    'RESEND_API_KEY',
+    'ATTACHMENTAV_API_KEY',
+    'ANTHROPIC_API_KEY'
 )
 
 foreach ($name in $secrets) {
     $val = $envVars[$name]
     if (-not $val -or $val.StartsWith('[YOUR')) {
-        Write-Host "SKIP $name — not in .env, set manually: npx wrangler secret put $name" -ForegroundColor Yellow
+        Write-Host "SKIP $name - not in .env" -ForegroundColor Yellow
         continue
     }
     Write-Host "Setting: $name" -ForegroundColor Cyan
@@ -39,4 +39,4 @@ foreach ($name in $secrets) {
 }
 
 Write-Host ""
-Write-Host "Done. Run: npx wrangler deploy" -ForegroundColor Green
+Write-Host "Done. Secrets pushed to CF Workers." -ForegroundColor Green
