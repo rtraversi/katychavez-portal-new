@@ -5,7 +5,9 @@
   "description": "Katy Chavez immigration law client & staff portal",
   "scripts": {
     "build": "node scripts/build-config.js",
-    "dev": "node scripts/build-config.js && npx serve . -p 3000"
+    "dev": "node scripts/build-config.js && npx serve . -p 3000",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.726.0",
@@ -14,6 +16,7 @@
     "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
-    "supabase": "^2.103.0"
+    "supabase": "^2.103.0",
+    "wrangler": "^4.104.0"
   }
 }
