@@ -1,7 +1,6 @@
 .env
 .env.local
 .env.*.local
-js/config.js
 node_modules/
 .netlify/
 *.ps1.bak
