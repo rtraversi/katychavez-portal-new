@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>My Account — IurisIQ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/main.css">
+  <style>
+    .account-wrap {
+      min-height: 100vh;
+      background: var(--color-bg, #f8fafc);
+      display: flex;
+      flex-direction: column;
+    }
+    .account-topbar {
+      background: var(--color-surface, #fff);
+      border-bottom: 1px solid var(--color-border, #e2e8f0);
+      padding: 0 var(--space-6, 24px);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: var(--space-4, 16px);
+    }
+    .account-topbar img { height: 28px; }
+    .account-topbar-title {
+      font-size: var(--text-base, 1rem);
+      font-weight: 600;
+      color: var(--color-text, #0f172a);
+    }
+    .account-topbar-back {
+      margin-left: auto;
+      font-size: var(--text-sm, .875rem);
+      color: var(--color-primary, #4f46e5);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .account-topbar-back:hover { text-decoration: underline; }
+    .account-content {
+      flex: 1;
+      max-width: 640px;
+      margin: var(--space-10, 40px) auto;
+      padding: 0 var(--space-4, 16px);
+      width: 100%;
+    }
+    .account-card {
+      background: var(--color-surface, #fff);
+      border: 1px solid var(--color-border, #e2e8f0);
+      border-radius: var(--radius-lg, 12px);
+      padding: var(--space-8, 32px);
+    }
+    .account-section-title {
+      font-size: var(--text-lg, 1.125rem);
+      font-weight: 600;
+      color: var(--color-text, #0f172a);
+      margin: 0 0 var(--space-1, 4px);
+    }
+    .account-section-desc {
+      font-size: var(--text-sm, .875rem);
+      color: var(--color-text-muted, #64748b);
+      margin: 0 0 var(--space-6, 24px);
+    }
+    .mfa-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2, 8px);
+      padding: var(--space-2, 8px) var(--space-3, 12px);
+      border-radius: var(--radius-full, 9999px);
+      font-size: var(--text-sm, .875rem);
+      font-weight: 500;
+      margin-bottom: var(--space-6, 24px);
+    }
+    .mfa-status-badge--enrolled {
+      background: #dcfce7;
+      color: #15803d;
+    }
+    .mfa-status-badge--not-enrolled {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .mfa-status-badge--required {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+    .mfa-actions { display: flex; flex-direction: column; gap: var(--space-3, 12px); }
+    .mfa-action-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-4, 16px);
+      border: 1px solid var(--color-border, #e2e8f0);
+      border-radius: var(--radius, 8px);
+      gap: var(--space-4, 16px);
+    }
+    .mfa-action-label { font-size: var(--text-sm, .875rem); font-weight: 500; }
+    .mfa-action-desc  { font-size: var(--text-xs, .75rem); color: var(--color-text-muted, #64748b); margin-top: 2px; }
+    /* QR code display */
+    #qr-code-img {
+      display: block;
+      margin: var(--space-4, 16px) auto;
+      border: 6px solid #fff;
+      border-radius: 4px;
+      box-shadow: 0 0 0 1px var(--color-border, #e2e8f0);
+    }
+    .secret-code {
+      font-family: monospace;
+      font-size: .85rem;
+      background: var(--color-bg, #f8fafc);
+      padding: var(--space-2, 8px) var(--space-3, 12px);
+      border-radius: var(--radius, 8px);
+      text-align: center;
+      letter-spacing: .1em;
+      word-break: break-all;
+      margin: var(--space-2, 8px) 0 var(--space-4, 16px);
+    }
+    .recovery-codes-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-2, 8px);
+      margin: var(--space-4, 16px) 0;
+    }
+    .recovery-code-item {
+      font-family: monospace;
+      font-size: .85rem;
+      background: var(--color-bg, #f8fafc);
+      padding: var(--space-2, 8px) var(--space-3, 12px);
+      border-radius: var(--radius, 8px);
+      text-align: center;
+      letter-spacing: .08em;
+      border: 1px solid var(--color-border, #e2e8f0);
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid var(--color-border, #e2e8f0);
+      margin: var(--space-8, 32px) 0;
+    }
+    #account-loading { text-align: center; padding: var(--space-8, 32px); color: var(--color-text-muted, #64748b); }
+  </style>
+</head>
+<body class="login-page">
+
+  <div class="account-wrap">
+
+    <div class="account-topbar">
+      <img src="assets/iurisiq-logo.png" alt="IurisIQ">
+      <span class="account-topbar-title">My Account</span>
+      <a href="/portal" class="account-topbar-back" id="back-to-portal">← Back to portal</a>
+    </div>
+
+    <div class="account-content">
+
+      <div id="account-loading">Loading…</div>
+
+      <div id="account-main" class="account-card" hidden>
+
+        <!-- ── MFA Section ───────────────────────────────────────────── -->
+        <h2 class="account-section-title">Two-Factor Authentication</h2>
+        <p class="account-section-desc">Use an authenticator app (Google Authenticator, Authy, 1Password, etc.) to generate time-based verification codes.</p>
+
+        <div id="mfa-status-area"></div>
+
+        <!-- Not enrolled state -->
+        <div id="mfa-not-enrolled" hidden>
+          <div class="mfa-actions">
+            <div class="mfa-action-row">
+              <div>
+                <div class="mfa-action-label">Authenticator app</div>
+                <div class="mfa-action-desc">Scan a QR code with your authenticator app to get started.</div>
+              </div>
+              <button class="btn btn--primary" id="btn-start-enroll">Set up</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Enrolled state -->
+        <div id="mfa-enrolled" hidden>
+          <div class="mfa-actions">
+            <div class="mfa-action-row">
+              <div>
+                <div class="mfa-action-label">Authenticator app</div>
+                <div class="mfa-action-desc">Connected — you'll be asked for a code each time you sign in.</div>
+              </div>
+              <button class="btn btn--outline btn--danger" id="btn-remove-totp">Remove</button>
+            </div>
+            <div class="mfa-action-row">
+              <div>
+                <div class="mfa-action-label">Recovery codes</div>
+                <div class="mfa-action-desc">Generate new single-use codes in case you lose access to your app.</div>
+              </div>
+              <button class="btn btn--outline" id="btn-regen-codes">Regenerate</button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- #account-main -->
+    </div><!-- .account-content -->
+  </div>
+
+  <!-- ── Enrollment modal ──────────────────────────────────────────────────── -->
+  <div id="enroll-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="enroll-modal-title">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header">
+        <h2 class="modal-title" id="enroll-modal-title">Set up authenticator app</h2>
+        <button class="modal-close" id="enroll-modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Step 1: QR code -->
+        <div id="enroll-step-qr">
+          <p style="margin:0 0 var(--space-4,16px);font-size:var(--text-sm,.875rem)">Scan this QR code with Google Authenticator, Authy, 1Password, or any TOTP app.</p>
+          <div id="qr-container" style="display:flex;justify-content:center;margin:var(--space-4,16px) 0;padding:12px;background:#fff;border-radius:8px;width:fit-content;margin-left:auto;margin-right:auto">
+            <img id="qr-img" alt="Authenticator QR code" style="width:256px;height:256px;display:block;image-rendering:pixelated">
+          </div>
+          <p style="margin:var(--space-3,12px) 0 var(--space-1,4px);font-size:var(--text-xs,.75rem);color:var(--color-text-muted,#64748b);text-align:center">Can't scan? Enter this code manually:</p>
+          <div class="secret-code" id="totp-secret"></div>
+          <hr class="divider" style="margin:var(--space-4,16px) 0">
+          <p style="margin:0 0 var(--space-3,12px);font-size:var(--text-sm,.875rem);font-weight:500">Then enter the 6-digit code your app shows to confirm setup:</p>
+          <div class="field">
+            <input type="text" id="enroll-code" inputmode="numeric" autocomplete="one-time-code"
+                   maxlength="6" placeholder="000000"
+                   style="letter-spacing:.2em;font-size:1.4rem;text-align:center">
+          </div>
+          <div id="enroll-error" class="form-error" role="alert" hidden></div>
+          <button class="btn btn--primary btn--full" id="btn-enroll-verify">Confirm &amp; activate</button>
+        </div>
+
+        <!-- Step 2: Recovery codes (shown after successful enrollment) -->
+        <div id="enroll-step-codes" hidden>
+          <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:var(--radius,8px);padding:var(--space-3,12px) var(--space-4,16px);margin-bottom:var(--space-4,16px);font-size:var(--text-sm,.875rem);color:#92400e">
+            <strong>Save these recovery codes now.</strong> They will not be shown again. If you lose access to your authenticator app, use one of these codes to sign in.
+          </div>
+          <div class="recovery-codes-grid" id="recovery-codes-display"></div>
+          <div style="display:flex;gap:var(--space-2,8px);margin-bottom:var(--space-4,16px)">
+            <button class="btn btn--outline btn--sm" id="btn-copy-codes">Copy codes</button>
+            <button class="btn btn--outline btn--sm" id="btn-download-codes">Download</button>
+          </div>
+          <button class="btn btn--primary btn--full" id="btn-done-enroll">Done — go to portal</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Remove TOTP modal ─────────────────────────────────────────────────── -->
+  <div id="remove-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="remove-modal-title">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <h2 class="modal-title" id="remove-modal-title">Remove authenticator</h2>
+        <button class="modal-close" id="remove-modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:0 0 var(--space-4,16px);font-size:var(--text-sm,.875rem)">Enter your current 6-digit code to confirm you have access to your app before removing it.</p>
+        <div class="field">
+          <label for="remove-code">Verification code</label>
+          <input type="text" id="remove-code" inputmode="numeric" autocomplete="one-time-code"
+                 maxlength="6" placeholder="000000"
+                 style="letter-spacing:.2em;font-size:1.4rem;text-align:center">
+        </div>
+        <div id="remove-error" class="form-error" role="alert" hidden></div>
+        <div style="display:flex;gap:var(--space-3,12px);margin-top:var(--space-4,16px)">
+          <button class="btn btn--outline btn--full" id="remove-cancel-btn">Cancel</button>
+          <button class="btn btn--danger btn--full" id="remove-confirm-btn">Remove authenticator</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Regen recovery codes modal ───────────────────────────────────────── -->
+  <div id="regen-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="regen-modal-title">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header">
+        <h2 class="modal-title" id="regen-modal-title">New recovery codes</h2>
+        <button class="modal-close" id="regen-modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:var(--radius,8px);padding:var(--space-3,12px) var(--space-4,16px);margin-bottom:var(--space-4,16px);font-size:var(--text-sm,.875rem);color:#92400e">
+          <strong>Your old recovery codes are now invalid.</strong> Save these new codes in a safe place.
+        </div>
+        <div class="recovery-codes-grid" id="regen-codes-display"></div>
+        <div style="display:flex;gap:var(--space-2,8px);margin-bottom:var(--space-4,16px)">
+          <button class="btn btn--outline btn--sm" id="btn-copy-regen-codes">Copy codes</button>
+          <button class="btn btn--outline btn--sm" id="btn-download-regen-codes">Download</button>
+        </div>
+        <button class="btn btn--primary btn--full" id="btn-close-regen">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js" integrity="sha384-nD3dwv4+ZqdYnmZKe/249ImlV04om7xTCcsoSeQYI+RO+XlKPoqAWaJR1M5SJH9p" crossorigin="anonymous"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="pages/account/account.js"></script>
+</body>
+</html>

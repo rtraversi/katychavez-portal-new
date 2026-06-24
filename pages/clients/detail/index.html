@@ -47,6 +47,7 @@
   <button class="detail-tab" data-tab="dates">Key Dates</button>
   <button class="detail-tab" data-tab="esign">E-Signatures</button>
   <button class="detail-tab" data-tab="messages">Messages</button>
+  <button class="detail-tab" data-tab="trust">Trust</button>
   <button class="detail-tab hidden" data-tab="immigration">Immigration</button>
 </div>
 
@@ -300,6 +301,188 @@
         <span class="msg-reply-chars" id="detail-msg-chars">0 / 2000</span>
         <button id="detail-msg-send-btn" class="btn btn--primary">Send</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Trust Ledger tab ────────────────────────────────────────────────────── -->
+<div id="tab-trust" class="tab-panel">
+  <div class="detail-section" style="padding:0;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-5) var(--space-6);border-bottom:1px solid var(--color-border)">
+      <h2 class="detail-section-title">Trust Ledger</h2>
+      <div style="display:flex;gap:var(--space-2)">
+        <button class="btn btn--ghost btn--sm" id="btn-trust-new-invoice" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Invoice
+        </button>
+        <button class="btn btn--primary btn--sm" id="btn-trust-new-entry" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Entry
+        </button>
+        <a href="#trust" class="btn btn--secondary btn--sm">All accounts →</a>
+      </div>
+    </div>
+    <div id="trust-tab-container" style="padding:var(--space-5) var(--space-6)">
+      <p class="text-muted text-sm">Click this tab to load trust ledger.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Trust entry modal (pre-filled for this matter) -->
+<div id="trust-entry-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="trust-entry-title">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="trust-entry-title">New Trust Entry</h2>
+      <button class="modal-close" id="trust-entry-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="trust-entry-form" novalidate>
+
+        <div id="trust-e-account-row" class="field" style="margin-bottom:var(--space-4);display:none">
+          <label for="trust-e-account">Trust Account <span class="required">*</span></label>
+          <select id="trust-e-account"></select>
+        </div>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="trust-e-type">Entry Type <span class="required">*</span></label>
+          <select id="trust-e-type" required>
+            <option value="">Select type…</option>
+            <option value="deposit">Deposit — client funds arriving into trust</option>
+            <option value="disbursement">Disbursement — earned fees released to operating</option>
+            <option value="adjustment_credit">Adjustment (Credit) — correction adding funds</option>
+            <option value="adjustment_debit">Adjustment (Debit) — correction removing funds</option>
+          </select>
+        </div>
+
+        <div class="field-row" style="margin-bottom:var(--space-4)">
+          <div class="field" style="flex:2">
+            <label for="trust-e-desc">Description <span class="required">*</span></label>
+            <input type="text" id="trust-e-desc" placeholder="e.g. Client retainer deposit" required>
+          </div>
+          <div class="field" style="flex:1">
+            <label for="trust-e-amount">Amount ($) <span class="required">*</span></label>
+            <input type="number" id="trust-e-amount" min="0.01" step="0.01" placeholder="0.00" required>
+          </div>
+        </div>
+
+        <!-- Disbursement invoice reference -->
+        <div id="trust-e-inv-section" class="hidden" style="background:var(--color-bg-subtle,#f8f9fa);border-radius:8px;padding:var(--space-4);margin-bottom:var(--space-4)">
+          <p style="font-size:var(--font-size-sm);font-weight:600;margin-bottom:var(--space-3)">Invoice Reference <span class="required">*</span></p>
+          <div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-3)">
+            <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-size:var(--font-size-sm)">
+              <input type="radio" name="trust-inv-path" value="portal" checked> Portal invoice
+            </label>
+            <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-size:var(--font-size-sm)">
+              <input type="radio" name="trust-inv-path" value="external"> External ref (QB / other)
+            </label>
+          </div>
+          <div id="trust-path-portal">
+            <select id="trust-e-invoice">
+              <option value="">Select sent invoice…</option>
+            </select>
+          </div>
+          <div id="trust-path-external" class="hidden">
+            <input type="text" id="trust-e-ext-ref" placeholder="e.g. QB INV-0042 / $2,500.00">
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="trust-e-payor">Payor / Payee</label>
+          <input type="text" id="trust-e-payor" placeholder="Who paid in or received funds (optional)">
+        </div>
+
+        <div id="trust-entry-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end">
+          <button type="button" class="btn btn--ghost" id="trust-entry-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="trust-entry-save">Save Entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Trust invoice modal -->
+<div id="trust-invoice-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="trust-invoice-title">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="trust-invoice-title">New Invoice</h2>
+      <button class="modal-close" id="trust-invoice-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="trust-invoice-form" novalidate>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ti-type">Invoice Type <span class="required">*</span></label>
+          <select id="ti-type" required>
+            <option value="hourly">Hourly — time-billed fees</option>
+            <option value="flat_fee">Flat Fee — fixed price engagement</option>
+            <option value="retainer">Retainer — availability retainer</option>
+            <option value="expense">Expense — cost reimbursement</option>
+          </select>
+        </div>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ti-desc">Description <span class="required">*</span></label>
+          <input type="text" id="ti-desc" placeholder="e.g. Legal services — divorce representation" required>
+        </div>
+
+        <div class="field-row" style="margin-bottom:var(--space-4)">
+          <div class="field" style="flex:1">
+            <label for="ti-amount">Amount ($) <span class="required">*</span></label>
+            <input type="number" id="ti-amount" min="0.01" step="0.01" placeholder="0.00" required>
+          </div>
+          <div class="field" style="flex:1">
+            <label for="ti-due">Due Date</label>
+            <input type="date" id="ti-due">
+          </div>
+        </div>
+
+        <!-- Flat fee: trust-first states — milestone builder -->
+        <div id="ti-milestone-section" class="hidden" style="margin-bottom:var(--space-4);background:var(--color-bg-subtle,#f8f9fa);border-radius:8px;padding:var(--space-4)">
+          <div style="font-weight:600;font-size:var(--text-sm);margin-bottom:var(--space-2)">Milestones — how this fee is earned</div>
+          <p class="text-muted text-sm" style="margin-bottom:var(--space-3)">Define each milestone and its value. Total must equal the invoice amount before saving.</p>
+          <div id="ti-milestones-list" style="margin-bottom:var(--space-3)"></div>
+          <button type="button" class="btn btn--ghost btn--sm" id="ti-add-milestone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Milestone
+          </button>
+          <div id="ti-milestone-summary" style="margin-top:var(--space-3)"></div>
+        </div>
+
+        <!-- Flat fee: operating-first states (IL) -->
+        <div id="ti-operating-warning" class="hidden" style="margin-bottom:var(--space-4);background:var(--color-warning-bg,#fffbeb);border:1px solid var(--color-warning,#f59e0b);border-radius:8px;padding:var(--space-3) var(--space-4)">
+          <div style="font-weight:600;font-size:var(--text-sm);color:var(--color-warning,#b45309);margin-bottom:4px">Operating Account — Not Trust</div>
+          <p class="text-sm" style="color:var(--color-warning,#b45309);margin:0" id="ti-operating-rule-note"></p>
+        </div>
+
+        <!-- Flat fee: choice states (CA / NY / CO / WA / AZ) -->
+        <div id="ti-disclosure-section" class="hidden" style="margin-bottom:var(--space-4);background:var(--color-info-bg,#eff6ff);border:1px solid var(--color-info,#3b82f6);border-radius:8px;padding:var(--space-3) var(--space-4)">
+          <div style="font-weight:600;font-size:var(--text-sm);color:var(--color-info,#1d4ed8);margin-bottom:var(--space-2)">Flat Fee Disclosure</div>
+          <label style="display:flex;align-items:flex-start;gap:var(--space-2);cursor:pointer;font-size:var(--text-sm)">
+            <input type="checkbox" id="ti-disclosure-check" style="margin-top:2px;flex-shrink:0">
+            <span>I have provided the client a written flat-fee disclosure. Checking this routes the fee to the <strong>operating account</strong> per state rules.</span>
+          </label>
+          <div id="ti-ca-sig-row" class="hidden" style="margin-top:var(--space-2)">
+            <label style="display:flex;align-items:flex-start;gap:var(--space-2);cursor:pointer;font-size:var(--text-sm)">
+              <input type="checkbox" id="ti-ca-sig-check" style="margin-top:2px;flex-shrink:0">
+              <span>Client has signed the disclosure (required for amounts over $1,000 in California)</span>
+            </label>
+          </div>
+          <p class="text-muted text-sm" id="ti-disclosure-hint" style="margin-top:var(--space-2);margin-bottom:0">Without disclosure, this fee will be held in trust and disbursed via milestones.</p>
+        </div>
+
+        <p class="text-muted text-sm" id="ti-draft-note" style="margin-bottom:var(--space-4)">Invoice is created as <strong>Draft</strong>. Use "Mark Sent" to make it available for trust disbursements.</p>
+
+        <div id="trust-invoice-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end">
+          <button type="button" class="btn btn--ghost" id="trust-invoice-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="trust-invoice-save">Create Invoice</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -560,6 +743,33 @@
           <button type="submit" class="btn btn--primary" id="cal-date-save-btn">Add to Calendar</button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Milestone reversal modal -->
+<div id="trust-milestone-reverse-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="tmr-title">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="tmr-title">Reverse Earned Milestone</h2>
+      <button class="modal-close" id="tmr-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--color-warning-bg,#fffbeb);border:1px solid var(--color-warning,#f59e0b);border-radius:8px;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4)">
+        <div style="font-weight:600;font-size:var(--text-sm);color:var(--color-warning,#b45309);margin-bottom:4px">Action Required After Saving</div>
+        <p class="text-sm" style="color:var(--color-warning,#b45309);margin:0">This records a trust deposit of <strong id="tmr-amount-display"></strong>. You must physically transfer that amount from your operating account back into trust to match.</p>
+      </div>
+      <div class="field" style="margin-bottom:var(--space-4)">
+        <label for="tmr-reason">Reason for reversal <span class="required">*</span></label>
+        <textarea id="tmr-reason" rows="3" placeholder="e.g. Client disputed milestone completion — fee agreement pending renegotiation" style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:6px;font-size:var(--font-size-sm);resize:vertical"></textarea>
+      </div>
+      <div id="tmr-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+      <div style="display:flex;gap:var(--space-3);justify-content:flex-end">
+        <button type="button" class="btn btn--ghost" id="tmr-cancel">Cancel</button>
+        <button type="button" class="btn btn--primary" id="tmr-confirm" style="background:var(--color-danger,#dc2626);border-color:var(--color-danger,#dc2626)">Reverse &amp; Return to Trust</button>
+      </div>
     </div>
   </div>
 </div>

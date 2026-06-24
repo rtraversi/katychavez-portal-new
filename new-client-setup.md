@@ -70,6 +70,13 @@ In the Supabase SQL editor, run each file **in order**:
 1002_calendar_outlook_provider.sql
 1003_messaging_debounced_notifications.sql
 1050_enabled_modules.sql
+1200_trust_accounting.sql
+1201_trust_retainer_migration.sql
+1202_reconciliation_improvements.sql
+1203_flat_fee_milestones.sql
+1204_milestone_clawback.sql
+1205_trust_phase2_schema.sql
+1206_mfa_recovery_codes.sql
 ```
 
 After applying 1050, seed the premium modules this client has purchased:
@@ -208,12 +215,14 @@ WHERE email = 'owner@clientdomain.com';
 ```
 
 4. Log in at `[PORTAL_URL]` to confirm access.
+5. You will be redirected to `/account?enroll=1` — set up the authenticator app and save the recovery codes. **Owner and Attorney roles cannot access the portal until 2FA is enrolled.**
 
 ---
 
 ## Step 12 — Smoke test checklist
 
 - [ ] Login works
+- [ ] 2FA enrollment: Owner is prompted to enroll at `/account?enroll=1` on first login — complete setup, save recovery codes
 - [ ] Clients page loads, can add a client
 - [ ] Tasks page loads
 - [ ] Document Intake: upload a test PDF — confirm it appears in R2 and DB
@@ -222,6 +231,7 @@ WHERE email = 'owner@clientdomain.com';
 - [ ] Conflict check: run a check
 - [ ] Messages: send a staff → client message, confirm email notification fires
 - [ ] Calendar (if enabled): connect Google or Outlook OAuth
+- [ ] Trust Accounting: create a trust deposit, confirm ledger updates and three-way reconciliation balance
 
 ---
 
@@ -264,7 +274,8 @@ WHERE email = 'owner@clientdomain.com';
 | 1000–1099 | Calendar |
 | 1050 | enabled_modules (tier model) |
 | 1100–1199 | Billing |
-| 1200–1299 | Document drafting (WebDAV) |
+| 1200–1299 | Trust Accounting (core) |
+| 1206 | MFA recovery codes (core) |
 | 1300–1399 | Doc Translations |
 | 1400–1499 | Signature Stamp |
 

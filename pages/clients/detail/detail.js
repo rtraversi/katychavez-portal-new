@@ -752,6 +752,7 @@
     wireTabs();
     wireEsignTab();
     wireMessagesTab();
+    wireTrustTab();
     wireCalDateModal();
   }
 
@@ -2936,6 +2937,739 @@
     } catch (err) {
       Utils.toast(err.message || 'Delete failed.', 'error');
     }
+  }
+
+  // ── Trust Ledger tab (lazy-loaded on first click) ────────────────────────────
+
+  const FLAT_FEE_ARCHETYPE_MAP = {
+    IL: 'operating_first',
+    CA: 'choice', NY: 'choice', CO: 'choice', WA: 'choice', AZ: 'choice', MO: 'choice',
+  };
+  function getFlatFeeArchetype(jur) {
+    return FLAT_FEE_ARCHETYPE_MAP[(jur || '').toUpperCase()] || 'trust_first';
+  }
+
+  let _trustLoaded       = false;
+  let _trustProfile      = null;
+  let _trustAccounts     = [];
+  let _trustInvoices     = [];
+  let _trustCanWrite     = false;
+  let _trustMilestones   = [];
+  let _trustJurisdiction = 'TX';
+  let _pendingReversal   = null; // { milestoneId, invoiceId, amount, desc }
+
+  function wireTrustTab() {
+    const tab = document.querySelector('[data-tab="trust"]');
+    if (!tab) return;
+
+    tab.addEventListener('click', async () => {
+      if (_trustLoaded) return;
+      _trustLoaded = true;
+      await loadTrust();
+    });
+
+    document.getElementById('btn-trust-new-entry')?.addEventListener('click', openTrustEntryModal);
+    document.getElementById('trust-entry-close')?.addEventListener('click', closeTrustEntryModal);
+    document.getElementById('trust-entry-cancel')?.addEventListener('click', closeTrustEntryModal);
+
+    document.getElementById('btn-trust-new-invoice')?.addEventListener('click', openInvoiceModal);
+    document.getElementById('trust-invoice-close')?.addEventListener('click', closeInvoiceModal);
+    document.getElementById('trust-invoice-cancel')?.addEventListener('click', closeInvoiceModal);
+    document.getElementById('trust-invoice-form')?.addEventListener('submit', saveInvoice);
+
+    document.getElementById('ti-type')?.addEventListener('change', e => {
+      showFlatFeeUI(e.target.value);
+    });
+
+    document.getElementById('ti-add-milestone')?.addEventListener('click', () => addMilestoneRow());
+
+    document.getElementById('ti-amount')?.addEventListener('input', updateMilestoneTotals);
+
+    document.getElementById('ti-disclosure-check')?.addEventListener('change', e => {
+      const jur   = _trustJurisdiction.toUpperCase();
+      const caRow = document.getElementById('ti-ca-sig-row');
+      if (e.target.checked) {
+        document.getElementById('ti-milestone-section').classList.add('hidden');
+        if (jur === 'CA' && caRow) caRow.classList.remove('hidden');
+      } else {
+        document.getElementById('ti-milestone-section').classList.remove('hidden');
+        if (caRow) caRow.classList.add('hidden');
+      }
+    });
+
+    // Delegate mark-sent / void / earn-milestone / reverse-milestone / remove-milestone clicks
+    document.addEventListener('click', async e => {
+      const ms   = e.target.closest('[data-inv-mark-sent]');
+      const vo   = e.target.closest('[data-inv-void]');
+      const earn = e.target.closest('[data-milestone-earn]');
+      const rev  = e.target.closest('[data-milestone-reverse]');
+      const rmMs = e.target.closest('[data-milestone-remove]');
+      if (ms)   await markInvoiceSent(ms.dataset.invMarkSent);
+      if (vo)   await voidInvoice(vo.dataset.invVoid);
+      if (earn) await markMilestoneEarned(earn.dataset.milestoneEarn, earn.dataset.milestoneInvoice);
+      if (rev)  openReverseModal(rev.dataset.milestoneReverse, rev.dataset.milestoneInvoice, parseFloat(rev.dataset.milestoneAmount), rev.dataset.milestoneDesc);
+      if (rmMs) { rmMs.closest('.ti-milestone-row')?.remove(); updateMilestoneTotals(); }
+    });
+
+    document.getElementById('tmr-close')?.addEventListener('click',   closeReverseModal);
+    document.getElementById('tmr-cancel')?.addEventListener('click',  closeReverseModal);
+    document.getElementById('tmr-confirm')?.addEventListener('click', confirmMilestoneReversal);
+
+    document.getElementById('trust-e-type')?.addEventListener('change', e => {
+      const isDisb = e.target.value === 'disbursement';
+      document.getElementById('trust-e-inv-section').classList.toggle('hidden', !isDisb);
+      if (isDisb) populateTrustInvoiceSelect();
+    });
+
+    document.querySelectorAll('input[name="trust-inv-path"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const isPortal = document.querySelector('input[name="trust-inv-path"]:checked').value === 'portal';
+        document.getElementById('trust-path-portal').classList.toggle('hidden', !isPortal);
+        document.getElementById('trust-path-external').classList.toggle('hidden', isPortal);
+      });
+    });
+
+    document.getElementById('trust-entry-form')?.addEventListener('submit', saveTrustEntry);
+  }
+
+  async function loadTrust() {
+    const container = document.getElementById('trust-tab-container');
+    if (!container) return;
+
+    if (!matter) {
+      container.innerHTML = '<p class="text-muted text-sm" style="padding:var(--space-2) 0">No active matter — trust entries require a matter.</p>';
+      return;
+    }
+
+    container.innerHTML = '<div style="text-align:center;color:var(--color-text-muted);padding:var(--space-6)">Loading…</div>';
+
+    try {
+      _trustProfile = _trustProfile || await Auth.getProfile();
+
+      const [balRes, entriesRes, invoicesRes, accountsRes, milestonesRes] = await Promise.all([
+        db.from('matter_trust_balances')
+          .select('balance, entry_count, last_transaction_at')
+          .eq('matter_id', matter.id)
+          .maybeSingle(),
+        db.from('trust_ledger_entries')
+          .select('id, created_at, entry_type, amount, balance_after, description, invoice_id, external_invoice_ref')
+          .eq('matter_id', matter.id)
+          .order('created_at', { ascending: false })
+          .limit(20),
+        db.from('invoices')
+          .select('id, invoice_number, amount, status, description, sent_at, invoice_type, flat_fee_route')
+          .eq('matter_id', matter.id)
+          .order('created_at', { ascending: false })
+          .limit(10),
+        db.from('trust_accounts')
+          .select('id, account_label, bank_name, account_number_last4, jurisdiction')
+          .eq('is_active', true)
+          .order('account_label'),
+        db.from('flat_fee_milestones')
+          .select('id, invoice_id, description, amount, sort_order, earned_at, earned_by, trust_entry_id, reversed_at, reversed_by, reversal_reason, reversal_entry_id')
+          .eq('matter_id', matter.id)
+          .order('sort_order'),
+      ]);
+
+      _trustAccounts = accountsRes.data || [];
+      _trustInvoices = invoicesRes.data || [];
+      _trustCanWrite = ['Owner', 'Attorney', 'Partner Attorney'].includes(_trustProfile?.role?.name || '');
+
+      if (_trustAccounts.length > 0 && _trustAccounts[0].jurisdiction) {
+        _trustJurisdiction = _trustAccounts[0].jurisdiction;
+      }
+
+      const milestonesById = {};
+      (milestonesRes.data || []).forEach(m => {
+        if (!milestonesById[m.invoice_id]) milestonesById[m.invoice_id] = [];
+        milestonesById[m.invoice_id].push(m);
+      });
+
+      const hasAcct = _trustAccounts.length > 0;
+      const btn = document.getElementById('btn-trust-new-entry');
+      if (btn && hasAcct) btn.style.display = '';
+      const invBtn = document.getElementById('btn-trust-new-invoice');
+      if (invBtn && hasAcct && _trustCanWrite) invBtn.style.display = '';
+
+      renderTrustTab(container, balRes.data, entriesRes.data || [], _trustInvoices, milestonesById);
+    } catch (err) {
+      container.innerHTML = `<p class="text-sm" style="color:var(--color-danger)">Could not load trust ledger. ${Utils.esc(err.message || '')}</p>`;
+    }
+  }
+
+  function renderTrustTab(container, balance, entries, invoices, milestonesById) {
+    function fmtC(n) {
+      if (n == null) return '—';
+      return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    const TYPE_LABELS = {
+      deposit: 'Deposit', disbursement: 'Disbursement',
+      transfer_in: 'Transfer In', transfer_out: 'Transfer Out',
+      adjustment_credit: 'Adjustment +', adjustment_debit: 'Adjustment −',
+    };
+    function isCredit(t) { return ['deposit','transfer_in','adjustment_credit'].includes(t); }
+
+    // Balance summary
+    const bal = balance?.balance ?? 0;
+    const balColor = bal > 0 ? 'var(--color-text)' : 'var(--color-text-muted)';
+    const noAccount = _trustAccounts.length === 0;
+    const balHtml = `
+      <div style="background:var(--color-bg-subtle,#f8f9fa);border-radius:8px;padding:var(--space-4) var(--space-5);margin-bottom:var(--space-5);display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
+        <div>
+          <div class="text-muted text-sm" style="margin-bottom:2px">Current Balance</div>
+          <div style="font-size:1.4rem;font-weight:700;color:${balColor}">${fmtC(bal)}</div>
+        </div>
+        ${balance?.entry_count ? `<div><div class="text-muted text-sm" style="margin-bottom:2px">Transactions</div><div style="font-weight:600">${balance.entry_count}</div></div>` : ''}
+        ${balance?.last_transaction_at ? `<div><div class="text-muted text-sm" style="margin-bottom:2px">Last Activity</div><div style="font-size:var(--font-size-sm);font-weight:500">${Utils.formatDate(balance.last_transaction_at)}</div></div>` : ''}
+        ${noAccount ? `<div style="margin-left:auto"><span class="text-muted text-sm">No trust account set up. <a href="#trust">Set up →</a></span></div>` : ''}
+      </div>`;
+
+    // Ledger entries
+    let ledgerHtml;
+    if (entries.length === 0) {
+      ledgerHtml = `<p class="text-muted text-sm" style="margin-bottom:var(--space-5)">No trust transactions on record for this matter.</p>`;
+    } else {
+      const rows = entries.map(row => {
+        const credit = isCredit(row.entry_type);
+        const color  = credit ? 'var(--color-success)' : 'var(--color-danger)';
+        const sign   = credit ? '+' : '−';
+        const invTag = row.invoice_id
+          ? `<span style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(22,163,74,.12);color:var(--color-success);margin-left:4px">INV</span>`
+          : row.external_invoice_ref
+          ? `<span style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:4px;background:var(--color-bg-subtle,#f1f5f0);color:var(--color-text-muted);margin-left:4px">EXT</span>`
+          : '';
+        return `<tr>
+          <td style="padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--color-border);color:var(--color-text-muted);font-size:var(--font-size-sm);white-space:nowrap">${Utils.formatDate(row.created_at)}</td>
+          <td style="padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--color-border);white-space:nowrap">
+            <span style="font-size:var(--font-size-sm);font-weight:500;color:${color}">${TYPE_LABELS[row.entry_type] || row.entry_type}</span>${invTag}
+          </td>
+          <td style="padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--color-border)"><span class="text-sm">${Utils.esc(Utils.truncate(row.description, 50))}</span></td>
+          <td style="padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--color-border);text-align:right;font-weight:600;color:${color};white-space:nowrap">${sign}${fmtC(row.amount).slice(1)}</td>
+          <td style="padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--color-border);text-align:right;font-size:var(--font-size-sm);white-space:nowrap">${fmtC(row.balance_after)}</td>
+        </tr>`;
+      }).join('');
+      ledgerHtml = `
+        <div style="margin-bottom:var(--space-5)">
+          <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:var(--space-3);color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.05em">Transactions</div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                <th style="text-align:left;padding:var(--space-2) var(--space-3);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Date</th>
+                <th style="text-align:left;padding:var(--space-2) var(--space-3);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Type</th>
+                <th style="text-align:left;padding:var(--space-2) var(--space-3);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Description</th>
+                <th style="text-align:right;padding:var(--space-2) var(--space-3);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Amount</th>
+                <th style="text-align:right;padding:var(--space-2) var(--space-3);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Balance After</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    // Invoices
+    const STATUS_COLOR = { draft:'var(--color-text-muted)', sent:'var(--color-info,#0ea5e9)', paid:'var(--color-success)', void:'var(--color-danger)' };
+    const TYPE_BADGE   = { flat_fee:'Flat Fee', retainer:'Retainer', expense:'Expense' };
+    let invHtml;
+    if (invoices.length === 0) {
+      invHtml = '<p class="text-muted text-sm">No invoices for this matter yet.</p>';
+    } else {
+      invHtml = invoices.map(inv => {
+        let actions = '';
+        if (_trustCanWrite) {
+          if (inv.status === 'draft') {
+            actions = `<button class="btn btn--sm btn--primary" data-inv-mark-sent="${Utils.esc(inv.id)}" style="font-size:11px;padding:3px 10px">Mark Sent</button>
+                       <button class="btn btn--sm btn--ghost" data-inv-void="${Utils.esc(inv.id)}" style="font-size:11px;padding:3px 8px;color:var(--color-danger)">Void</button>`;
+          } else if (inv.status === 'sent') {
+            actions = `<button class="btn btn--sm btn--ghost" data-inv-void="${Utils.esc(inv.id)}" style="font-size:11px;padding:3px 8px;color:var(--color-danger)">Void</button>`;
+          }
+        }
+
+        const isFlatFeeTrust = inv.invoice_type === 'flat_fee' && inv.flat_fee_route === 'trust';
+        const milestones     = (milestonesById || {})[inv.id] || [];
+        let msHtml = '';
+        if (isFlatFeeTrust && milestones.length > 0) {
+          const earnedAmt = milestones.filter(m => m.earned_at && !m.reversed_at).reduce((s,m) => s + Number(m.amount), 0);
+          const totalAmt  = milestones.reduce((s,m) => s + Number(m.amount), 0);
+          const pct       = totalAmt > 0 ? Math.round((earnedAmt / totalAmt) * 100) : 0;
+          const msRows    = milestones.map(m => {
+            const reversed  = !!m.reversed_at;
+            const earned    = !!m.earned_at && !reversed;
+            const canEarn   = _trustCanWrite && !m.earned_at && inv.status === 'sent';
+            const canReverse = _trustCanWrite && earned;
+            const dotColor  = reversed ? 'var(--color-warning,#f59e0b)' : earned ? 'var(--color-success)' : 'var(--color-border)';
+            const textStyle = reversed ? 'text-decoration:line-through;color:var(--color-text-muted)' : earned ? 'color:var(--color-text-muted)' : 'color:var(--color-text)';
+            const actionBtn = canEarn
+              ? `<button class="btn btn--sm btn--ghost" data-milestone-earn="${Utils.esc(m.id)}" data-milestone-invoice="${Utils.esc(inv.id)}" style="font-size:10px;padding:2px 7px;color:var(--color-success)">Earn</button>`
+              : canReverse
+              ? `<button class="btn btn--sm btn--ghost" data-milestone-reverse="${Utils.esc(m.id)}" data-milestone-invoice="${Utils.esc(inv.id)}" data-milestone-amount="${Utils.esc(String(m.amount))}" data-milestone-desc="${Utils.esc(m.description)}" style="font-size:10px;padding:2px 7px;color:var(--color-danger,#dc2626)">Reverse</button>`
+              : '';
+            const reversalNote = reversed && m.reversal_reason
+              ? `<div style="font-size:10px;color:var(--color-warning,#b45309);padding-left:18px;margin-top:1px">Reversed: ${Utils.esc(m.reversal_reason)}</div>`
+              : '';
+            return `<div>
+              <div style="display:flex;align-items:center;gap:var(--space-2);padding:2px 0;font-size:var(--font-size-sm)">
+                <span style="width:10px;height:10px;border-radius:50%;background:${dotColor};flex-shrink:0"></span>
+                <span style="flex:1;${textStyle}">${Utils.esc(m.description)}</span>
+                <span style="font-weight:600;min-width:60px;text-align:right">${fmtC(m.amount)}</span>
+                ${actionBtn}
+              </div>${reversalNote}
+            </div>`;
+          }).join('');
+          msHtml = `<div style="margin-top:var(--space-2);padding:var(--space-2) var(--space-3);background:var(--color-bg-subtle,#f8f9fa);border-radius:6px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-1)">
+              <span class="text-muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">Milestones</span>
+              <span style="font-size:11px;color:var(--color-text-muted)">${pct}% earned (${fmtC(earnedAmt)} / ${fmtC(totalAmt)})</span>
+            </div>
+            ${msRows}
+          </div>`;
+        }
+
+        const typeBadge = inv.invoice_type && inv.invoice_type !== 'hourly'
+          ? `<span style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:4px;background:var(--color-bg-subtle,#e8f4fd);color:var(--color-info,#0ea5e9);margin-left:4px">${TYPE_BADGE[inv.invoice_type] || inv.invoice_type}</span>`
+          : '';
+
+        return `<div style="padding:var(--space-3) 0;border-bottom:1px solid var(--color-border)">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)">
+            <div style="min-width:0;flex:1">
+              <span style="font-weight:600;font-size:var(--font-size-sm)">${Utils.esc(inv.invoice_number)}</span>${typeBadge}
+              <span class="text-muted text-sm" style="margin-left:var(--space-2)">${Utils.esc(Utils.truncate(inv.description, 45))}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:var(--space-2);flex-shrink:0">
+              ${actions}
+              <span style="font-size:var(--font-size-sm);font-weight:500;color:${STATUS_COLOR[inv.status] || 'var(--color-text)'}">${Utils.titleCase(inv.status)}</span>
+              <span style="font-weight:600;font-size:var(--font-size-sm);min-width:68px;text-align:right">${fmtC(inv.amount)}</span>
+            </div>
+          </div>
+          ${msHtml}
+        </div>`;
+      }).join('');
+    }
+
+    container.innerHTML = `
+      ${balHtml}
+      ${ledgerHtml}
+      <div>
+        <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:var(--space-3);color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.05em">Invoices</div>
+        ${invHtml}
+      </div>`;
+  }
+
+  function openTrustEntryModal() {
+    const modal = document.getElementById('trust-entry-modal');
+    if (!modal) return;
+    document.getElementById('trust-entry-form').reset();
+    document.getElementById('trust-entry-error').classList.add('hidden');
+    document.getElementById('trust-e-inv-section').classList.add('hidden');
+    document.getElementById('trust-path-portal').classList.remove('hidden');
+    document.getElementById('trust-path-external').classList.add('hidden');
+
+    // Populate account selector
+    const accountRow = document.getElementById('trust-e-account-row');
+    const accountSel = document.getElementById('trust-e-account');
+    if (_trustAccounts.length > 1) {
+      accountSel.innerHTML = _trustAccounts.map(a =>
+        `<option value="${Utils.esc(a.id)}">${Utils.esc(a.account_label)} — ${Utils.esc(a.bank_name)} ****${a.account_number_last4}</option>`
+      ).join('');
+      accountRow.style.display = '';
+    } else {
+      accountRow.style.display = 'none';
+    }
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeTrustEntryModal() {
+    document.getElementById('trust-entry-modal')?.classList.add('hidden');
+  }
+
+  function openInvoiceModal() {
+    _trustMilestones = [];
+    document.getElementById('trust-invoice-form').reset();
+    document.getElementById('trust-invoice-error').classList.add('hidden');
+    document.getElementById('ti-milestones-list').innerHTML = '';
+    document.getElementById('ti-milestone-summary').innerHTML = '';
+    showFlatFeeUI('hourly');
+    document.getElementById('trust-invoice-modal').classList.remove('hidden');
+  }
+
+  function closeInvoiceModal() {
+    document.getElementById('trust-invoice-modal')?.classList.add('hidden');
+  }
+
+  function showFlatFeeUI(type) {
+    const archetype = type === 'flat_fee' ? getFlatFeeArchetype(_trustJurisdiction) : null;
+    document.getElementById('ti-milestone-section').classList.toggle('hidden', archetype !== 'trust_first');
+    document.getElementById('ti-operating-warning').classList.toggle('hidden', archetype !== 'operating_first');
+    document.getElementById('ti-disclosure-section').classList.toggle('hidden', archetype !== 'choice');
+
+    if (archetype === 'operating_first') {
+      document.getElementById('ti-operating-rule-note').textContent =
+        'Illinois Rule 1.15(d): advance fixed fees become attorney property on receipt and must go to the operating account. Depositing in trust would constitute commingling.';
+    }
+    if (archetype === 'choice') {
+      const jur  = _trustJurisdiction.toUpperCase();
+      const hint = document.getElementById('ti-disclosure-hint');
+      if (jur === 'CA') {
+        hint.textContent = 'California Rule 1.15(b): without written disclosure this fee is held in trust. With disclosure (and client signature for amounts > $1,000) it may go to operating.';
+      } else if (jur === 'NY') {
+        hint.textContent = 'New York Ethics Op. 983: fee may go to operating with written client agreement, otherwise held in trust.';
+      } else if (jur === 'CO') {
+        hint.textContent = 'Colorado RPC 1.15(f): fee may go to operating with written disclosure, otherwise held in trust.';
+      } else {
+        hint.textContent = 'With proper written disclosure this fee may go to the operating account. Without disclosure, it is held in trust.';
+      }
+    }
+
+    if (archetype === 'trust_first' && document.getElementById('ti-milestones-list').children.length === 0) {
+      addMilestoneRow();
+    }
+  }
+
+  function addMilestoneRow(desc = '', amount = '') {
+    const list = document.getElementById('ti-milestones-list');
+    const idx  = list.children.length;
+    const row  = document.createElement('div');
+    row.className = 'ti-milestone-row';
+    row.style.cssText = 'display:flex;gap:var(--space-2);margin-bottom:var(--space-2);align-items:center';
+    row.innerHTML = `
+      <input type="text" placeholder="Milestone description" value="${Utils.esc(desc)}"
+        style="flex:1;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:6px;font-size:var(--font-size-sm)"
+        class="ti-ms-desc" data-idx="${idx}">
+      <input type="number" placeholder="Amount" value="${amount}" min="0.01" step="0.01"
+        style="width:100px;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:6px;font-size:var(--font-size-sm)"
+        class="ti-ms-amt" data-idx="${idx}">
+      <button type="button" data-milestone-remove="1" style="color:var(--color-danger);background:none;border:none;cursor:pointer;font-size:16px;line-height:1;padding:0 4px" aria-label="Remove">×</button>`;
+    list.appendChild(row);
+    row.querySelector('.ti-ms-amt').addEventListener('input', updateMilestoneTotals);
+    updateMilestoneTotals();
+  }
+
+  function updateMilestoneTotals() {
+    const amts   = Array.from(document.querySelectorAll('.ti-ms-amt')).map(i => parseFloat(i.value) || 0);
+    const total  = amts.reduce((s, a) => s + a, 0);
+    const invAmt = parseFloat(document.getElementById('ti-amount').value) || 0;
+    const ok     = invAmt > 0 && Math.abs(total - invAmt) < 0.005;
+    function fmt(n) { return '$' + n.toFixed(2); }
+    const sumEl  = document.getElementById('ti-milestone-summary');
+    if (!sumEl) return;
+    sumEl.innerHTML = `<div style="display:flex;justify-content:space-between;font-size:var(--font-size-sm);color:${ok ? 'var(--color-success)' : 'var(--color-danger)'}">
+      <span>Milestones total: <strong>${fmt(total)}</strong></span>
+      <span>Invoice total: <strong>${fmt(invAmt)}</strong></span>
+      ${ok ? '<span>✓ Balanced</span>' : '<span>Must balance before saving</span>'}
+    </div>`;
+  }
+
+  function getMilestoneRows() {
+    const rows = [];
+    document.querySelectorAll('.ti-milestone-row').forEach((row, idx) => {
+      const desc = row.querySelector('.ti-ms-desc')?.value.trim() || '';
+      const amt  = parseFloat(row.querySelector('.ti-ms-amt')?.value) || 0;
+      if (desc && amt > 0) rows.push({ description: desc, amount: amt, sort_order: idx });
+    });
+    return rows;
+  }
+
+  async function saveInvoice(e) {
+    e.preventDefault();
+    const errEl  = document.getElementById('trust-invoice-error');
+    errEl.classList.add('hidden');
+
+    const invType = document.getElementById('ti-type').value;
+    const desc    = document.getElementById('ti-desc').value.trim();
+    const amount  = parseFloat(document.getElementById('ti-amount').value);
+    const due     = document.getElementById('ti-due').value || null;
+
+    if (!desc || isNaN(amount) || amount <= 0) {
+      errEl.textContent = 'Description and a valid amount are required.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    const archetype = invType === 'flat_fee' ? getFlatFeeArchetype(_trustJurisdiction) : null;
+    let flatFeeRoute = null;
+    let disclosureAt = null;
+
+    if (invType === 'flat_fee') {
+      if (archetype === 'trust_first') {
+        flatFeeRoute = 'trust';
+        const msRows = getMilestoneRows();
+        if (msRows.length === 0) {
+          errEl.textContent = 'Add at least one milestone for a trust-first flat fee.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        const msTotal = msRows.reduce((s, m) => s + m.amount, 0);
+        if (Math.abs(msTotal - amount) >= 0.005) {
+          errEl.textContent = `Milestone total ($${msTotal.toFixed(2)}) must equal invoice amount ($${amount.toFixed(2)}).`;
+          errEl.classList.remove('hidden');
+          return;
+        }
+        _trustMilestones = msRows;
+      } else if (archetype === 'operating_first') {
+        flatFeeRoute = 'operating';
+      } else if (archetype === 'choice') {
+        const disclosed = document.getElementById('ti-disclosure-check')?.checked;
+        if (disclosed) {
+          if (_trustJurisdiction.toUpperCase() === 'CA') {
+            const signed = document.getElementById('ti-ca-sig-check')?.checked;
+            if (!signed && amount >= 1000) {
+              errEl.textContent = 'California requires client signature for flat fees over $1,000.';
+              errEl.classList.remove('hidden');
+              return;
+            }
+          }
+          flatFeeRoute = 'operating';
+          disclosureAt = new Date().toISOString();
+        } else {
+          flatFeeRoute = 'trust';
+          _trustMilestones = getMilestoneRows();
+        }
+      }
+    }
+
+    const saveBtn = document.getElementById('trust-invoice-save');
+    Utils.setLoading(saveBtn, true);
+
+    const { data: invData, error: invErr } = await db.from('invoices').insert({
+      matter_id:              matter.id,
+      description:            desc,
+      amount:                 amount,
+      due_date:               due,
+      invoice_type:           invType,
+      flat_fee_route:         flatFeeRoute,
+      flat_fee_disclosure_at: disclosureAt,
+      created_by:             _trustProfile.id,
+    }).select('id').single();
+
+    if (invErr) {
+      Utils.setLoading(saveBtn, false);
+      errEl.textContent = 'Failed to create invoice. ' + (invErr.message || '');
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    if (_trustMilestones.length > 0) {
+      const { error: msErr } = await db.from('flat_fee_milestones').insert(
+        _trustMilestones.map(m => ({
+          invoice_id:  invData.id,
+          matter_id:   matter.id,
+          description: m.description,
+          amount:      m.amount,
+          sort_order:  m.sort_order,
+        }))
+      );
+      if (msErr) {
+        Utils.setLoading(saveBtn, false);
+        errEl.textContent = 'Invoice created but milestones failed: ' + (msErr.message || '');
+        errEl.classList.remove('hidden');
+        _trustMilestones = [];
+        _trustLoaded = false; _trustInvoices = [];
+        await loadTrust();
+        return;
+      }
+    }
+
+    Utils.setLoading(saveBtn, false);
+    _trustMilestones = [];
+    closeInvoiceModal();
+    Utils.toast('Invoice created', 'success');
+    _trustLoaded = false; _trustInvoices = [];
+    await loadTrust();
+  }
+
+  async function markInvoiceSent(invoiceId) {
+    const { error } = await db.from('invoices').update({ status: 'sent' }).eq('id', invoiceId);
+    if (error) { Utils.toast('Failed to mark invoice sent. ' + (error.message || ''), 'error'); return; }
+    Utils.toast('Invoice marked sent — available for disbursements', 'success');
+    _trustLoaded = false; _trustInvoices = [];
+    await loadTrust();
+  }
+
+  async function voidInvoice(invoiceId) {
+    if (!confirm('Void this invoice? This cannot be undone.')) return;
+    const { error } = await db.from('invoices').update({ status: 'void' }).eq('id', invoiceId);
+    if (error) { Utils.toast('Failed to void invoice. ' + (error.message || ''), 'error'); return; }
+    Utils.toast('Invoice voided', 'success');
+    _trustLoaded = false; _trustInvoices = [];
+    await loadTrust();
+  }
+
+  async function markMilestoneEarned(milestoneId, invoiceId) {
+    if (!confirm('Mark this milestone as earned? This will create a disbursement from trust.')) return;
+
+    const { data: ms, error: msLookupErr } = await db.from('flat_fee_milestones')
+      .select('amount, description')
+      .eq('id', milestoneId)
+      .single();
+    if (msLookupErr || !ms) { Utils.toast('Milestone not found.', 'error'); return; }
+
+    const resolvedAcct = _trustAccounts[0]?.id;
+    if (!resolvedAcct) { Utils.toast('No trust account found.', 'error'); return; }
+
+    const { data: entryData, error: entryErr } = await db.from('trust_ledger_entries').insert({
+      trust_account_id: resolvedAcct,
+      matter_id:        matter.id,
+      entry_type:       'disbursement',
+      amount:           ms.amount,
+      description:      `Flat fee earned — ${ms.description}`,
+      invoice_id:       invoiceId,
+      created_by:       _trustProfile.id,
+    }).select('id').single();
+
+    if (entryErr) { Utils.toast('Failed to create disbursement: ' + (entryErr.message || ''), 'error'); return; }
+
+    const { error: msUpdErr } = await db.from('flat_fee_milestones').update({
+      earned_at:      new Date().toISOString(),
+      earned_by:      _trustProfile.id,
+      trust_entry_id: entryData.id,
+    }).eq('id', milestoneId);
+
+    if (msUpdErr) { Utils.toast('Disbursement created but could not mark milestone earned: ' + (msUpdErr.message || ''), 'error'); return; }
+
+    Utils.toast('Milestone earned — trust disbursement recorded', 'success');
+    _trustLoaded = false; _trustInvoices = [];
+    await loadTrust();
+  }
+
+  function openReverseModal(milestoneId, invoiceId, amount, desc) {
+    _pendingReversal = { milestoneId, invoiceId, amount, desc };
+    document.getElementById('tmr-reason').value = '';
+    document.getElementById('tmr-error').classList.add('hidden');
+    document.getElementById('tmr-amount-display').textContent = '$' + amount.toFixed(2);
+    document.getElementById('trust-milestone-reverse-modal').classList.remove('hidden');
+  }
+
+  function closeReverseModal() {
+    _pendingReversal = null;
+    document.getElementById('trust-milestone-reverse-modal')?.classList.add('hidden');
+  }
+
+  async function confirmMilestoneReversal() {
+    if (!_pendingReversal) return;
+    const reason  = document.getElementById('tmr-reason').value.trim();
+    const errEl   = document.getElementById('tmr-error');
+    if (!reason) {
+      errEl.textContent = 'A reason is required.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    errEl.classList.add('hidden');
+
+    const { milestoneId, invoiceId, amount, desc } = _pendingReversal;
+    const resolvedAcct = _trustAccounts[0]?.id;
+    if (!resolvedAcct) { Utils.toast('No trust account found.', 'error'); closeReverseModal(); return; }
+
+    // Create a deposit entry returning funds to trust (immutable ledger — never modify original disbursement)
+    const { data: entryData, error: entryErr } = await db.from('trust_ledger_entries').insert({
+      trust_account_id: resolvedAcct,
+      matter_id:        matter.id,
+      entry_type:       'deposit',
+      amount:           amount,
+      description:      `Milestone reversal — ${desc}. Reason: ${reason}`,
+      invoice_id:       invoiceId,
+      created_by:       _trustProfile.id,
+    }).select('id').single();
+
+    if (entryErr) {
+      errEl.textContent = 'Failed to create reversal entry: ' + (entryErr.message || '');
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    const { error: msErr } = await db.from('flat_fee_milestones').update({
+      reversed_at:       new Date().toISOString(),
+      reversed_by:       _trustProfile.id,
+      reversal_reason:   reason,
+      reversal_entry_id: entryData.id,
+    }).eq('id', milestoneId);
+
+    if (msErr) {
+      errEl.textContent = 'Reversal entry created but could not stamp milestone: ' + (msErr.message || '');
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    Utils.toast('Milestone reversed — funds returned to trust', 'success');
+    closeReverseModal();
+    _trustLoaded = false; _trustInvoices = [];
+    await loadTrust();
+  }
+
+  function populateTrustInvoiceSelect() {
+    const sel = document.getElementById('trust-e-invoice');
+    if (!sel) return;
+    const sentInvoices = _trustInvoices.filter(i => ['sent','paid'].includes(i.status));
+    function fmtC(n) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    sel.innerHTML = '<option value="">Select sent invoice…</option>' +
+      sentInvoices.map(inv =>
+        `<option value="${Utils.esc(inv.id)}">${Utils.esc(inv.invoice_number)} — ${fmtC(inv.amount)} — ${Utils.esc(Utils.truncate(inv.description, 40))}</option>`
+      ).join('');
+  }
+
+  async function saveTrustEntry(e) {
+    e.preventDefault();
+    const errEl = document.getElementById('trust-entry-error');
+    errEl.classList.add('hidden');
+
+    const acctId = _trustAccounts.length === 1
+      ? _trustAccounts[0].id
+      : document.getElementById('trust-e-account').value;
+    const type   = document.getElementById('trust-e-type').value;
+    const desc   = document.getElementById('trust-e-desc').value.trim();
+    const amount = parseFloat(document.getElementById('trust-e-amount').value);
+    const payor  = document.getElementById('trust-e-payor').value.trim();
+
+    if (!acctId || !type || !desc || isNaN(amount) || amount <= 0) {
+      errEl.textContent = 'Entry type, description, and a valid amount are required.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    let invoiceId = null, externalRef = null;
+    if (type === 'disbursement') {
+      const path = document.querySelector('input[name="trust-inv-path"]:checked').value;
+      if (path === 'portal') {
+        invoiceId = document.getElementById('trust-e-invoice').value || null;
+        if (!invoiceId) { errEl.textContent = 'Select a sent invoice for this disbursement.'; errEl.classList.remove('hidden'); return; }
+      } else {
+        externalRef = document.getElementById('trust-e-ext-ref').value.trim() || null;
+        if (!externalRef) { errEl.textContent = 'Enter an external invoice reference.'; errEl.classList.remove('hidden'); return; }
+      }
+    }
+
+    const saveBtn = document.getElementById('trust-entry-save');
+    Utils.setLoading(saveBtn, true);
+
+    const { error } = await db.from('trust_ledger_entries').insert({
+      trust_account_id:     acctId,
+      matter_id:            matter.id,
+      entry_type:           type,
+      amount:               amount,
+      description:          desc,
+      payor_payee:          payor || null,
+      invoice_id:           invoiceId,
+      external_invoice_ref: externalRef,
+      created_by:           _trustProfile.id,
+    });
+
+    Utils.setLoading(saveBtn, false);
+
+    if (error) {
+      const msg = error.message?.includes('IOLTA VIOLATION')
+        ? error.message.replace(/^ERROR:\s+/i, '')
+        : 'Failed to save entry. ' + (error.message || '');
+      errEl.textContent = msg;
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    closeTrustEntryModal();
+    Utils.toast('Trust entry saved', 'success');
+
+    _trustLoaded = false;
+    _trustAccounts = [];
+    _trustInvoices = [];
+    await loadTrust();
   }
 
   // ── Boot ─────────────────────────────────────────────────────────────────────

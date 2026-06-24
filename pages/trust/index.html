@@ -1,0 +1,604 @@
+<!-- Trust Accounting — loaded dynamically into #page-content by menu.js -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Trust Accounting</h1>
+    <p class="page-subtitle">IOLTA trust ledger, per-client balances, and reconciliation.</p>
+  </div>
+  <div style="display:flex;gap:var(--space-2)">
+    <button class="btn btn--ghost btn--sm" id="ta-account-settings-btn" style="display:none" title="Account Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Account Settings
+    </button>
+    <button class="btn btn--ghost btn--sm" id="ta-export-btn" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export CSV
+    </button>
+    <button class="btn btn--ghost btn--sm" id="ta-reconcile-btn" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="20 6 9 17 4 12"/></svg>
+      Reconcile
+    </button>
+    <button class="btn btn--primary" id="ta-new-entry-btn" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New Entry
+    </button>
+  </div>
+</div>
+
+<!-- Initial loading -->
+<div id="ta-loading" class="card" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">
+  Loading trust accounts…
+</div>
+
+<!-- No trust account set up yet -->
+<div id="ta-setup-required" class="card hidden" style="text-align:center;padding:var(--space-12) var(--space-6)">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto var(--space-4);color:var(--color-text-muted)">
+    <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+  </svg>
+  <h2 style="font-size:var(--font-size-lg);font-weight:600;margin-bottom:var(--space-2)">Set up your trust account</h2>
+  <p class="text-muted" style="margin-bottom:var(--space-5);max-width:480px;margin-left:auto;margin-right:auto">
+    Before recording trust transactions, add your IOLTA bank account details. You can have multiple trust accounts.
+  </p>
+  <button class="btn btn--primary" id="ta-add-account-btn">Add Trust Account</button>
+</div>
+
+<!-- Main content -->
+<div id="ta-main" class="hidden">
+
+  <!-- Firm buffer alert (shown when balance is within 2x the minimum) -->
+  <div id="ta-buffer-alert" class="hidden" style="align-items:flex-start;gap:var(--space-3);padding:var(--space-3) var(--space-4);border-radius:8px;background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.3);margin-bottom:var(--space-4);font-size:var(--font-size-sm)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0;margin-top:1px;color:#b45309"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <div id="ta-buffer-alert-text" style="color:var(--color-text)"></div>
+  </div>
+
+  <!-- Summary stat cards -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-4);margin-bottom:var(--space-6)">
+    <div class="card" style="padding:var(--space-5)">
+      <div class="text-muted text-sm" style="margin-bottom:var(--space-1)">Total in Trust</div>
+      <div id="ta-stat-total" style="font-size:1.5rem;font-weight:700;color:var(--color-text)">—</div>
+    </div>
+    <div class="card" style="padding:var(--space-5)">
+      <div class="text-muted text-sm" style="margin-bottom:var(--space-1)">Open Invoices</div>
+      <div id="ta-stat-invoices" style="font-size:1.5rem;font-weight:700;color:var(--color-text)">—</div>
+    </div>
+    <div class="card" style="padding:var(--space-5)">
+      <div class="text-muted text-sm" style="margin-bottom:var(--space-1)">Last Reconciliation</div>
+      <div id="ta-stat-recon" style="font-size:var(--font-size-base);font-weight:600;padding-top:var(--space-1)">—</div>
+    </div>
+  </div>
+
+  <!-- Account selector bar (hidden when only one account) -->
+  <div id="ta-account-bar" style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-4)">
+    <label for="ta-account-select" class="text-sm text-muted" style="white-space:nowrap">Trust Account:</label>
+    <select id="ta-account-select" style="flex:1;max-width:360px"></select>
+  </div>
+
+  <!-- Client balances -->
+  <div class="card" style="margin-bottom:var(--space-6)">
+    <div style="padding:var(--space-5) var(--space-5) 0">
+      <h2 style="font-size:var(--font-size-base);font-weight:600">Client Balances</h2>
+    </div>
+    <div id="ta-balances-loading" style="padding:var(--space-6);text-align:center;color:var(--color-text-muted)" class="text-sm">Loading…</div>
+    <div id="ta-balances-empty" class="hidden" style="padding:var(--space-8);text-align:center;color:var(--color-text-muted)">No client balances on record.</div>
+    <table id="ta-balances-table" class="hidden" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Client / Matter</th>
+          <th style="text-align:right;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Balance</th>
+          <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Last Activity</th>
+          <th style="padding:var(--space-3) var(--space-5);border-bottom:1px solid var(--color-border)"></th>
+        </tr>
+      </thead>
+      <tbody id="ta-balances-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Recent transactions -->
+  <div class="card">
+    <div style="padding:var(--space-5) var(--space-5) 0">
+      <h2 style="font-size:var(--font-size-base);font-weight:600">Recent Transactions</h2>
+    </div>
+    <div id="ta-txn-loading" style="padding:var(--space-6);text-align:center;color:var(--color-text-muted)" class="text-sm">Loading…</div>
+    <div id="ta-txn-empty" class="hidden" style="padding:var(--space-8);text-align:center;color:var(--color-text-muted)">No transactions yet.</div>
+    <div style="overflow-x:auto">
+      <table id="ta-txn-table" class="hidden" style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border);white-space:nowrap">Date</th>
+            <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Client / Matter</th>
+            <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Type</th>
+            <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Description</th>
+            <th style="text-align:right;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border);white-space:nowrap">Amount</th>
+            <th style="text-align:right;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border);white-space:nowrap">Balance After</th>
+          </tr>
+        </thead>
+        <tbody id="ta-txn-body"></tbody>
+      </table>
+    </div>
+    <div id="ta-load-more-wrap" class="hidden" style="padding:var(--space-4) var(--space-5)">
+      <button class="btn btn--ghost btn--sm" id="ta-load-more">Load more</button>
+    </div>
+  </div>
+
+  <!-- Stale Checks -->
+  <div class="card" id="ta-stale-card" style="margin-top:var(--space-6);display:none">
+    <div style="padding:var(--space-5) var(--space-5) 0;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <h2 style="font-size:var(--font-size-base);font-weight:600">Outstanding Checks</h2>
+        <p class="text-muted text-sm" style="margin-top:2px" id="ta-stale-subtitle"></p>
+      </div>
+    </div>
+    <div id="ta-stale-loading" style="padding:var(--space-6);text-align:center;color:var(--color-text-muted)" class="text-sm">Loading…</div>
+    <div id="ta-stale-empty" class="hidden" style="padding:var(--space-6);text-align:center;color:var(--color-text-muted);font-size:var(--font-size-sm)">No outstanding checks.</div>
+    <div style="overflow-x:auto">
+      <table id="ta-stale-table" class="hidden" style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border);white-space:nowrap">Date Issued</th>
+            <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Client / Matter</th>
+            <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Check #</th>
+            <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Payee</th>
+            <th style="text-align:right;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Amount</th>
+            <th style="text-align:center;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Days Out</th>
+            <th style="padding:var(--space-3) var(--space-5);border-bottom:1px solid var(--color-border)"></th>
+          </tr>
+        </thead>
+        <tbody id="ta-stale-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Reconciliation History -->
+  <div class="card" style="margin-top:var(--space-6)">
+    <div style="padding:var(--space-5) var(--space-5) 0;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:var(--font-size-base);font-weight:600">Reconciliation History</h2>
+    </div>
+    <div id="ta-recon-history-loading" style="padding:var(--space-6);text-align:center;color:var(--color-text-muted)" class="text-sm">Loading…</div>
+    <div id="ta-recon-history-empty" class="hidden" style="padding:var(--space-8);text-align:center;color:var(--color-text-muted)">No reconciliations on record. Use the Reconcile button to create one.</div>
+    <div style="overflow-x:auto">
+      <table id="ta-recon-history-table" class="hidden" style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Period</th>
+            <th style="text-align:right;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Adj. Bank Balance</th>
+            <th style="text-align:right;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Firm Ledger</th>
+            <th style="text-align:right;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Client Sum</th>
+            <th style="text-align:center;padding:var(--space-3) var(--space-5);font-size:var(--font-size-sm);color:var(--color-text-muted);font-weight:500;border-bottom:1px solid var(--color-border)">Match</th>
+            <th style="padding:var(--space-3) var(--space-5);border-bottom:1px solid var(--color-border)"></th>
+          </tr>
+        </thead>
+        <tbody id="ta-recon-history-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /ta-main -->
+
+
+<!-- ─── New Entry Modal ───────────────────────────────────────────────────────── -->
+<div id="ta-entry-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ta-entry-title">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="ta-entry-title">New Trust Entry</h2>
+      <button class="modal-close" id="ta-entry-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="ta-entry-form" novalidate>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ta-e-type">Entry Type <span class="required">*</span></label>
+          <select id="ta-e-type" required>
+            <option value="">Select type…</option>
+            <option value="deposit">Deposit — client funds arriving into trust</option>
+            <option value="disbursement">Disbursement — earned fees released to operating</option>
+            <option value="adjustment_credit">Adjustment (Credit) — correction adding funds</option>
+            <option value="adjustment_debit">Adjustment (Debit) — correction removing funds</option>
+            <option value="transfer_in">Transfer In — from another trust account</option>
+            <option value="transfer_out">Transfer Out — to another trust account</option>
+          </select>
+        </div>
+
+        <div class="field-row" style="margin-bottom:var(--space-4)">
+          <div class="field" style="flex:2">
+            <label for="ta-e-matter">Client / Matter <span class="required">*</span></label>
+            <select id="ta-e-matter" required>
+              <option value="">Select matter…</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1">
+            <label for="ta-e-amount">Amount ($) <span class="required">*</span></label>
+            <input type="number" id="ta-e-amount" min="0.01" step="0.01" placeholder="0.00" required>
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ta-e-description">Description <span class="required">*</span></label>
+          <input type="text" id="ta-e-description" placeholder="e.g. Client retainer deposit" required>
+        </div>
+
+        <!-- Disbursement invoice reference (shown only for disbursements) -->
+        <div id="ta-e-invoice-section" class="hidden" style="background:var(--color-bg-subtle,#f8f9fa);border-radius:8px;padding:var(--space-4);margin-bottom:var(--space-4)">
+          <p style="font-size:var(--font-size-sm);font-weight:600;margin-bottom:var(--space-3)">Invoice Reference <span class="required">*</span></p>
+          <div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-3)">
+            <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-size:var(--font-size-sm)">
+              <input type="radio" name="ta-e-inv-path" value="portal" checked> Portal invoice
+            </label>
+            <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-size:var(--font-size-sm)">
+              <input type="radio" name="ta-e-inv-path" value="external"> External ref (QB / other)
+            </label>
+          </div>
+          <div id="ta-e-path-portal">
+            <select id="ta-e-invoice">
+              <option value="">Select sent invoice…</option>
+            </select>
+            <p class="text-muted text-sm" style="margin-top:var(--space-2)">Only invoices with status "sent" or "paid" are shown.</p>
+          </div>
+          <div id="ta-e-path-external" class="hidden">
+            <input type="text" id="ta-e-ext-ref" placeholder="e.g. QB INV-0042 / $2,500.00">
+          </div>
+        </div>
+
+        <div class="field-row" style="margin-bottom:var(--space-4)">
+          <div class="field" style="flex:1">
+            <label for="ta-e-payor">Payor / Payee</label>
+            <input type="text" id="ta-e-payor" placeholder="Who paid in or received funds">
+          </div>
+          <div class="field" style="flex:1">
+            <label for="ta-e-check">Check Number</label>
+            <input type="text" id="ta-e-check" placeholder="Optional">
+          </div>
+        </div>
+
+        <div id="ta-entry-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end">
+          <button type="button" class="btn btn--ghost" id="ta-entry-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="ta-entry-save">Save Entry</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── Reconciliation Modal ─────────────────────────────────────────────────── -->
+<div id="ta-recon-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ta-recon-title">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="ta-recon-title">Three-Way Reconciliation</h2>
+      <button class="modal-close" id="ta-recon-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="ta-recon-form" novalidate>
+
+        <div class="field-row" style="margin-bottom:var(--space-4)">
+          <div class="field" style="flex:1">
+            <label for="ta-r-start">Period Start <span class="required">*</span></label>
+            <input type="date" id="ta-r-start" required>
+          </div>
+          <div class="field" style="flex:1">
+            <label for="ta-r-end">Period End <span class="required">*</span></label>
+            <input type="date" id="ta-r-end" required>
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ta-r-period-type">Period Type</label>
+          <select id="ta-r-period-type">
+            <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly (IL, CO, LA, CT)</option>
+          </select>
+        </div>
+
+        <!-- Step 1: Bank statement adjustment -->
+        <div style="background:var(--color-bg-subtle,#f8f9fa);border-radius:8px;padding:var(--space-4);margin-bottom:var(--space-4)">
+          <p style="font-size:var(--font-size-sm);font-weight:600;margin-bottom:var(--space-3)">Step 1 — Bank Statement Adjustment</p>
+          <div class="field" style="margin-bottom:var(--space-3)">
+            <label for="ta-r-bank" style="font-size:var(--font-size-sm)">Bank Statement Balance ($) <span class="required">*</span></label>
+            <input type="number" id="ta-r-bank" min="0" step="0.01" placeholder="0.00" required>
+          </div>
+          <div class="field-row" style="margin-bottom:var(--space-3)">
+            <div class="field" style="flex:1">
+              <label for="ta-r-dit" style="font-size:var(--font-size-sm)">+ Deposits in Transit ($)</label>
+              <input type="number" id="ta-r-dit" min="0" step="0.01" placeholder="0.00" value="0">
+              <p class="text-muted" style="font-size:11px;margin-top:3px">Recorded in books, not yet on statement</p>
+            </div>
+            <div class="field" style="flex:1">
+              <label for="ta-r-oc" style="font-size:var(--font-size-sm)">− Outstanding Checks ($)</label>
+              <input type="number" id="ta-r-oc" min="0" step="0.01" placeholder="0.00" value="0">
+              <p class="text-muted" style="font-size:11px;margin-top:3px">Issued but not yet cleared by bank</p>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:var(--space-3);border-top:1px solid var(--color-border)">
+            <span style="font-size:var(--font-size-sm);font-weight:600">= Adjusted Bank Balance</span>
+            <span id="ta-r-adjusted-display" style="font-size:1.1rem;font-weight:700">—</span>
+            <input type="hidden" id="ta-r-adjusted">
+          </div>
+        </div>
+
+        <!-- Step 2: System-computed figures (read-only) -->
+        <div style="background:var(--color-bg-subtle,#f8f9fa);border-radius:8px;padding:var(--space-4);margin-bottom:var(--space-4)">
+          <p style="font-size:var(--font-size-sm);font-weight:600;margin-bottom:var(--space-3)">Step 2 — System Records</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+            <div>
+              <div class="text-muted text-sm" style="margin-bottom:2px">Firm Ledger Total</div>
+              <div id="ta-r-ledger-display" style="font-weight:600">—</div>
+              <input type="hidden" id="ta-r-ledger">
+            </div>
+            <div>
+              <div class="text-muted text-sm" style="margin-bottom:2px">Sum of Client Ledgers</div>
+              <div id="ta-r-client-display" style="font-weight:600">—</div>
+              <input type="hidden" id="ta-r-client">
+            </div>
+          </div>
+        </div>
+
+        <!-- Live match indicator -->
+        <div id="ta-r-match" class="hidden" style="border-radius:8px;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);text-align:center;font-weight:600;font-size:var(--font-size-sm)"></div>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ta-r-notes">Notes</label>
+          <textarea id="ta-r-notes" rows="3" style="resize:vertical" placeholder="Optional notes about this reconciliation period…"></textarea>
+        </div>
+
+        <div id="ta-recon-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end">
+          <button type="button" class="btn btn--ghost" id="ta-recon-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="ta-recon-save">Save Reconciliation</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── Add Trust Account Modal ──────────────────────────────────────────────── -->
+<div id="ta-account-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ta-account-title">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="ta-account-title">Add Trust Account</h2>
+      <button class="modal-close" id="ta-account-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="ta-account-form" novalidate>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ta-a-label">Account Label <span class="required">*</span></label>
+          <input type="text" id="ta-a-label" placeholder="e.g. IOLTA Operating Trust Account" required>
+        </div>
+
+        <div class="field-row" style="margin-bottom:var(--space-4)">
+          <div class="field" style="flex:2">
+            <label for="ta-a-bank">Bank Name <span class="required">*</span></label>
+            <input type="text" id="ta-a-bank" placeholder="e.g. Wells Fargo" required>
+          </div>
+          <div class="field" style="flex:1">
+            <label for="ta-a-last4">Last 4 Digits <span class="required">*</span></label>
+            <input type="text" id="ta-a-last4" maxlength="4" placeholder="1234" required>
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:var(--space-3)">
+          <label for="ta-a-jurisdiction">State (2-letter) <span class="required">*</span></label>
+          <input type="text" id="ta-a-jurisdiction" maxlength="2" placeholder="TX" style="max-width:80px;text-transform:uppercase" required>
+        </div>
+
+        <!-- Jurisdiction-specific compliance notice (shown dynamically) -->
+        <div id="ta-a-jur-notice" class="hidden" style="border-radius:8px;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);font-size:var(--font-size-sm);background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.3);color:var(--color-text)"></div>
+
+        <div class="field-row" style="margin-bottom:var(--space-4)">
+          <div class="field" style="flex:1">
+            <label for="ta-a-min-balance">Firm Buffer ($)</label>
+            <input type="number" id="ta-a-min-balance" min="0" step="0.01" value="100.00">
+            <p class="text-muted text-sm" style="margin-top:3px">Your own funds kept in account to cover bank fees. Alert shown when balance approaches this.</p>
+          </div>
+          <div class="field" style="flex:1">
+            <label for="ta-a-stale-days">Stale Check (days)</label>
+            <input type="number" id="ta-a-stale-days" min="1" max="365" value="90">
+            <p class="text-muted text-sm" style="margin-top:3px">Days before uncleared checks are flagged stale.</p>
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ta-a-notes">Notes</label>
+          <textarea id="ta-a-notes" rows="2" style="resize:vertical" placeholder="Optional…"></textarea>
+        </div>
+
+        <div id="ta-account-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end">
+          <button type="button" class="btn btn--ghost" id="ta-account-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="ta-account-save">Add Account</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── Mark Check Cleared / Void Modal ──────────────────────────────────────── -->
+<div id="ta-clear-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ta-clear-title">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="ta-clear-title">Update Check Status</h2>
+      <button class="modal-close" id="ta-clear-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="ta-clear-info" style="background:var(--color-bg-subtle,#f8f9fa);border-radius:8px;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);font-size:var(--font-size-sm)"></div>
+      <input type="hidden" id="ta-clear-entry-id">
+      <div style="display:flex;flex-direction:column;gap:var(--space-3);margin-bottom:var(--space-4)">
+        <label style="display:flex;align-items:flex-start;gap:var(--space-3);cursor:pointer;padding:var(--space-3) var(--space-4);border-radius:8px;border:2px solid var(--color-border)" id="ta-clear-opt-cleared">
+          <input type="radio" name="ta-clear-action" value="cleared" style="margin-top:2px">
+          <div>
+            <div style="font-weight:600;font-size:var(--font-size-sm)">Mark Cleared</div>
+            <div class="text-muted text-sm">Bank has cleared this check. Enter the clearance date.</div>
+            <div id="ta-clear-date-wrap" class="hidden" style="margin-top:var(--space-2)">
+              <input type="date" id="ta-clear-date" style="width:100%">
+            </div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:var(--space-3);cursor:pointer;padding:var(--space-3) var(--space-4);border-radius:8px;border:2px solid var(--color-border)" id="ta-clear-opt-void">
+          <input type="radio" name="ta-clear-action" value="void" style="margin-top:2px">
+          <div>
+            <div style="font-weight:600;font-size:var(--font-size-sm)">Mark Void / Stale</div>
+            <div class="text-muted text-sm">Check was never cashed. A reversing deposit entry will be created to return funds to client trust balance.</div>
+          </div>
+        </label>
+      </div>
+      <div id="ta-clear-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+      <div style="display:flex;gap:var(--space-3);justify-content:flex-end">
+        <button type="button" class="btn btn--ghost" id="ta-clear-cancel">Cancel</button>
+        <button type="button" class="btn btn--primary" id="ta-clear-confirm">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── Edit Trust Account Modal ─────────────────────────────────────────────── -->
+<div id="ta-edit-account-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ta-edit-account-title">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="ta-edit-account-title">Account Settings</h2>
+      <button class="modal-close" id="ta-edit-account-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="ta-edit-account-form" novalidate>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ta-ea-label">Account Label <span class="required">*</span></label>
+          <input type="text" id="ta-ea-label" placeholder="e.g. IOLTA Operating Trust Account" required>
+        </div>
+
+        <div class="field-row" style="margin-bottom:var(--space-4)">
+          <div class="field" style="flex:2">
+            <label for="ta-ea-bank">Bank Name <span class="required">*</span></label>
+            <input type="text" id="ta-ea-bank" required>
+          </div>
+          <div class="field" style="flex:1">
+            <label for="ta-ea-last4">Last 4 Digits <span class="required">*</span></label>
+            <input type="text" id="ta-ea-last4" maxlength="4" required>
+          </div>
+        </div>
+
+        <div class="field-row" style="margin-bottom:var(--space-4)">
+          <div class="field" style="flex:1">
+            <label for="ta-ea-min-balance">Firm Buffer ($)</label>
+            <input type="number" id="ta-ea-min-balance" min="0" step="0.01">
+            <p class="text-muted text-sm" style="margin-top:3px">Your funds kept in account to cover bank fees. Alert shows when balance nears this amount.</p>
+          </div>
+          <div class="field" style="flex:1">
+            <label for="ta-ea-stale-days">Stale Check (days)</label>
+            <input type="number" id="ta-ea-stale-days" min="1" max="365">
+            <p class="text-muted text-sm" style="margin-top:3px">Days before uncleared checks are flagged stale.</p>
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:var(--space-4)">
+          <label for="ta-ea-notes">Notes</label>
+          <textarea id="ta-ea-notes" rows="2" style="resize:vertical" placeholder="Optional…"></textarea>
+        </div>
+
+        <div id="ta-edit-account-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+        <div style="display:flex;gap:var(--space-3);justify-content:flex-end">
+          <button type="button" class="btn btn--ghost" id="ta-edit-account-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="ta-edit-account-save">Save Changes</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── Per-Client Sub-Ledger Modal ──────────────────────────────────────────── -->
+<div id="ta-subledger-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ta-subledger-title">
+  <div class="modal" style="max-width:780px;width:95vw">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title" id="ta-subledger-title">Client Trust Sub-Ledger</h2>
+        <div id="ta-subledger-subtitle" style="font-size:var(--font-size-sm);color:var(--color-text-muted);margin-top:2px"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--space-2)">
+        <button class="btn btn--ghost btn--sm" id="ta-subledger-print">Print</button>
+        <button class="modal-close" id="ta-subledger-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body" style="padding-top:0">
+      <!-- Date filter -->
+      <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) 0 var(--space-4);border-bottom:1px solid var(--color-border);margin-bottom:var(--space-4)">
+        <span class="text-sm text-muted">Filter:</span>
+        <input type="date" id="ta-sl-from" style="font-size:var(--font-size-sm)">
+        <span class="text-sm text-muted">to</span>
+        <input type="date" id="ta-sl-to" style="font-size:var(--font-size-sm)">
+        <button class="btn btn--ghost btn--sm" id="ta-sl-filter">Apply</button>
+        <button class="btn btn--ghost btn--sm" id="ta-sl-clear-filter">All</button>
+        <div style="margin-left:auto;font-size:var(--font-size-sm);color:var(--color-text-muted)">Balance: <strong id="ta-sl-balance">—</strong></div>
+      </div>
+      <div id="ta-sl-loading" style="text-align:center;color:var(--color-text-muted);padding:var(--space-6)" class="text-sm">Loading…</div>
+      <div id="ta-sl-empty" class="hidden" style="text-align:center;color:var(--color-text-muted);padding:var(--space-6)">No transactions in this range.</div>
+      <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+        <table id="ta-sl-table" class="hidden" style="width:100%;border-collapse:collapse;font-size:var(--font-size-sm)">
+          <thead style="position:sticky;top:0;background:var(--color-bg-surface,#fff);z-index:1">
+            <tr>
+              <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:500;color:var(--color-text-muted);border-bottom:1px solid var(--color-border);white-space:nowrap">Date</th>
+              <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:500;color:var(--color-text-muted);border-bottom:1px solid var(--color-border)">Type</th>
+              <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:500;color:var(--color-text-muted);border-bottom:1px solid var(--color-border)">Description</th>
+              <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:500;color:var(--color-text-muted);border-bottom:1px solid var(--color-border);white-space:nowrap">Check #</th>
+              <th style="text-align:right;padding:var(--space-2) var(--space-3);font-weight:500;color:var(--color-text-muted);border-bottom:1px solid var(--color-border);white-space:nowrap">Amount</th>
+              <th style="text-align:right;padding:var(--space-2) var(--space-3);font-weight:500;color:var(--color-text-muted);border-bottom:1px solid var(--color-border);white-space:nowrap">Balance</th>
+            </tr>
+          </thead>
+          <tbody id="ta-sl-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── Export CSV Modal ──────────────────────────────────────────────────────── -->
+<div id="ta-export-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ta-export-title">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="ta-export-title">Export Trust Ledger</h2>
+      <button class="modal-close" id="ta-export-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="text-sm text-muted" style="margin-bottom:var(--space-4)">Downloads a CSV of all ledger entries for the selected account within the date range.</p>
+      <div class="field-row" style="margin-bottom:var(--space-4)">
+        <div class="field" style="flex:1">
+          <label for="ta-exp-from">From Date</label>
+          <input type="date" id="ta-exp-from">
+        </div>
+        <div class="field" style="flex:1">
+          <label for="ta-exp-to">To Date</label>
+          <input type="date" id="ta-exp-to">
+        </div>
+      </div>
+      <p class="text-muted text-sm" style="margin-bottom:var(--space-4)">Leave dates blank to export all entries.</p>
+      <div id="ta-export-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+      <div style="display:flex;gap:var(--space-3);justify-content:flex-end">
+        <button type="button" class="btn btn--ghost" id="ta-export-cancel">Cancel</button>
+        <button type="button" class="btn btn--primary" id="ta-export-download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download CSV
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

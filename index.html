@@ -57,6 +57,33 @@
         <a href="#" id="back-link" class="login-forgot">← Back to sign in</a>
       </div>
 
+      <!-- TOTP challenge panel (shown after successful password login if MFA enrolled) -->
+      <div id="mfa-panel" class="login-form" hidden>
+        <p class="reset-intro" style="margin-bottom:var(--space-1,8px)">Open your authenticator app and enter the 6-digit code.</p>
+        <div class="field">
+          <label for="mfa-code">Verification code</label>
+          <input type="text" id="mfa-code" inputmode="numeric" autocomplete="one-time-code"
+                 maxlength="6" placeholder="000000" style="letter-spacing:.2em;font-size:1.4rem;text-align:center">
+        </div>
+        <div id="mfa-error" class="form-error" role="alert" hidden></div>
+        <button id="mfa-btn" class="btn btn--primary btn--full">Verify</button>
+        <a href="#" id="mfa-recovery-link" class="login-forgot">Use a recovery code instead</a>
+      </div>
+
+      <!-- Recovery code panel (fallback when TOTP device is unavailable) -->
+      <div id="recovery-panel" class="login-form" hidden>
+        <p class="reset-intro" style="margin-bottom:var(--space-1,8px)">Enter one of your saved recovery codes. The code will be marked as used.</p>
+        <div class="field">
+          <label for="recovery-code">Recovery code</label>
+          <input type="text" id="recovery-code" autocomplete="off" placeholder="xxxx-xxxx-xxxx"
+                 style="font-family:monospace;letter-spacing:.05em">
+        </div>
+        <div id="recovery-error" class="form-error" role="alert" hidden></div>
+        <div id="recovery-message" class="form-success" role="status" hidden></div>
+        <button id="recovery-btn" class="btn btn--primary btn--full">Use recovery code</button>
+        <a href="#" id="recovery-back-link" class="login-forgot">← Back to verification code</a>
+      </div>
+
     </div>
   </div>
 

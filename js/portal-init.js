@@ -76,6 +76,26 @@
   if (profile && profile.role && profile.role.name === 'Client') {
     var settingsLink = document.getElementById('topbar-settings-link');
     if (settingsLink) settingsLink.remove();
+    // Account link stays visible for clients so they can optionally set up MFA
+
+    // Show a one-time MFA suggestion banner if they haven't enrolled
+    var bannerKey = 'mfa_banner_dismissed_' + (profile.id || '');
+    if (!localStorage.getItem(bannerKey)) {
+      Auth.listMFAFactors().then(function (factors) {
+        if (factors.length > 0) return; // already enrolled, no banner
+        var banner = document.createElement('div');
+        banner.id = 'mfa-suggestion-banner';
+        banner.style.cssText = 'background:#fffbeb;border-bottom:1px solid #fde68a;padding:10px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:.875rem;color:#78350f;flex-shrink:0';
+        banner.innerHTML = '<span style="display:flex;align-items:center;gap:8px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Secure your account with two-factor authentication — protects your legal documents if your password is ever compromised.</span><span style="display:flex;align-items:center;gap:12px;flex-shrink:0"><a href="/account" style="font-weight:600;color:#92400e;text-decoration:underline">Set up 2FA</a><button id="dismiss-mfa-banner" aria-label="Dismiss" style="background:none;border:none;cursor:pointer;color:#92400e;font-size:18px;line-height:1;padding:0">×</button></span>';
+        var mainWrapper = document.querySelector('.main-wrapper');
+        var topbar = document.getElementById('topbar');
+        if (mainWrapper && topbar) mainWrapper.insertBefore(banner, topbar.nextSibling);
+        document.getElementById('dismiss-mfa-banner').addEventListener('click', function () {
+          banner.remove();
+          localStorage.setItem(bannerKey, '1');
+        });
+      }).catch(function () {});
+    }
   }
 
   await Menu.render();

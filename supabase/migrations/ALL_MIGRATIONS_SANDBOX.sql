@@ -3057,3 +3057,638 @@ SELECT r.id, 'practice_areas_settings', 'read'::public.access_level
 FROM public.roles r
 WHERE r.name = 'Partner Attorney'
 ON CONFLICT (role_id, module_key) DO NOTHING;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 1200: Trust Accounting Module (CORE)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TYPE public.trust_entry_type AS ENUM (
+  'deposit',
+  'disbursement',
+  'transfer_in',
+  'transfer_out',
+  'adjustment_credit',
+  'adjustment_debit'
+);
+COMMENT ON TYPE public.trust_entry_type IS 'Add values via new migration only — never alter directly';
+
+CREATE TYPE public.invoice_status AS ENUM (
+  'draft',
+  'sent',
+  'paid',
+  'void'
+);
+
+INSERT INTO public.modules
+  (key, name, description, icon, route, wave, sort_order, enabled_by_default, tier)
+VALUES (
+  'trust_accounting',
+  'Trust Accounting',
+  'IOLTA trust ledger, per-client balances, three-way reconciliation, and invoice tracking.',
+  'shield',
+  'trust',
+  1,
+  55,
+  true,
+  'core'
+)
+ON CONFLICT (key) DO NOTHING;
+
+DO $$
+DECLARE
+  r_owner          uuid;
+  r_attorney       uuid;
+  r_partner_atty   uuid;
+  r_paralegal      uuid;
+  r_staffadmin     uuid;
+BEGIN
+  SELECT id INTO r_owner        FROM public.roles WHERE name = 'Owner';
+  SELECT id INTO r_attorney     FROM public.roles WHERE name = 'Attorney';
+  SELECT id INTO r_partner_atty FROM public.roles WHERE name = 'Partner Attorney';
+  SELECT id INTO r_paralegal    FROM public.roles WHERE name = 'Paralegal';
+  SELECT id INTO r_staffadmin   FROM public.roles WHERE name = 'Staff Admin';
+
+  INSERT INTO public.role_module_access (role_id, module_key, access_level) VALUES
+    (r_owner,      'trust_accounting', 'admin'),
+    (r_attorney,   'trust_accounting', 'write'),
+    (r_paralegal,  'trust_accounting', 'read'),
+    (r_staffadmin, 'trust_accounting', 'read')
+  ON CONFLICT (role_id, module_key) DO NOTHING;
+
+  IF r_partner_atty IS NOT NULL THEN
+    INSERT INTO public.role_module_access (role_id, module_key, access_level)
+    VALUES (r_partner_atty, 'trust_accounting', 'write')
+    ON CONFLICT (role_id, module_key) DO NOTHING;
+  END IF;
+END;
+$$;
+
+CREATE TABLE public.trust_accounts (
+  id                    uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now(),
+  bank_name             text        NOT NULL,
+  account_number_last4  text        NOT NULL CHECK (account_number_last4 ~ '^\d{4}$'),
+  account_label         text        NOT NULL,
+  jurisdiction          text        NOT NULL DEFAULT 'TX',
+  is_active             boolean     NOT NULL DEFAULT true,
+  notes                 text
+);
+
+CREATE INDEX idx_trust_accounts_active ON public.trust_accounts (is_active) WHERE is_active = true;
+
+CREATE TRIGGER trust_accounts_updated_at
+  BEFORE UPDATE ON public.trust_accounts
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE SEQUENCE public.invoice_number_seq START 1;
+
+CREATE OR REPLACE FUNCTION public.next_invoice_number()
+RETURNS text LANGUAGE sql AS $$
+  SELECT 'INV-' || LPAD(nextval('public.invoice_number_seq')::text, 4, '0');
+$$;
+
+CREATE TABLE public.invoices (
+  id              uuid                  PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at      timestamptz           NOT NULL DEFAULT now(),
+  updated_at      timestamptz           NOT NULL DEFAULT now(),
+  matter_id       uuid                  NOT NULL REFERENCES public.matters(id) ON DELETE RESTRICT,
+  invoice_number  text                  NOT NULL DEFAULT public.next_invoice_number(),
+  description     text                  NOT NULL,
+  amount          numeric(10,2)         NOT NULL CHECK (amount > 0),
+  status          public.invoice_status NOT NULL DEFAULT 'draft',
+  sent_at         timestamptz,
+  due_date        date,
+  created_by      uuid                  NOT NULL REFERENCES public.users(id),
+  source          text                  NOT NULL DEFAULT 'portal'
+                  CHECK (source IN ('portal', 'quickbooks', 'clio', 'other')),
+  external_id     text,
+  synced_at       timestamptz,
+  UNIQUE (invoice_number),
+  UNIQUE (source, external_id)
+);
+
+CREATE INDEX idx_invoices_matter  ON public.invoices (matter_id);
+CREATE INDEX idx_invoices_status  ON public.invoices (status);
+
+CREATE TRIGGER invoices_updated_at
+  BEFORE UPDATE ON public.invoices
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE OR REPLACE FUNCTION public.invoice_manage_sent_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.status = 'sent' AND OLD.status != 'sent' THEN
+    NEW.sent_at := now();
+  ELSIF NEW.status = 'draft' AND OLD.status = 'sent' THEN
+    NEW.sent_at := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER invoices_manage_sent_at
+  BEFORE UPDATE ON public.invoices
+  FOR EACH ROW EXECUTE FUNCTION public.invoice_manage_sent_at();
+
+CREATE TABLE public.trust_ledger_entries (
+  id                    uuid                    PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at            timestamptz             NOT NULL DEFAULT now(),
+  trust_account_id      uuid                    NOT NULL REFERENCES public.trust_accounts(id),
+  matter_id             uuid                    NOT NULL REFERENCES public.matters(id) ON DELETE RESTRICT,
+  entry_type            public.trust_entry_type NOT NULL,
+  amount                numeric(10,2)           NOT NULL CHECK (amount > 0),
+  description           text                    NOT NULL,
+  invoice_id            uuid    REFERENCES public.invoices(id),
+  external_invoice_ref  text,
+  payor_payee           text,
+  check_number          text,
+  balance_after         numeric(10,2) NOT NULL DEFAULT 0,
+  created_by            uuid    NOT NULL REFERENCES public.users(id),
+  CONSTRAINT disbursement_requires_invoice CHECK (
+    entry_type != 'disbursement'
+    OR (invoice_id IS NOT NULL OR (external_invoice_ref IS NOT NULL AND external_invoice_ref != ''))
+  )
+);
+
+CREATE INDEX idx_tle_matter   ON public.trust_ledger_entries (matter_id,        created_at DESC);
+CREATE INDEX idx_tle_account  ON public.trust_ledger_entries (trust_account_id, created_at DESC);
+CREATE INDEX idx_tle_invoice  ON public.trust_ledger_entries (invoice_id) WHERE invoice_id IS NOT NULL;
+CREATE INDEX idx_tle_type     ON public.trust_ledger_entries (entry_type);
+
+CREATE OR REPLACE FUNCTION public.trust_ledger_before_insert()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_current_balance  numeric(10,2);
+  v_new_balance      numeric(10,2);
+  v_is_debit         boolean;
+BEGIN
+  SELECT COALESCE(
+    SUM(CASE
+      WHEN entry_type IN ('deposit', 'transfer_in', 'adjustment_credit')      THEN amount
+      WHEN entry_type IN ('disbursement', 'transfer_out', 'adjustment_debit') THEN -amount
+      ELSE 0
+    END), 0)
+  INTO v_current_balance
+  FROM public.trust_ledger_entries
+  WHERE matter_id = NEW.matter_id;
+
+  v_is_debit := NEW.entry_type IN ('disbursement', 'transfer_out', 'adjustment_debit');
+
+  IF v_is_debit THEN
+    v_new_balance := v_current_balance - NEW.amount;
+    IF v_new_balance < 0 THEN
+      RAISE EXCEPTION
+        E'IOLTA VIOLATION: Insufficient trust balance.\n'
+        'Matter: %. Current balance: $%. Attempted debit: $%.\n'
+        'A client trust balance can never go negative. '
+        'Verify the balance before recording this transaction.',
+        NEW.matter_id, v_current_balance, NEW.amount;
+    END IF;
+  ELSE
+    v_new_balance := v_current_balance + NEW.amount;
+  END IF;
+
+  IF NEW.entry_type = 'disbursement' AND NEW.invoice_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.invoices
+      WHERE id = NEW.invoice_id
+        AND status IN ('sent', 'paid')
+    ) THEN
+      RAISE EXCEPTION
+        E'IOLTA VIOLATION: Cannot disburse funds — invoice has not been sent.\n'
+        'Invoice ID: %. Attorneys are prohibited from releasing trust funds until the client '
+        'has been invoiced. Set the invoice status to ''sent'' before recording this disbursement.',
+        NEW.invoice_id;
+    END IF;
+  END IF;
+
+  NEW.balance_after := v_new_balance;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trust_ledger_before_insert
+  BEFORE INSERT ON public.trust_ledger_entries
+  FOR EACH ROW EXECUTE FUNCTION public.trust_ledger_before_insert();
+
+CREATE OR REPLACE FUNCTION public.trust_ledger_immutable()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION
+    E'IOLTA VIOLATION: Trust ledger entries are immutable.\n'
+    'To correct an error, create an adjustment_credit or adjustment_debit entry. '
+    'Editing or deleting ledger entries is prohibited under IOLTA record-keeping rules.';
+END;
+$$;
+
+CREATE TRIGGER trust_ledger_no_update
+  BEFORE UPDATE ON public.trust_ledger_entries
+  FOR EACH ROW EXECUTE FUNCTION public.trust_ledger_immutable();
+
+CREATE TRIGGER trust_ledger_no_delete
+  BEFORE DELETE ON public.trust_ledger_entries
+  FOR EACH ROW EXECUTE FUNCTION public.trust_ledger_immutable();
+
+CREATE TABLE public.trust_reconciliations (
+  id                      uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  trust_account_id        uuid        NOT NULL REFERENCES public.trust_accounts(id),
+  period_start            date        NOT NULL,
+  period_end              date        NOT NULL,
+  bank_statement_balance  numeric(10,2) NOT NULL,
+  ledger_balance          numeric(10,2) NOT NULL,
+  client_ledger_sum       numeric(10,2) NOT NULL,
+  all_match               boolean       NOT NULL DEFAULT false,
+  period_type             text          NOT NULL DEFAULT 'monthly'
+                          CHECK (period_type IN ('monthly', 'quarterly')),
+  notes                   text,
+  completed_by            uuid          NOT NULL REFERENCES public.users(id),
+  CONSTRAINT valid_period CHECK (period_end > period_start)
+);
+
+CREATE INDEX idx_reconciliations_account ON public.trust_reconciliations (trust_account_id, period_end DESC);
+
+CREATE OR REPLACE FUNCTION public.reconciliation_compute_match()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.all_match := (
+    ABS(NEW.bank_statement_balance - NEW.ledger_balance)    <= 0.01
+    AND ABS(NEW.bank_statement_balance - NEW.client_ledger_sum) <= 0.01
+    AND ABS(NEW.ledger_balance         - NEW.client_ledger_sum) <= 0.01
+  );
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER reconciliation_before_insert
+  BEFORE INSERT ON public.trust_reconciliations
+  FOR EACH ROW EXECUTE FUNCTION public.reconciliation_compute_match();
+
+CREATE TRIGGER reconciliation_before_update
+  BEFORE UPDATE ON public.trust_reconciliations
+  FOR EACH ROW EXECUTE FUNCTION public.reconciliation_compute_match();
+
+CREATE OR REPLACE VIEW public.matter_trust_balances AS
+SELECT
+  matter_id,
+  SUM(CASE
+    WHEN entry_type IN ('deposit', 'transfer_in', 'adjustment_credit')      THEN amount
+    WHEN entry_type IN ('disbursement', 'transfer_out', 'adjustment_debit') THEN -amount
+    ELSE 0
+  END)              AS balance,
+  COUNT(*)          AS entry_count,
+  MAX(created_at)   AS last_transaction_at
+FROM public.trust_ledger_entries
+GROUP BY matter_id;
+
+COMMENT ON VIEW public.matter_trust_balances IS
+  'Live per-matter trust balance derived from the immutable ledger. '
+  'Always authoritative — never read matters.retainer_balance once trust_accounting is active.';
+
+ALTER TABLE public.trust_accounts        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invoices              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trust_ledger_entries  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trust_reconciliations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "trust_accounts_select"  ON public.trust_accounts FOR SELECT USING (public.can_read('trust_accounting'));
+CREATE POLICY "trust_accounts_insert"  ON public.trust_accounts FOR INSERT WITH CHECK (public.can_admin('trust_accounting'));
+CREATE POLICY "trust_accounts_update"  ON public.trust_accounts FOR UPDATE USING (public.can_admin('trust_accounting'));
+
+CREATE POLICY "invoices_select"     ON public.invoices FOR SELECT USING (public.can_read('trust_accounting'));
+CREATE POLICY "invoices_insert"     ON public.invoices FOR INSERT WITH CHECK (public.can_write('trust_accounting'));
+CREATE POLICY "invoices_update"     ON public.invoices FOR UPDATE USING (public.can_write('trust_accounting'));
+CREATE POLICY "invoices_no_delete"  ON public.invoices FOR DELETE USING (false);
+
+CREATE POLICY "tle_select"     ON public.trust_ledger_entries FOR SELECT USING (public.can_read('trust_accounting'));
+CREATE POLICY "tle_insert"     ON public.trust_ledger_entries FOR INSERT WITH CHECK (public.can_write('trust_accounting'));
+CREATE POLICY "tle_no_update"  ON public.trust_ledger_entries FOR UPDATE USING (false);
+CREATE POLICY "tle_no_delete"  ON public.trust_ledger_entries FOR DELETE USING (false);
+
+CREATE POLICY "reconciliations_select"  ON public.trust_reconciliations FOR SELECT USING (public.can_read('trust_accounting'));
+CREATE POLICY "reconciliations_insert"  ON public.trust_reconciliations FOR INSERT WITH CHECK (public.can_admin('trust_accounting'));
+CREATE POLICY "reconciliations_update"  ON public.trust_reconciliations FOR UPDATE USING (public.can_admin('trust_accounting'));
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 1201: Migrate matters.retainer_balance → trust ledger
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.migrate_retainer_balances(
+  p_trust_account_id  uuid,
+  p_migrated_by       uuid
+)
+RETURNS TABLE (
+  matter_id       uuid,
+  amount_migrated numeric(10,2)
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_matter   record;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name   = 'matters'
+      AND column_name  = 'retainer_balance'
+  ) THEN
+    RAISE NOTICE 'matters.retainer_balance already dropped — nothing to migrate.';
+    RETURN;
+  END IF;
+
+  FOR v_matter IN
+    SELECT m.id, m.retainer_balance
+    FROM public.matters m
+    WHERE m.retainer_balance IS NOT NULL
+      AND m.retainer_balance > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM public.trust_ledger_entries tle
+        WHERE tle.matter_id = m.id
+      )
+  LOOP
+    INSERT INTO public.trust_ledger_entries (
+      trust_account_id,
+      matter_id,
+      entry_type,
+      amount,
+      description,
+      created_by
+    ) VALUES (
+      p_trust_account_id,
+      v_matter.id,
+      'adjustment_credit',
+      v_matter.retainer_balance,
+      'Opening balance — migrated from system retainer balance',
+      p_migrated_by
+    );
+
+    matter_id       := v_matter.id;
+    amount_migrated := v_matter.retainer_balance;
+    RETURN NEXT;
+  END LOOP;
+END;
+$$;
+
+COMMENT ON FUNCTION public.migrate_retainer_balances(uuid, uuid) IS
+  'One-time migration: converts matters.retainer_balance into opening trust ledger entries. '
+  'Call from admin UI after firm sets up their first trust account. '
+  'Safe to call multiple times — skips matters that already have ledger entries.';
+
+-- ALTER TABLE public.matters DROP COLUMN IF EXISTS retainer_balance;
+
+-- ════════════════════════════════════════
+-- 1202_reconciliation_improvements.sql
+-- ════════════════════════════════════════
+-- Migration 1202: Reconciliation improvements + jurisdiction compliance fields
+--
+-- Fixes the three-way reconciliation formula to use adjusted bank balance:
+--   Adjusted Bank Balance = Bank Statement Balance + Deposits in Transit − Outstanding Checks
+--   all_match: Adjusted Bank Balance ≈ Firm Ledger Total ≈ Sum of Client Ledgers
+--
+-- Applied: dev ☐  prod ☐
+
+ALTER TABLE public.trust_reconciliations
+  ADD COLUMN IF NOT EXISTS deposits_in_transit   numeric(10,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS outstanding_checks    numeric(10,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS adjusted_bank_balance numeric(10,2) NOT NULL DEFAULT 0;
+
+COMMENT ON COLUMN public.trust_reconciliations.deposits_in_transit IS
+  'Deposits recorded in the firm ledger not yet reflected on the bank statement';
+COMMENT ON COLUMN public.trust_reconciliations.outstanding_checks IS
+  'Checks issued (in firm ledger) but not yet cleared by the bank';
+COMMENT ON COLUMN public.trust_reconciliations.adjusted_bank_balance IS
+  'Bank Statement Balance + Deposits in Transit − Outstanding Checks. Set by trigger only.';
+
+UPDATE public.trust_reconciliations
+  SET adjusted_bank_balance = bank_statement_balance
+  WHERE adjusted_bank_balance = 0 AND bank_statement_balance != 0;
+
+CREATE OR REPLACE FUNCTION public.reconciliation_compute_match()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.adjusted_bank_balance :=
+    NEW.bank_statement_balance
+    + COALESCE(NEW.deposits_in_transit, 0)
+    - COALESCE(NEW.outstanding_checks,  0);
+
+  NEW.all_match := (
+    ABS(NEW.adjusted_bank_balance - NEW.ledger_balance)        <= 0.01
+    AND ABS(NEW.adjusted_bank_balance - NEW.client_ledger_sum) <= 0.01
+    AND ABS(NEW.ledger_balance        - NEW.client_ledger_sum) <= 0.01
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+ALTER TABLE public.trust_accounts
+  ADD COLUMN IF NOT EXISTS retention_years    int         NOT NULL DEFAULT 7,
+  ADD COLUMN IF NOT EXISTS tajf_notified_at   timestamptz,
+  ADD COLUMN IF NOT EXISTS fl_cert_last_year  int;
+
+COMMENT ON COLUMN public.trust_accounts.retention_years IS
+  'Record retention in years. 5: most states (TX/CA/AZ/GA/etc). 6: FL/NC/SC/WI. 7: NY/IL/CO/OH/NJ/CT/RI/MA (default).';
+COMMENT ON COLUMN public.trust_accounts.tajf_notified_at IS
+  'TX only: timestamp when firm notified Texas Access to Justice Foundation of this account.';
+COMMENT ON COLUMN public.trust_accounts.fl_cert_last_year IS
+  'FL only: calendar year of last annual trust accounting certification (due June 1 – Aug 15).';
+
+UPDATE public.trust_accounts SET retention_years = CASE
+  WHEN jurisdiction IN ('FL','NC','SC','WI')                   THEN 6
+  WHEN jurisdiction IN ('NY','IL','CO','OH','NJ','CT','RI','MA') THEN 7
+  ELSE 5
+END;
+
+-- ════════════════════════════════════════
+-- 1203_flat_fee_milestones.sql
+-- ════════════════════════════════════════
+-- Migration 1203: Flat Fee Milestone Engine
+--
+-- Adds jurisdiction_rules (50-state archetype config), invoice_type + flat_fee_route
+-- columns to invoices, and flat_fee_milestones table for tracking earned flat-fee
+-- milestone trust transfers.
+--
+-- Three archetypes:
+--   trust_first     — flat fees go to trust, disbursed as milestones are earned (default / ABA)
+--   operating_first — flat fees go to operating immediately; depositing in trust = commingling (IL)
+--   choice          — attorney chooses with proper written disclosure (CA, NY, CO, WA, AZ, MO)
+--
+-- Applied: dev ☐  prod ☐
+
+CREATE TABLE public.jurisdiction_rules (
+  state_code                text        PRIMARY KEY,
+  state_name                text        NOT NULL,
+  flat_fee_archetype        text        NOT NULL DEFAULT 'trust_first'
+                            CHECK (flat_fee_archetype IN ('trust_first','operating_first','choice')),
+  retention_years           int         NOT NULL DEFAULT 5,
+  disclosure_threshold      numeric(10,2),
+  requires_client_signature boolean     NOT NULL DEFAULT false,
+  reconciliation_frequency  text        NOT NULL DEFAULT 'monthly'
+                            CHECK (reconciliation_frequency IN ('monthly','quarterly')),
+  notes                     text
+);
+
+COMMENT ON TABLE public.jurisdiction_rules IS
+  'State-specific trust accounting rules. Drives flat-fee routing, retention periods, and compliance prompts. '
+  'Update via migration only — never hand-edit.';
+
+INSERT INTO public.jurisdiction_rules
+  (state_code, state_name, flat_fee_archetype, retention_years, disclosure_threshold, requires_client_signature, reconciliation_frequency, notes)
+VALUES
+  ('AL','Alabama',          'trust_first',5,NULL,false,'monthly',NULL),
+  ('AK','Alaska',           'trust_first',5,NULL,false,'monthly',NULL),
+  ('AR','Arkansas',         'trust_first',5,NULL,false,'monthly',NULL),
+  ('CT','Connecticut',      'trust_first',7,NULL,false,'quarterly','Quarterly reconciliation required; 7-year retention'),
+  ('DC','District of Columbia','trust_first',5,NULL,false,'monthly',NULL),
+  ('DE','Delaware',         'trust_first',5,NULL,false,'monthly',NULL),
+  ('FL','Florida',          'trust_first',6,NULL,false,'monthly','Rule 1.15 — advance flat fees treated as advance retainers; held in trust until earned'),
+  ('GA','Georgia',          'trust_first',5,NULL,false,'monthly',NULL),
+  ('HI','Hawaii',           'trust_first',5,NULL,false,'monthly',NULL),
+  ('ID','Idaho',            'trust_first',5,NULL,false,'monthly',NULL),
+  ('IN','Indiana',          'trust_first',5,NULL,false,'monthly',NULL),
+  ('IA','Iowa',             'trust_first',5,NULL,false,'monthly',NULL),
+  ('KS','Kansas',           'trust_first',5,NULL,false,'monthly',NULL),
+  ('KY','Kentucky',         'trust_first',5,NULL,false,'monthly',NULL),
+  ('LA','Louisiana',        'trust_first',5,NULL,false,'quarterly','Quarterly reconciliation minimum per Rule 1.15'),
+  ('ME','Maine',            'trust_first',5,NULL,false,'monthly',NULL),
+  ('MD','Maryland',         'trust_first',5,NULL,false,'monthly',NULL),
+  ('MA','Massachusetts',    'trust_first',7,NULL,false,'monthly','Rule 1.15(e)(7) — 7-year retention'),
+  ('MI','Michigan',         'trust_first',5,NULL,false,'monthly',NULL),
+  ('MN','Minnesota',        'trust_first',5,NULL,false,'monthly',NULL),
+  ('MS','Mississippi',      'trust_first',5,NULL,false,'monthly',NULL),
+  ('MT','Montana',          'trust_first',5,NULL,false,'monthly',NULL),
+  ('NE','Nebraska',         'trust_first',5,NULL,false,'monthly',NULL),
+  ('NV','Nevada',           'trust_first',5,NULL,false,'monthly',NULL),
+  ('NH','New Hampshire',    'trust_first',5,NULL,false,'monthly',NULL),
+  ('NJ','New Jersey',       'trust_first',7,NULL,false,'monthly','7-year retention'),
+  ('NM','New Mexico',       'trust_first',5,NULL,false,'monthly',NULL),
+  ('NC','North Carolina',   'trust_first',6,NULL,false,'monthly','6-year retention'),
+  ('ND','North Dakota',     'trust_first',5,NULL,false,'monthly',NULL),
+  ('OH','Ohio',             'trust_first',7,NULL,false,'monthly','7-year retention per Rule 1.15(b)'),
+  ('OK','Oklahoma',         'trust_first',5,NULL,false,'monthly',NULL),
+  ('OR','Oregon',           'trust_first',5,NULL,false,'monthly',NULL),
+  ('PA','Pennsylvania',     'trust_first',5,NULL,false,'monthly',NULL),
+  ('RI','Rhode Island',     'trust_first',7,NULL,false,'monthly','7-year retention'),
+  ('SC','South Carolina',   'trust_first',6,NULL,false,'monthly','6-year retention'),
+  ('SD','South Dakota',     'trust_first',5,NULL,false,'monthly',NULL),
+  ('TN','Tennessee',        'trust_first',5,NULL,false,'monthly',NULL),
+  ('TX','Texas',            'trust_first',5,NULL,false,'monthly','TAJF notification required within 30 days of opening/closing account'),
+  ('UT','Utah',             'trust_first',5,NULL,false,'monthly',NULL),
+  ('VT','Vermont',          'trust_first',5,NULL,false,'monthly',NULL),
+  ('VA','Virginia',         'trust_first',5,NULL,false,'monthly',NULL),
+  ('WV','West Virginia',    'trust_first',5,NULL,false,'monthly',NULL),
+  ('WI','Wisconsin',        'trust_first',6,NULL,false,'monthly','SCR 20:1.15(i) — 6-year retention'),
+  ('WY','Wyoming',          'trust_first',5,NULL,false,'monthly',NULL),
+  ('IL','Illinois',         'operating_first',7,NULL,false,'quarterly','Rule 1.15(d) — advance fixed fees go to operating, not trust; quarterly reconciliation; 7-year retention'),
+  ('AZ','Arizona',          'choice',5,NULL,   false,'monthly', 'ER 1.15 — operating allowed with written disclosure'),
+  ('CA','California',       'choice',5,1000.00, true,'monthly', 'Rule 1.15(b) — operating allowed with written disclosure; client signature required if amount > $1,000'),
+  ('CO','Colorado',         'choice',7,NULL,   false,'quarterly','RPC 1.15(f) + Opinion 134 — operating allowed with written disclosure; quarterly reconciliation; 7-year retention'),
+  ('MO','Missouri',         'choice',5,NULL,   false,'monthly', 'Choice varies by fee agreement terms'),
+  ('NY','New York',         'choice',7,NULL,   false,'monthly', 'Ethics Op 983 — either trust or operating by written agreement; 7-year retention'),
+  ('WA','Washington',       'choice',5,NULL,   false,'monthly', 'RPC 1.15B — operating allowed with written fee agreement')
+ON CONFLICT (state_code) DO NOTHING;
+
+ALTER TABLE public.jurisdiction_rules ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "jurisdiction_rules_select"
+  ON public.jurisdiction_rules FOR SELECT
+  USING (auth.uid() IS NOT NULL);
+
+ALTER TABLE public.invoices
+  ADD COLUMN IF NOT EXISTS invoice_type text NOT NULL DEFAULT 'hourly'
+    CHECK (invoice_type IN ('hourly','flat_fee','retainer','expense')),
+  ADD COLUMN IF NOT EXISTS flat_fee_route text
+    CHECK (flat_fee_route IN ('trust','operating')),
+  ADD COLUMN IF NOT EXISTS flat_fee_disclosure_at timestamptz;
+
+COMMENT ON COLUMN public.invoices.invoice_type IS
+  'hourly: time-billed. flat_fee: fixed price. retainer: availability retainer. expense: cost reimbursement.';
+COMMENT ON COLUMN public.invoices.flat_fee_route IS
+  'For flat_fee invoices: trust = held in IOLTA until earned via milestones; '
+  'operating = deposited directly to operating account (IL, or choice states with written disclosure).';
+COMMENT ON COLUMN public.invoices.flat_fee_disclosure_at IS
+  'Timestamp when attorney confirmed written flat-fee disclosure was obtained (choice states only).';
+
+CREATE TABLE public.flat_fee_milestones (
+  id              uuid          PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at      timestamptz   NOT NULL DEFAULT now(),
+  invoice_id      uuid          NOT NULL REFERENCES public.invoices(id) ON DELETE CASCADE,
+  matter_id       uuid          NOT NULL REFERENCES public.matters(id)  ON DELETE RESTRICT,
+  description     text          NOT NULL,
+  amount          numeric(10,2) NOT NULL CHECK (amount > 0),
+  sort_order      int           NOT NULL DEFAULT 0,
+  earned_at       timestamptz,
+  earned_by       uuid          REFERENCES public.users(id),
+  trust_entry_id  uuid          REFERENCES public.trust_ledger_entries(id)
+);
+
+CREATE INDEX idx_milestones_invoice ON public.flat_fee_milestones (invoice_id);
+CREATE INDEX idx_milestones_matter  ON public.flat_fee_milestones (matter_id);
+
+COMMENT ON TABLE public.flat_fee_milestones IS
+  'Earned-value milestones for flat-fee invoices routed through trust. '
+  'Marking a milestone earned triggers a disbursement from trust for that milestone amount.';
+
+ALTER TABLE public.flat_fee_milestones ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "milestones_select"
+  ON public.flat_fee_milestones FOR SELECT
+  USING (public.can_read('trust_accounting'));
+
+CREATE POLICY "milestones_insert"
+  ON public.flat_fee_milestones FOR INSERT
+  WITH CHECK (public.can_write('trust_accounting'));
+
+CREATE POLICY "milestones_update"
+  ON public.flat_fee_milestones FOR UPDATE
+  USING (public.can_write('trust_accounting'));
+
+CREATE POLICY "milestones_no_delete"
+  ON public.flat_fee_milestones FOR DELETE
+  USING (false);
+
+
+-- ============================================================
+-- 1204_milestone_clawback.sql
+-- ============================================================
+
+ALTER TABLE public.flat_fee_milestones
+  ADD COLUMN IF NOT EXISTS reversed_at       timestamptz,
+  ADD COLUMN IF NOT EXISTS reversed_by       uuid REFERENCES public.users(id),
+  ADD COLUMN IF NOT EXISTS reversal_reason   text,
+  ADD COLUMN IF NOT EXISTS reversal_entry_id uuid REFERENCES public.trust_ledger_entries(id);
+
+COMMENT ON COLUMN public.flat_fee_milestones.reversed_at IS
+  'Timestamp when an earned milestone was formally reversed. '
+  'A corresponding deposit entry in trust_ledger_entries returns the funds.';
+COMMENT ON COLUMN public.flat_fee_milestones.reversed_by IS
+  'User who initiated the milestone reversal.';
+COMMENT ON COLUMN public.flat_fee_milestones.reversal_reason IS
+  'Required explanation for the reversal. Shown in audit trail and client ledger view.';
+COMMENT ON COLUMN public.flat_fee_milestones.reversal_entry_id IS
+  'The trust_ledger_entries deposit row created when this milestone was reversed.';
+
+
+-- ============================================================
+-- 1205_trust_phase2_schema.sql
+-- ============================================================
+
+ALTER TABLE public.trust_accounts
+  ADD COLUMN IF NOT EXISTS minimum_balance   numeric(10,2) NOT NULL DEFAULT 100.00,
+  ADD COLUMN IF NOT EXISTS stale_check_days  int           NOT NULL DEFAULT 90;
+
+COMMENT ON COLUMN public.trust_accounts.minimum_balance IS
+  'Minimum balance the firm must maintain in this account to cover bank fees (firm own funds, not client funds). '
+  'Alert shown in UI when (ledger_balance − minimum_balance) falls below this threshold.';
+
+COMMENT ON COLUMN public.trust_accounts.stale_check_days IS
+  'Number of days after which an outstanding (uncleared) disbursement check is flagged stale. '
+  'Industry default is 90 days. Varies 60–180 by firm preference.';
+
+ALTER TABLE public.trust_ledger_entries
+  ADD COLUMN IF NOT EXISTS cleared_at  date;
+
+COMMENT ON COLUMN public.trust_ledger_entries.cleared_at IS
+  'Date the bank cleared this transaction. NULL means uncleared/outstanding. '
+  'Used to identify outstanding checks (disbursements with check_number != NULL and cleared_at IS NULL). '
+  'Set by staff when reconciling against the bank statement.';
+
