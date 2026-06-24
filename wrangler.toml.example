@@ -24,13 +24,13 @@ crons = ["0 14 * * *", "*/5 * * * *"]   # Daily 9am CST: doc reminders | Every 5
 # ── Non-sensitive vars (safe to commit once filled in) ────────────────────────
 # Secrets (listed below) are set via: npx wrangler secret put <NAME>
 [vars]
-SUPABASE_URL      = "https://YOUR-PROJECT-REF.supabase.co"
-SUPABASE_ANON_KEY = "YOUR-SUPABASE-ANON-KEY"
-R2_ACCOUNT_ID     = "YOUR-CLOUDFLARE-ACCOUNT-ID"
-R2_BUCKET_NAME    = "CLIENT-SLUG-portal-prod"
+SUPABASE_URL      = "https://syqpooenhygbkedfthwe.supabase.co
+SUPABASE_ANON_KEY = "sb_publishable_1iHAF45Itws20diDdJG0bg_O1wKk5H2"
+R2_ACCOUNT_ID     = "463b69cee7d11e6b333a14670b98c6b5"
+R2_BUCKET_NAME    = "katychavez-portal"
 PORTAL_URL        = "https://CLIENT-SLUG.YOUR-CF-SUBDOMAIN.workers.dev"
-PORTAL_FIRM_NAME  = "Client Firm Name"
-PORTAL_FROM_EMAIL = "portal@clientdomain.com"
+PORTAL_FIRM_NAME  = "Katy Chavez, Atty"
+PORTAL_FROM_EMAIL = "katychavezlaw@gmail.com"
 B2_ENDPOINT       = "s3.us-east-005.backblazeb2.com"   # adjust region if needed
 B2_BUCKET_NAME    = "CLIENT-SLUG-portal-backup"
 ATTACHMENTAV_API_URL = "https://us.developer.attachmentav.com"   # or eu. for EU region

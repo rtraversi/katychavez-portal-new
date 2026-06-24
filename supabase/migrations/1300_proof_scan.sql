@@ -58,3 +58,24 @@ ALTER TABLE proof_scans      ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "staff_read_form_editions"    ON form_editions    FOR SELECT USING (true);
 CREATE POLICY "staff_all_proof_scan_config" ON proof_scan_config FOR ALL    USING (true);
 CREATE POLICY "staff_all_proof_scans"       ON proof_scans      FOR ALL    USING (true);
+
+-- ── Register proof_scan as a module ──────────────────────────────────────────
+
+INSERT INTO public.modules (key, name, description, icon, route, wave, sort_order, enabled_by_default)
+VALUES (
+  'proof_scan',
+  'Proof Scan',
+  'AI-powered USCIS form verification for immigration filings.',
+  'shield',
+  'proof-scan',
+  1,
+  57,
+  false
+)
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT id, 'proof_scan', 'write'
+FROM public.roles
+WHERE name IN ('Owner', 'Attorney', 'Partner Attorney', 'Paralegal')
+ON CONFLICT (role_id, module_key) DO NOTHING;

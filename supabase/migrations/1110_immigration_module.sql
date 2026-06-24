@@ -124,3 +124,24 @@ SELECT r.id, 'practice_areas_settings', 'read'::public.access_level
 FROM public.roles r
 WHERE r.name = 'Partner Attorney'
 ON CONFLICT (role_id, module_key) DO NOTHING;
+
+-- ── Register immigration as a module ─────────────────────────────────────────
+
+INSERT INTO public.modules (key, name, description, icon, route, wave, sort_order, enabled_by_default)
+VALUES (
+  'immigration',
+  'Immigration',
+  'Visas, green cards, naturalization, removal defense, and related matters.',
+  'globe',
+  'immigration',
+  1,
+  15,
+  false
+)
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO public.role_module_access (role_id, module_key, access_level)
+SELECT id, 'immigration', 'write'
+FROM public.roles
+WHERE name IN ('Owner', 'Attorney', 'Partner Attorney', 'Paralegal')
+ON CONFLICT (role_id, module_key) DO NOTHING;
