@@ -18,14 +18,21 @@ You need accounts for:
 
 ---
 
-## Step 1 — Choose a client slug
+## Step 1 — Initialize the client directory
 
 Pick a short lowercase identifier: `smithlaw`, `joneslegal`, etc.
 This slug becomes the worker name, R2 bucket name, and B2 bucket name.
 
+Run the init script from inside the template directory:
+
+```powershell
+cd C:\Sites\iurisiq-portal-template
+.\scripts\new-client-init.ps1 -Slug smithlaw -Dest C:\Sites\smithlaw-portal-new
 ```
-CLIENT_SLUG = smithlaw
-```
+
+This copies all template files (excluding `.env`, `wrangler.toml`, `node_modules`, and generated files), creates a fresh `.env` with placeholders, and runs `npm install`.
+
+**Do not use robocopy or xcopy directly** — they copy `.env` and carry over credentials from the previous deployment.
 
 ---
 
