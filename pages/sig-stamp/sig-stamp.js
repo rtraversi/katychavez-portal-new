@@ -25,7 +25,8 @@ function loadScript(src) {
   let sourceFile    = null;       // original File object
   let sourcePdfBytes = null;      // ArrayBuffer of original PDF
   let sourceImageDataUrl = null;  // for image sources
-  let sigDataUrl    = null;       // attorney signature blob URL
+  let sigDataUrl    = null;       // attorney signature blob URL (for <img> preview)
+  let sigBytes      = null;       // attorney signature raw bytes (ArrayBuffer, for pdf-lib embed)
   let pdfScale      = 1.5;
   let rotation      = 0;          // 0 | 90 | 180 | 270 (CW degrees applied to source)
 
@@ -72,6 +73,7 @@ function loadScript(src) {
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
+      sigBytes   = await blob.arrayBuffer();
       sigDataUrl = URL.createObjectURL(blob);
       sigOverlayImg.src = sigDataUrl;
     } catch (err) {
@@ -452,10 +454,8 @@ function loadScript(src) {
     const canW  = docCanvas.width;
     const canH  = docCanvas.height;
 
-    // Embed signature PNG
-    const sigResponse = await fetch(sigDataUrl);
-    const sigBlob     = await sigResponse.blob();
-    const sigBytes    = await sigBlob.arrayBuffer();
+    // Embed signature PNG (use stored bytes — fetching a blob: URL is blocked by CSP connect-src)
+    if (!sigBytes) throw new Error('No attorney signature loaded — upload one in Settings → Attorney Signature');
     const embeddedSig = await pdfLibDoc.embedPng(sigBytes);
 
     // Coordinate math: canvas → PDF
