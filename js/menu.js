@@ -132,11 +132,20 @@ window.Menu = (function () {
 
     nav.innerHTML = html;
 
-    // Wire flyout hover/focus
+    // Wire flyout hover/focus — fixed positioning escapes overflow:auto clipping in sidebar-nav
     nav.querySelectorAll('.nav-group').forEach(group => {
       let timer;
-      const open = () => { clearTimeout(timer); group.classList.add('flyout-open'); group.querySelector('.nav-group-btn').setAttribute('aria-expanded', 'true'); };
-      const close = () => { timer = setTimeout(() => { group.classList.remove('flyout-open'); group.querySelector('.nav-group-btn').setAttribute('aria-expanded', 'false'); }, 120); };
+      const btn    = group.querySelector('.nav-group-btn');
+      const flyout = group.querySelector('.nav-flyout');
+      const open = () => {
+        clearTimeout(timer);
+        const rect = btn.getBoundingClientRect();
+        flyout.style.top  = rect.top + 'px';
+        flyout.style.left = (rect.right + 6) + 'px';
+        group.classList.add('flyout-open');
+        btn.setAttribute('aria-expanded', 'true');
+      };
+      const close = () => { timer = setTimeout(() => { group.classList.remove('flyout-open'); btn.setAttribute('aria-expanded', 'false'); }, 120); };
       group.addEventListener('mouseenter', open);
       group.addEventListener('mouseleave', close);
       group.addEventListener('focusin',    open);
