@@ -143,7 +143,15 @@ export default {
     const url = new URL(request.url);
     const handler = routes[url.pathname];
     if (handler) {
-      return handler({ request, env, params: {}, data: {} });
+      try {
+        return await handler({ request, env, params: {}, data: {} });
+      } catch (err) {
+        console.error('[worker] unhandled error in', url.pathname, err?.message || err);
+        return new Response(JSON.stringify({ error: 'Internal server error' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
     // Rewrite clean URLs to .html files (avoids relying on _redirects from Worker code)
     const rewrite = HTML_REWRITES[url.pathname] ||

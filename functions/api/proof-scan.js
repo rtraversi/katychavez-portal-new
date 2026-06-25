@@ -129,6 +129,9 @@ export async function onRequest({ request, env }) {
       throw new Error(`Claude API ${claudeRes.status}: ${errText}`);
     }
     claudeData = await claudeRes.json();
+    if (!claudeData?.content?.[0]?.text) {
+      throw new Error('Unexpected response from Claude API (no content)');
+    }
   } catch (err) {
     console.error('[proof-scan] Claude API error:', err.message);
     return json(500, { error: err.message });
