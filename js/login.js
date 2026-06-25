@@ -197,49 +197,4 @@
   recoveryCodeEl.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); recoveryBtn.click(); }
   });
-
-  // ── Forgot password ──────────────────────────────────────────────────────────
-
-  var forgotLink = document.getElementById('forgot-link');
-  var resetPanel = document.getElementById('reset-panel');
-  var backLink   = document.getElementById('back-link');
-  var resetBtn   = document.getElementById('reset-btn');
-  var resetEmail = document.getElementById('reset-email');
-  var resetMsg   = document.getElementById('reset-message');
-  var resetErr   = document.getElementById('reset-error');
-
-  forgotLink.addEventListener('click', function (e) {
-    e.preventDefault();
-    form.hidden = true;
-    resetPanel.hidden = false;
-    resetEmail.value = emailEl.value;
-    resetEmail.focus();
-  });
-
-  backLink.addEventListener('click', function (e) {
-    e.preventDefault();
-    resetPanel.hidden = true;
-    form.hidden = false;
-  });
-
-  resetBtn.addEventListener('click', async function () {
-    resetMsg.hidden = true;
-    resetErr.hidden = true;
-    var email = resetEmail.value.trim();
-    if (!email) { resetErr.textContent = 'Enter your email.'; resetErr.hidden = false; return; }
-
-    resetBtn.disabled = true;
-    resetBtn.textContent = 'Sending…';
-    try {
-      await Auth.sendPasswordReset(email);
-      resetMsg.textContent = 'Reset link sent — check your email.';
-      resetMsg.hidden = false;
-    } catch (err) {
-      resetErr.textContent = err.message;
-      resetErr.hidden = false;
-    } finally {
-      resetBtn.disabled = false;
-      resetBtn.textContent = 'Send reset link';
-    }
-  });
 })();

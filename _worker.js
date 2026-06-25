@@ -100,6 +100,7 @@ const routes = {
 const HTML_REWRITES = {
   '/portal': '/portal.html',
   '/reset-password': '/reset-password.html',
+  '/forgot-password': '/forgot-password.html',
   '/account': '/account.html',
 };
 

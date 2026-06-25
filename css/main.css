@@ -82,6 +82,9 @@ body {
   color: var(--color-text-muted);
 }
 
+/* Ensure [hidden] always wins — .login-form's display:flex would otherwise override the browser built-in */
+[hidden] { display: none !important; }
+
 /* Form */
 .login-form { display: flex; flex-direction: column; gap: var(--space-4); }
 
