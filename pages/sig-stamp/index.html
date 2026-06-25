@@ -87,8 +87,4 @@
 <!-- Status area -->
 <div id="sig-stamp-status" style="font-size:var(--text-sm);color:var(--color-text-muted);min-height:1.5em"></div>
 
-<!-- CDN libraries loaded at bottom so they don't block page render -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
-<script>if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';</script>
-<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-<script src="/pages/sig-stamp/sig-stamp.js"></script>
+<!-- CDN libraries are loaded dynamically by sig-stamp.js (innerHTML injection doesn't execute <script> tags) -->
