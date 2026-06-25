@@ -13,6 +13,7 @@
   --sidebar-icon-active:  #a8c9a0;
   --sidebar-accent:       #42563e;
   --sidebar-width:        240px;
+  --sidebar-collapsed-width: 64px;
 
   /* Topbar */
   --topbar-gradient: linear-gradient(170deg, rgba(74,110,64,.86) 0%, rgba(42,70,36,.86) 50%, rgba(16,38,14,.94) 100%);
