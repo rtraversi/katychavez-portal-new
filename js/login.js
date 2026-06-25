@@ -41,6 +41,14 @@
   var _mfaFactorId    = null;
   var _mfaChallengeId = null;
 
+  function setRememberedDevice(email) {
+    try {
+      localStorage.setItem('mfa_device_' + btoa(email), JSON.stringify({
+        expiry: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      }));
+    } catch (_) {}
+  }
+
   var mfaPanel       = document.getElementById('mfa-panel');
   var mfaCodeEl      = document.getElementById('mfa-code');
   var mfaErrorEl     = document.getElementById('mfa-error');
@@ -89,6 +97,12 @@
   });
 
   async function startMFAChallenge() {
+    // Skip TOTP prompt if this device was remembered within the last 30 days
+    if (Auth.isDeviceRemembered(emailEl.value.trim())) {
+      window.location.replace('/portal');
+      return;
+    }
+
     var factors = await Auth.listMFAFactors();
     if (!factors.length) {
       window.location.replace('/portal');
@@ -119,6 +133,10 @@
 
     try {
       await Auth.verifyTOTP(_mfaFactorId, _mfaChallengeId, code);
+      var rememberEl = document.getElementById('mfa-remember');
+      if (rememberEl && rememberEl.checked) {
+        setRememberedDevice(emailEl.value.trim());
+      }
       window.location.replace('/portal');
     } catch (err) {
       mfaErrorEl.textContent = 'Incorrect code — check your app and try again.';
@@ -197,4 +215,5 @@
   recoveryCodeEl.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); recoveryBtn.click(); }
   });
+
 })();

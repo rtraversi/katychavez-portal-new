@@ -15,6 +15,16 @@ window.Auth = (function () {
     return data.session;
   }
 
+  // Returns true if this browser has a valid 30-day device-remembered token for the given email.
+  function isDeviceRemembered(email) {
+    try {
+      const raw = localStorage.getItem('mfa_device_' + btoa(email));
+      if (!raw) return false;
+      const { expiry } = JSON.parse(raw);
+      return typeof expiry === 'number' && expiry > Date.now();
+    } catch (_) { return false; }
+  }
+
   // Guard: call at the top of every portal page.
   // Redirects to / if no valid session, or to /account if MFA enrollment is required.
   async function requireAuth() {
@@ -30,10 +40,14 @@ window.Auth = (function () {
       if (aal) {
         if (aal.currentLevel === 'aal1' && aal.nextLevel === 'aal2') {
           // Has an enrolled factor but hasn't verified it in this session.
-          // Sign them out so they go through the full login+TOTP flow again.
-          await db.auth.signOut();
-          window.location.replace('/');
-          return null;
+          // Allow through if this device was remembered within the last 30 days.
+          if (isDeviceRemembered(session.user.email)) {
+            // Trusted device — skip re-verification
+          } else {
+            await db.auth.signOut();
+            window.location.replace('/');
+            return null;
+          }
         }
         if (aal.currentLevel === 'aal1' && aal.nextLevel === 'aal1') {
           // No TOTP factor enrolled — check if role requires it.
@@ -179,6 +193,7 @@ window.Auth = (function () {
   return {
     getSession,
     requireAuth,
+    isDeviceRemembered,
     getMFALevel,
     listMFAFactors,
     listAllMFAFactors,
