@@ -147,7 +147,7 @@ export default {
         return await handler({ request, env, params: {}, data: {} });
       } catch (err) {
         console.error('[worker] unhandled error in', url.pathname, err?.message || err);
-        return new Response(JSON.stringify({ error: 'Internal server error' }), {
+        return new Response(JSON.stringify({ error: 'Internal server error', detail: err?.message || String(err) }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
