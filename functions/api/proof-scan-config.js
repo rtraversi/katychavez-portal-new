@@ -12,10 +12,13 @@ export async function onRequest({ request, env }) {
     const admin = makeAdminClient(env);
     const { data: rows } = await admin
       .from('proof_scan_config')
-      .select('custom_instructions')
+      .select('custom_instructions, notify_email')
       .limit(1);
 
-    return json(200, { custom_instructions: rows?.[0]?.custom_instructions || '' });
+    return json(200, {
+      custom_instructions: rows?.[0]?.custom_instructions || '',
+      notify_email:        rows?.[0]?.notify_email        || '',
+    });
   }
 
   if (request.method === 'POST') {
@@ -29,6 +32,9 @@ export async function onRequest({ request, env }) {
     const custom_instructions = typeof body.custom_instructions === 'string'
       ? body.custom_instructions
       : '';
+    const notify_email = typeof body.notify_email === 'string'
+      ? body.notify_email.trim()
+      : '';
 
     const admin = makeAdminClient(env);
 
@@ -41,12 +47,12 @@ export async function onRequest({ request, env }) {
     if (existing?.length) {
       await admin
         .from('proof_scan_config')
-        .update({ custom_instructions, updated_at: new Date().toISOString(), updated_by: auth.profile.id })
+        .update({ custom_instructions, notify_email, updated_at: new Date().toISOString(), updated_by: auth.profile.id })
         .eq('id', existing[0].id);
     } else {
       await admin
         .from('proof_scan_config')
-        .insert({ custom_instructions, updated_by: auth.profile.id });
+        .insert({ custom_instructions, notify_email, updated_by: auth.profile.id });
     }
 
     return json(200, { ok: true });

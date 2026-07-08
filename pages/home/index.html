@@ -1,9 +1,25 @@
 <div class="home-page" id="home-page">
-  <div class="home-welcome">
-    <h1 class="home-title" id="home-greeting">Good morning</h1>
-    <p class="home-subtitle">What would you like to work on today?</p>
-  </div>
-  <div class="home-grid" id="home-grid">
-    <!-- Tiles rendered by home.js -->
+  <div class="home-layout">
+    <div class="home-main">
+      <div class="home-welcome">
+        <h1 class="home-title" id="home-greeting">Good morning</h1>
+        <p class="home-subtitle">What would you like to work on today?</p>
+      </div>
+      <div class="home-cards" id="home-grid">
+        <!-- Cards rendered by home.js -->
+      </div>
+    </div>
+    <div class="home-sidebar">
+      <div class="home-sidebar-header">Daily View</div>
+      <div class="home-widget">
+        <h3 class="home-widget-title">Recent Activity</h3>
+        <div id="activity-list"><p class="home-widget-placeholder">Loading…</p></div>
+      </div>
+      <div class="home-sidebar-divider"></div>
+      <div class="home-widget">
+        <h3 class="home-widget-title">Upcoming Deadlines</h3>
+        <div id="deadlines-list"><p class="home-widget-placeholder">Loading…</p></div>
+      </div>
+    </div>
   </div>
 </div>

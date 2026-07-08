@@ -1,0 +1,77 @@
+<!-- Translation — loaded dynamically into #page-content by menu.js -->
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Document Translation</h1>
+    <p class="page-subtitle">Spanish-to-English certified translation with DOCX &amp; PDF export</p>
+  </div>
+</div>
+
+<!-- Upload card -->
+<div class="card" style="margin-bottom:var(--space-4)">
+  <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-4)">
+    Upload a Spanish-language civil document (PDF, JPG, or PNG) to generate a certified English translation.
+    Supported document types include birth certificates, marriage certificates, divorce decrees, and other civil records.
+  </p>
+
+  <div id="tr-drop-zone"
+    style="border:2px dashed var(--color-border);border-radius:var(--radius);padding:var(--space-8) var(--space-4);
+           text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:var(--space-4)"
+    tabindex="0" role="button" aria-label="Drop a document here to translate">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+      style="width:40px;height:40px;margin:0 auto var(--space-3);color:var(--color-text-muted)" aria-hidden="true">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="2" y1="12" x2="22" y2="12"/>
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+    </svg>
+    <p style="font-weight:600;margin-bottom:var(--space-1)">Drop a document here</p>
+    <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3)">
+      PDF, JPG, or PNG
+    </p>
+    <button type="button" class="btn btn--secondary" id="tr-choose-file-btn">Choose File</button>
+    <input id="tr-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" style="display:none">
+  </div>
+
+  <div style="margin-bottom:var(--space-4)">
+    <label style="display:block;font-size:var(--text-sm);font-weight:500;margin-bottom:var(--space-2)">
+      Translator Name
+    </label>
+    <input id="tr-translator-name" type="text" placeholder="Leave blank for signature line"
+      style="width:100%;max-width:400px;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);
+             border-radius:var(--radius);font-size:var(--text-sm);font-family:inherit;box-sizing:border-box">
+  </div>
+
+  <div style="margin-bottom:var(--space-4)">
+    <p style="font-size:var(--text-sm);font-weight:500;margin-bottom:var(--space-2)">Download Format</p>
+    <label style="display:inline-flex;align-items:center;gap:var(--space-2);margin-right:var(--space-4);cursor:pointer;font-size:var(--text-sm)">
+      <input type="radio" name="trFormat" value="docx" checked> DOCX
+    </label>
+    <label style="display:inline-flex;align-items:center;gap:var(--space-2);cursor:pointer;font-size:var(--text-sm)">
+      <input type="radio" name="trFormat" value="pdf"> PDF
+    </label>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
+    <button id="tr-submit-btn" class="btn btn--primary" disabled>Translate Document</button>
+    <span id="tr-filename" style="font-size:var(--text-sm);color:var(--color-text-muted)"></span>
+  </div>
+</div>
+
+<!-- Results area (hidden until complete) -->
+<div id="tr-results-wrap" style="display:none;margin-bottom:var(--space-4)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
+    <h2 style="font-size:var(--text-base);font-weight:600;margin:0">Translation Preview</h2>
+    <button id="tr-clear-btn" class="btn btn--ghost" style="font-size:var(--text-sm)">Clear</button>
+  </div>
+  <div class="card" style="margin-bottom:var(--space-3)">
+    <div id="tr-results-content" style="font-size:var(--text-sm);line-height:1.7;white-space:pre-wrap;font-family:inherit"></div>
+  </div>
+  <button id="tr-download-btn" class="btn btn--primary" style="display:none">Download DOCX</button>
+</div>
+
+<!-- History section -->
+<div class="card">
+  <h2 style="font-size:var(--text-base);font-weight:600;margin-bottom:var(--space-4)">Recent Translations</h2>
+  <div id="tr-history-list">
+    <p style="font-size:var(--text-sm);color:var(--color-text-muted)">Loading…</p>
+  </div>
+</div>

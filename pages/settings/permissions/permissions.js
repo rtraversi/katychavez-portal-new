@@ -9,6 +9,9 @@
   let matrix  = {};  // {role_id: {module_key: access_level}}
   let dirty   = {};  // pending changes
 
+  const profile  = await Auth.getProfile();
+  const canEdit  = ['Owner', 'Partner Attorney'].includes(profile?.role?.name);
+
   async function loadData() {
     const [r, m, a] = await Promise.all([
       db.from('roles').select('id,name,is_system_role').order('name'),
@@ -51,7 +54,7 @@
           const options = LEVELS.map(l => `<option value="${l}" ${current === l ? 'selected' : ''}>${LABELS[l]}</option>`).join('');
           return `<td style="text-align:center">
             <select class="perm-select" style="width:90px;font-size:var(--text-xs);padding:4px 8px;text-align:center"
-                    data-role="${role.id}" data-module="${mod.key}">
+                    data-role="${role.id}" data-module="${mod.key}"${canEdit ? '' : ' disabled'}>
               ${options}
             </select>
           </td>`;
@@ -68,6 +71,16 @@
     }).join('');
 
     wrap.innerHTML = `<table aria-label="Permissions matrix"><${thead}<tbody>${rows}</tbody></table>`;
+
+    if (!canEdit) {
+      const saveBtn = document.getElementById('btn-save-permissions');
+      if (saveBtn) saveBtn.style.display = 'none';
+      const notice = document.createElement('p');
+      notice.style.cssText = 'font-size:var(--text-sm);color:var(--color-text-muted);margin-top:var(--space-4)';
+      notice.textContent = 'You have read-only access to the permissions matrix. Contact an Owner or Partner Attorney to make changes.';
+      wrap.after(notice);
+      return;
+    }
 
     wrap.querySelectorAll('.perm-select').forEach(sel => {
       sel.addEventListener('change', e => {

@@ -36,14 +36,14 @@
 <div class="card" style="padding:0;overflow:hidden">
   <div class="table-wrap">
     <table id="clients-table" aria-label="Clients">
-      <thead>
+      <thead id="clients-thead">
         <tr>
-          <th>Client</th>
-          <th>Case type</th>
-          <th>Case #</th>
-          <th>Status</th>
-          <th>Attorney</th>
-          <th>Next hearing</th>
+          <th data-sort="last_name" style="cursor:pointer;user-select:none;white-space:nowrap">Client <span class="sort-arrow" data-arrow="last_name"></span></th>
+          <th data-sort="case_type" style="cursor:pointer;user-select:none;white-space:nowrap">Case type <span class="sort-arrow" data-arrow="case_type"></span></th>
+          <th data-sort="case_number" style="cursor:pointer;user-select:none;white-space:nowrap">Case # <span class="sort-arrow" data-arrow="case_number"></span></th>
+          <th data-sort="status" style="cursor:pointer;user-select:none;white-space:nowrap">Status <span class="sort-arrow" data-arrow="status"></span></th>
+          <th data-sort="attorney" style="cursor:pointer;user-select:none;white-space:nowrap">Attorney <span class="sort-arrow" data-arrow="attorney"></span></th>
+          <th data-sort="next_date" style="cursor:pointer;user-select:none;white-space:nowrap">Next date <span class="sort-arrow" data-arrow="next_date"></span></th>
           <th></th>
         </tr>
       </thead>

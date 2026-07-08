@@ -27,6 +27,9 @@
   let immigrationFamilyMembers = []; // client_immigration_family_members rows
   let enabledImmCaseTypes = new Set(); // enabled_immigration_case_types keys
 
+  let _stageList    = [];   // workflow_stages for this matter's practice area
+  let _currentStage = null; // the stage object matching matter.current_stage_id
+
   const DATE_TYPES = [
     ['marriage',     'Marriage'],
     ['separation',   'Separation'],
@@ -38,6 +41,7 @@
     ['trial',        'Trial'],
     ['deadline',     'Deadline'],
     ['custom',       'Custom'],
+    ['service',      'Respondent Served'],
   ];
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -80,6 +84,9 @@
     if (matter?.case_type_id) return caseTypeMap.get(matter.case_type_id)?.key || matter?.case_type;
     return matter?.case_type || null;
   }
+
+  function isPF() { return matterCaseTypeKey() === 'parenting_facilitation'; }
+  function party2Label() { return isPF() ? 'Party 2' : 'Opposing Party'; }
 
   function matterPracticeAreaKey() {
     if (matter?.practice_area_id) return practiceAreaMap.get(matter.practice_area_id)?.key || null;
@@ -210,6 +217,17 @@
       criminalDetails          = crim;
       immigrationData          = imm;
       immigrationFamilyMembers = immFam || [];
+
+      const paKey = matterPracticeAreaKey();
+      if (paKey) {
+        const { data: stagesData } = await db
+          .from('workflow_stages')
+          .select('id, name, color, order_index, is_terminal')
+          .eq('practice_area', paKey)
+          .order('order_index');
+        _stageList    = stagesData || [];
+        _currentStage = _stageList.find(s => s.id === matter.current_stage_id) || null;
+      }
     }
 
     renderAll();
@@ -232,6 +250,10 @@
       if (matter.case_number) metaParts.push(`<span>Case #${Utils.esc(matter.case_number)}</span>`);
       const atty = userName(matter.assigned_attorney_id);
       if (atty) metaParts.push(`<span>${Utils.esc(atty)}</span>`);
+      if (_currentStage) {
+        const c = _currentStage.color || 'gray';
+        metaParts.push(`<span class="stage-badge stage-badge-${c}"><span class="stage-dot-sm stage-dot-sm-${c}"></span>${Utils.esc(_currentStage.name)}</span>`);
+      }
     }
     document.getElementById('detail-meta').innerHTML = metaParts.join('<span style="color:var(--color-border-mid)">·</span>');
 
@@ -509,8 +531,8 @@
     if (!oppParty) {
       container.innerHTML = `
         <div class="detail-section" style="text-align:center;padding:var(--space-10)">
-          <p class="text-muted" style="margin-bottom:var(--space-4)">No opposing party recorded yet.</p>
-          <button class="btn btn--primary btn--sm" id="btn-add-opposing">Add opposing party</button>
+          <p class="text-muted" style="margin-bottom:var(--space-4)">No ${party2Label().toLowerCase()} recorded yet.</p>
+          <button class="btn btn--primary btn--sm" id="btn-add-opposing">Add ${party2Label().toLowerCase()}</button>
         </div>`;
       document.getElementById('btn-add-opposing').addEventListener('click', () => openOpposingModal());
       return;
@@ -525,7 +547,7 @@
     container.innerHTML = `
       <div class="detail-section">
         <div class="detail-section-header">
-          <h2 class="detail-section-title">Opposing Party — ${Utils.esc(op.first_name)} ${Utils.esc(op.last_name || '')}</h2>
+          <h2 class="detail-section-title">${party2Label()} — ${Utils.esc(op.first_name)} ${Utils.esc(op.last_name || '')}</h2>
           <button class="btn btn--secondary btn--sm" id="btn-edit-opposing">Edit</button>
         </div>
         ${op.is_address_restricted ? '<div class="badge badge--dv" style="margin-bottom:var(--space-4)">Address Restricted</div>' : ''}
@@ -551,14 +573,14 @@
           ${field('Gross annual income', op.gross_annual_income, 'money')}
           ${field('Education', op.education)}
           ${field('Living with others', op.living_with_others)}
-          ${field('Physically separated', op.physically_separated, 'bool')}
-          ${field('Financial arrangement', op.financial_arrangement ? Utils.titleCase(op.financial_arrangement) : null)}
-          ${field('Financial arrangement notes', op.financial_arrangement_notes)}
+          ${!isPF() ? field('Physically separated', op.physically_separated, 'bool') : ''}
+          ${!isPF() ? field('Financial arrangement', op.financial_arrangement ? Utils.titleCase(op.financial_arrangement) : null) : ''}
+          ${!isPF() ? field('Financial arrangement notes', op.financial_arrangement_notes) : ''}
         </div>
       </div>
       <div class="detail-section">
         <div class="detail-section-header">
-          <h2 class="detail-section-title">Opposing Counsel</h2>
+          <h2 class="detail-section-title">${isPF() ? "Party 2's Attorney" : 'Opposing Counsel'}</h2>
         </div>
         <div class="detail-grid">
           ${field('Name', op.opposing_counsel_name)}
@@ -686,7 +708,7 @@
       return `
         <div class="date-row">
           <span class="date-type">${Utils.esc(dateLabel)}</span>
-          <span class="date-val" style="${!past && d.date_type === 'hearing' ? 'color:var(--color-primary);font-weight:500' : ''}">${Utils.formatDate(d.date_value)}</span>
+          <span class="date-val" style="${!past && d.date_type === 'hearing' ? 'color:var(--color-primary);font-weight:500' : ''}">${Utils.formatDate(d.date_value)}${d.time_value ? ` at ${Utils.esc(d.time_value)}` : ''}</span>
           <span class="date-desc">${Utils.esc(d.description || '')}</span>
           <div style="display:flex;gap:var(--space-2);margin-left:auto;flex-shrink:0;align-items:center">
             ${calBtn}
@@ -711,6 +733,115 @@
     list.querySelectorAll('.btn-remove-cal-date').forEach(btn =>
       btn.addEventListener('click', () => removeFromCalendar(btn.dataset.id, btn.dataset.eventId))
     );
+
+    renderDeadlines();
+  }
+
+  function renderDeadlines() {
+    const el = document.getElementById('deadlines-body');
+    if (!el) return;
+
+    function parseLocalDate(s) {
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    function safeSide(d) {
+      const r = new Date(d.getTime());
+      if (r.getDay() === 6) r.setDate(r.getDate() - 1);
+      if (r.getDay() === 0) r.setDate(r.getDate() - 2);
+      return r;
+    }
+    function fmtDate(d) {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    const trialKD   = keyDates.find(d => d.date_type === 'trial');
+    const serviceKD = keyDates.find(d => d.date_type === 'service');
+
+    if (!trialKD) {
+      el.innerHTML = `<p class="text-muted text-sm" style="padding:var(--space-3) 0">Add a <strong>Trial</strong> key date above to see auto-calculated pre-trial deadlines.</p>`;
+      return;
+    }
+
+    const trialDate = parseLocalDate(trialKD.date_value);
+    const today     = new Date(); today.setHours(0, 0, 0, 0);
+
+    const RULES = [
+      ['Designate Experts — Furnish Report (seeking aff. rel.)',    120, 'TRCP 195.2'],
+      ['Designate Experts — Furnish Report (not seeking aff. rel.)', 90, 'TRCP 195.2'],
+      ['Trial Retainer',                                             60, '60 days before trial'],
+      ['Serve Discovery Requests',                                   60, 'TRCP 194.1, 196.1, 197.1, 198.1, 204, 205.3'],
+      ['Obtain Trial Setting',                                       45, 'TRCP 245'],
+      ['File Affidavit — Translation of Foreign Language Doc',       45, 'TRE 1009'],
+      ['Supplement Discovery Responses & Interrogatories',           30, 'TRCP 193.5(b)'],
+      ['Level 2 Discovery Period Ends',                              30, 'TRCP 190.3(b)(1)(A)'],
+      ['File Affidavit — Reasonable Costs & Necessary Services',     30, 'CPRC 18.001'],
+      ['File Final Parenting Plan',                                  30, 'TFC 153.603(d)'],
+      ['Jury Request',                                               30, 'TRCP 216'],
+      ['Hearings on Due Order of Pleading Items',                    30, '30 days before trial'],
+      ['Motion for Summary Judgment',                                21, 'TRCP 166a(c)'],
+      ['Send OC Notice — Any and All Discovery',                    15, 'TRCP 193.7'],
+      ['File Business Records Affidavit',                           14, 'TRE 902(10)'],
+      ['Motion to Recuse/Disqualify Judge',                         10, 'TRCP 18a'],
+      ['Amend Pleadings',                                            7, 'TRCP 63'],
+    ];
+
+    const rows = RULES.map(([label, days, cite]) => {
+      const d = new Date(trialDate.getTime());
+      d.setDate(d.getDate() - days);
+      return { label, cite, date: safeSide(d) };
+    });
+
+    if (serviceKD) {
+      const svc = parseLocalDate(serviceKD.date_value);
+      const exp = new Date(svc.getTime());
+      exp.setDate(exp.getDate() + 20);
+      const dow = exp.getDay();
+      const daysToMon = dow === 1 ? 7 : (8 - dow) % 7 || 7;
+      exp.setDate(exp.getDate() + daysToMon);
+      rows.push({ label: 'Answer (10am)', cite: 'TRCP 99b — first Monday after 20 days from service', date: exp });
+    }
+
+    rows.sort((a, b) => a.date - b.date);
+
+    function daysUntil(d) { return Math.round((d - today) / 86400000); }
+    function urgencyStyle(days) {
+      if (days < 0)   return 'color:var(--color-text-muted)';
+      if (days <= 7)  return 'color:var(--color-danger);font-weight:600';
+      if (days <= 30) return 'color:var(--color-warning,#f59e0b);font-weight:600';
+      return 'color:var(--color-success,#22c55e)';
+    }
+
+    el.innerHTML = `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:var(--text-sm)">
+          <thead>
+            <tr style="border-bottom:2px solid var(--color-border)">
+              <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:600">Deadline</th>
+              <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:600;white-space:nowrap">Safe-Side Date</th>
+              <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:600;white-space:nowrap">Days</th>
+              <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:600">Rule</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => {
+              const days = daysUntil(r.date);
+              const past = days < 0;
+              return `
+                <tr style="border-bottom:1px solid var(--color-border);${past ? 'opacity:0.45' : ''}">
+                  <td style="padding:var(--space-2) var(--space-3)">${Utils.esc(r.label)}</td>
+                  <td style="padding:var(--space-2) var(--space-3);white-space:nowrap">${fmtDate(r.date)}</td>
+                  <td style="padding:var(--space-2) var(--space-3);white-space:nowrap;${urgencyStyle(days)}">${past ? `${Math.abs(days)}d ago` : `${days}d`}</td>
+                  <td style="padding:var(--space-2) var(--space-3);color:var(--color-text-muted);font-size:var(--text-xs)">${Utils.esc(r.cite)}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <p style="padding:var(--space-3) 0 0;font-size:var(--text-xs);color:var(--color-text-muted)">
+        Trial: ${fmtDate(trialDate)}${serviceKD ? ` · Served: ${fmtDate(parseLocalDate(serviceKD.date_value))}` : ' · Add a <strong>Respondent Served</strong> key date to include the Answer deadline.'}
+        · Sat/Sun deadlines shift to preceding Friday.
+      </p>`;
   }
 
   async function removeFromCalendar(dateId, eventId) {
@@ -750,9 +881,15 @@
     renderImmigration();
     wireEdits();
     wireTabs();
+    wireSubtabs();
     wireEsignTab();
     wireMessagesTab();
     wireTrustTab();
+    wireDraftsTab();
+    wireFormFillerTab();
+    wireFilesTab();
+    normalizeSubtabDefaults();
+    wireStageTracker();
     wireCalDateModal();
   }
 
@@ -774,14 +911,12 @@
   let _esignDocs   = [];
 
   function wireEsignTab() {
-    const tab    = document.querySelector('[data-tab="esign"]');
     const reqBtn = document.getElementById('btn-request-sig-esign');
-    if (!tab) return;
-    tab.addEventListener('click', async () => {
+    _subtabLoaders.esign = async () => {
       if (_esignLoaded) return;
       _esignLoaded = true;
       await loadEsign();
-    });
+    };
     if (reqBtn) reqBtn.addEventListener('click', () => openSigRequestModal(_esignDocs));
 
     // Persistent delegate for Details — wired once; survives renderEsign innerHTML rebuilds.
@@ -1144,7 +1279,45 @@
         btn.classList.add('detail-tab--active');
         const panel = document.getElementById('tab-' + btn.dataset.tab);
         if (panel) panel.classList.add('tab-panel--active');
+        // Documents/Financial hold lazy sub-tabs — load whichever pill is active
+        if (btn.dataset.tab === 'documents') ensureActiveSubtabLoaded('doc');
+        if (btn.dataset.tab === 'financial') ensureActiveSubtabLoaded('fin');
       });
+    });
+  }
+
+  // ── Pill sub-tabs (Documents, Financial) ────────────────────────────────────
+  // Lazy loaders keyed by data-subtab; registered by the wire*Tab functions.
+
+  const _subtabLoaders = {};
+
+  function wireSubtabs() {
+    document.querySelectorAll('.subtab').forEach(btn => {
+      btn.addEventListener('click', () => activateSubtab(btn.dataset.group, btn.dataset.subtab));
+    });
+  }
+
+  function activateSubtab(group, key, opts = {}) {
+    document.querySelectorAll(`.subtab[data-group="${group}"]`).forEach(b =>
+      b.classList.toggle('subtab--active', b.dataset.subtab === key));
+    document.querySelectorAll(`.subtab-panel[data-group="${group}"]`).forEach(p =>
+      p.classList.toggle('subtab-panel--active', p.id === 'subpanel-' + key));
+    if (!opts.skipLoad && _subtabLoaders[key]) _subtabLoaders[key]();
+  }
+
+  function ensureActiveSubtabLoaded(group) {
+    const btn = document.querySelector(`.subtab[data-group="${group}"].subtab--active:not(.hidden)`);
+    if (btn && _subtabLoaders[btn.dataset.subtab]) _subtabLoaders[btn.dataset.subtab]();
+  }
+
+  // If a group's default pill ended up hidden (e.g. no matter), fall back to
+  // the first visible one so an empty panel is never the active view.
+  function normalizeSubtabDefaults() {
+    ['doc', 'fin'].forEach(group => {
+      const active = document.querySelector(`.subtab[data-group="${group}"].subtab--active`);
+      if (!active || !active.classList.contains('hidden')) return;
+      const firstVisible = document.querySelector(`.subtab[data-group="${group}"]:not(.hidden)`);
+      if (firstVisible) activateSubtab(group, firstVisible.dataset.subtab, { skipLoad: true });
     });
   }
 
@@ -1697,6 +1870,7 @@
               <select name="date_type" required><option value="">— Select —</option>${dateTypeOpts}</select>
             </div>
             ${inp('date_value','Date','','date')}
+            ${inp('time_value','Time (optional)',existing?.time_value || '','text','placeholder="e.g. 9:00 AM"')}
             ${inp('description','Description / notes',existing?.description || '')}
             ${ck('is_milestone','Is milestone (triggers reminder engine)',existing?.is_milestone || false)}
           </div>
@@ -1728,6 +1902,7 @@
           matter_id:    matter.id,
           date_type:    fd.get('date_type'),
           date_value:   fd.get('date_value'),
+          time_value:   fd.get('time_value')?.trim() || null,
           description:  fd.get('description')?.trim() || null,
           is_milestone: fd.get('is_milestone') === 'on',
         };
@@ -2029,7 +2204,7 @@
     modalEl.innerHTML = `
       <div class="modal" style="max-width:680px">
         <div class="modal-header">
-          <h2 class="modal-title">${existing ? 'Edit' : 'Add'} opposing party</h2>
+          <h2 class="modal-title">${existing ? 'Edit' : 'Add'} ${party2Label().toLowerCase()}</h2>
           <button class="modal-close">×</button>
         </div>
         <form id="opposing-form" novalidate>
@@ -2050,11 +2225,12 @@
             <p class="section-divider">Employment</p>
             ${row2(inp('employer','Employer',op.employer||''), inp('gross_annual_income','Gross annual income ($)',op.gross_annual_income||'','number','min="0" step="0.01"'))}
             ${row2(inp('education','Education',op.education||''), inp('living_with_others','Living with others',op.living_with_others||''))}
+            ${!isPF() ? `
             <p class="section-divider">Financial separation</p>
             ${sel('financially_separated','Physically separated',[['true','Yes'],['false','No']],op.physically_separated == null ? '' : String(op.physically_separated))}
             ${sel('financial_arrangement','Financial arrangement',[['joint_account','Joint account'],['separate','Separate'],['other','Other']],op.financial_arrangement)}
-            ${ta('financial_arrangement_notes','Notes on arrangement',op.financial_arrangement_notes||'',2)}
-            <p class="section-divider">Opposing Counsel</p>
+            ${ta('financial_arrangement_notes','Notes on arrangement',op.financial_arrangement_notes||'',2)}` : ''}
+            <p class="section-divider">${isPF() ? "Party 2's Attorney" : 'Opposing Counsel'}</p>
             ${row2(inp('opposing_counsel_name','Attorney name',op.opposing_counsel_name||''), inp('opposing_counsel_firm','Firm',op.opposing_counsel_firm||''))}
             ${row2(inp('opposing_counsel_phone','Phone',op.opposing_counsel_phone||'','tel'), inp('opposing_counsel_email','Email',op.opposing_counsel_email||'','email'))}
             ${inp('opposing_counsel_address','Counsel address',op.opposing_counsel_address||'')}
@@ -2063,7 +2239,7 @@
           <div class="modal-footer">
             <div id="opposing-err" class="form-error hidden" style="flex:1;margin-right:auto"></div>
             <button type="button" class="btn btn--secondary btn--sm modal-cancel">Cancel</button>
-            <button type="submit" class="btn btn--primary btn--sm">${existing ? 'Save' : 'Add opposing party'}</button>
+            <button type="submit" class="btn btn--primary btn--sm">${existing ? 'Save' : `Add ${party2Label().toLowerCase()}`}</button>
           </div>
         </form>
       </div>`;
@@ -2132,11 +2308,806 @@
         }
         closeModal(modalEl);
         renderOpposing();
-        Utils.toast('Opposing party saved.', 'success');
+        Utils.toast(`${party2Label()} saved.`, 'success');
       } catch (err) {
         errEl.textContent = err.message || 'Save failed.';
         errEl.classList.remove('hidden');
         Utils.setLoading(saveBtn, false);
+      }
+    });
+  }
+
+  // ── Drafts tab ───────────────────────────────────────────────────────────────
+
+  let _draftsLoaded = false;
+
+  function wireDraftsTab() {
+    if (!matter) return;
+    document.getElementById('subtab-btn-drafts')?.classList.remove('hidden');
+    _subtabLoaders.drafts = async () => {
+      if (_draftsLoaded) return;
+      _draftsLoaded = true;
+      await loadDrafts();
+    };
+  }
+
+  async function loadDrafts() {
+    const container = document.getElementById('drafts-panel-content');
+    if (!container || !matter) return;
+
+    container.innerHTML = `<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--space-4) 0">Loading drafts…</p>`;
+
+    const { data: docs, error } = await db
+      .from('draft_documents')
+      .select('id, file_name, current_version_num, is_final, created_at, locked_by')
+      .eq('matter_id', matter.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      container.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm)">Failed to load drafts.</p>`;
+      return;
+    }
+
+    if (!docs || docs.length === 0) {
+      container.innerHTML = `<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--space-4) 0">No drafts yet. Use the "Draft Document" button above to generate one.</p>`;
+      return;
+    }
+
+    const rows = docs.map(doc => {
+      const date = new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const badge = doc.is_final
+        ? `<span class="badge badge--active">Final</span>`
+        : doc.locked_by
+          ? `<span class="badge badge--pending">In Use</span>`
+          : `<span class="badge badge--inactive">Draft</span>`;
+      const openBtn = !doc.is_final
+        ? `<button class="btn btn--secondary btn--sm draft-open-btn" data-doc-id="${Utils.esc(doc.id)}">Open in Word</button>`
+        : '';
+      const finalBtn = `<button class="btn btn--ghost btn--sm draft-finalize-btn" data-doc-id="${Utils.esc(doc.id)}" data-is-final="${doc.is_final}">
+        ${doc.is_final ? 'Un-finalize' : 'Finalize'}
+      </button>`;
+
+      return `<tr>
+        <td style="font-weight:500">${Utils.esc(doc.file_name)}</td>
+        <td style="color:var(--color-text-muted)">v${doc.current_version_num}</td>
+        <td style="color:var(--color-text-muted);font-size:var(--text-sm)">${date}</td>
+        <td>${badge}</td>
+        <td style="text-align:right;white-space:nowrap;display:flex;gap:var(--space-2);justify-content:flex-end">${openBtn}${finalBtn}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <table class="data-table" style="margin-top:var(--space-2)">
+        <thead><tr>
+          <th>Document</th><th>Ver.</th><th>Created</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    container.querySelectorAll('.draft-open-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const orig = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Opening…';
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/drafting/open', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+            body:    JSON.stringify({ doc_id: btn.dataset.docId }),
+          });
+          if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+          const data = await res.json();
+          window.location.href = data.word_url;
+          Utils.toast(`Opening "${data.file_name}" in Word…`, 'success');
+        } catch (err) {
+          Utils.toast(err.message || 'Failed to open document.', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = orig;
+        }
+      });
+    });
+
+    container.querySelectorAll('.draft-finalize-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const isFinal = btn.dataset.isFinal === 'true';
+        const msg = isFinal
+          ? 'Remove Final status from this document?'
+          : 'Mark as Final? The document will become visible in the client portal.';
+        if (!await Utils.confirm(msg, { confirmLabel: isFinal ? 'Remove Final' : 'Mark as Final' })) return;
+        btn.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/drafting/toggle-final', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+            body:    JSON.stringify({ doc_id: btn.dataset.docId }),
+          });
+          if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+          const d = await res.json();
+          Utils.toast(`Document ${d.is_final ? 'finalized' : 'un-finalized'}.`, 'success');
+          _draftsLoaded = false;
+          await loadDrafts();
+        } catch (err) {
+          Utils.toast(err.message || 'Failed.', 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  // ── USCIS Forms tab ──────────────────────────────────────────────────────────
+
+  let _formFillerLoaded = false;
+
+  function wireFormFillerTab() {
+    if (!matter) return;
+    document.getElementById('subtab-btn-uscis-forms')?.classList.remove('hidden');
+    _subtabLoaders['uscis-forms'] = async () => {
+      if (_formFillerLoaded) return;
+      _formFillerLoaded = true;
+      await loadFormFiller();
+    };
+  }
+
+  const FORM_FILLER_STATUS_BADGE = {
+    draft:         '<span class="badge badge--inactive">Draft</span>',
+    needs_review:  '<span class="badge badge--pending">Needs Review</span>',
+    finalized:     '<span class="badge badge--active">Finalized</span>',
+  };
+
+  async function loadFormFiller() {
+    const container = document.getElementById('uscis-forms-panel-content');
+    if (!container || !matter) return;
+
+    container.innerHTML = `<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--space-4) 0">Loading…</p>`;
+
+    let data;
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch(`/api/form-filler/package?matter_id=${encodeURIComponent(matter.id)}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+      data = await res.json();
+    } catch (err) {
+      container.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm)">Failed to load: ${Utils.esc(err.message)}</p>`;
+      return;
+    }
+
+    if (!data.package) {
+      container.innerHTML = `<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--space-4) 0">No USCIS form package is configured for this matter's case type yet.</p>`;
+      return;
+    }
+
+    renderFormFillerPanel(container, data);
+  }
+
+  function renderFormFillerPanel(container, data) {
+    const rows = data.forms.map(f => {
+      const badge = f.status ? (FORM_FILLER_STATUS_BADGE[f.status] || '') : '<span class="badge badge--inactive">Not Generated</span>';
+      const completeness = (f.fields_filled != null && f.fields_total != null)
+        ? `<span style="color:var(--color-text-muted);font-size:var(--text-sm)">${f.fields_filled}/${f.fields_total} filled</span>`
+        : '';
+      const notReady = !f.template_ready
+        ? `<span style="color:var(--color-text-muted);font-size:var(--text-xs,0.75rem)">Template not yet uploaded</span>`
+        : '';
+
+      const downloadBtn = f.generated_form_id
+        ? `<button class="btn btn--secondary btn--sm ff-download-btn" data-id="${Utils.esc(f.generated_form_id)}" data-final="${f.status === 'finalized' ? '1' : '0'}">Open</button>`
+        : '';
+      const regenBtn = f.template_ready
+        ? `<button class="btn btn--ghost btn--sm ff-regen-btn" data-template-id="${Utils.esc(f.template_id)}" data-has-final="${f.status === 'finalized'}">${f.generated_form_id ? 'Regenerate' : 'Generate'}</button>`
+        : '';
+      const finalizeBtn = (f.generated_form_id && f.status !== 'finalized')
+        ? `<button class="btn btn--ghost btn--sm ff-finalize-btn" data-id="${Utils.esc(f.generated_form_id)}">Finalize</button>`
+        : '';
+
+      return `<tr>
+        <td style="font-weight:500">${Utils.esc(f.label)}${notReady ? `<br>${notReady}` : ''}</td>
+        <td>${badge}</td>
+        <td>${completeness}</td>
+        <td style="text-align:right;white-space:nowrap;display:flex;gap:var(--space-2);justify-content:flex-end">${downloadBtn}${finalizeBtn}${regenBtn}</td>
+      </tr>`;
+    }).join('');
+
+    const anyGenerated = data.forms.some(f => f.generated_form_id);
+    const anyFinalized = data.forms.some(f => f.status === 'finalized');
+
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4)">
+        <h3 style="font-size:var(--text-base);font-weight:600;margin:0">${Utils.esc(data.package.name)}</h3>
+        <div style="display:flex;gap:var(--space-2)">
+          ${anyGenerated ? '<button id="ff-reset-package-btn" class="btn btn--ghost btn--sm" style="color:var(--color-danger)">Reset</button>' : ''}
+          <button id="ff-generate-package-btn" class="btn btn--primary btn--sm">Generate Package</button>
+        </div>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>Form</th><th>Status</th><th>Autofill</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    document.getElementById('ff-generate-package-btn').addEventListener('click', async () => {
+      await runFormFillerGenerate({ matter_id: matter.id });
+    });
+
+    document.getElementById('ff-reset-package-btn')?.addEventListener('click', async () => {
+      const warning = anyFinalized
+        ? 'Reset this package? All generated forms will be deleted — including manual edits AND finalized PDFs — and every form returns to Not Generated. Client data and template defaults are not affected.'
+        : 'Reset this package? All generated forms and any manual edits will be deleted, and every form returns to Not Generated. Client data and template defaults are not affected.';
+      if (!await Utils.confirm(warning, { confirmLabel: 'Reset package', danger: true })) return;
+      const btn = document.getElementById('ff-reset-package-btn');
+      btn.disabled = true;
+      try {
+        const session = await Auth.getSession();
+        const res = await fetch('/api/form-filler/reset', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body:    JSON.stringify({ matter_id: matter.id }),
+        });
+        if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+        Utils.toast('Package reset — all forms back to Not Generated.', 'success');
+        _formFillerLoaded = false;
+        await loadFormFiller();
+      } catch (err) {
+        Utils.toast(err.message || 'Failed to reset package.', 'error');
+        btn.disabled = false;
+      }
+    });
+
+    container.querySelectorAll('.ff-regen-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const force = btn.dataset.hasFinal === 'true'
+          ? await Utils.confirm('This form was already finalized. Regenerate a new draft version anyway?', { confirmLabel: 'Regenerate' })
+          : true;
+        if (!force) return;
+        await runFormFillerGenerate({ matter_id: matter.id, template_ids: [btn.dataset.templateId], force: btn.dataset.hasFinal === 'true' });
+      });
+    });
+
+    container.querySelectorAll('.ff-finalize-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!await Utils.confirm('Finalize this form? It will be flattened to a static PDF; the fillable draft stays available separately.', { confirmLabel: 'Finalize' })) return;
+        btn.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/form-filler/finalize', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+            body:    JSON.stringify({ generated_form_id: btn.dataset.id }),
+          });
+          if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+          Utils.toast('Form finalized.', 'success');
+          _formFillerLoaded = false;
+          await loadFormFiller();
+        } catch (err) {
+          Utils.toast(err.message || 'Failed to finalize.', 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.ff-download-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const orig = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Opening…';
+        try {
+          const session = await Auth.getSession();
+          const finalParam = btn.dataset.final === '1' ? '&final=1' : '';
+          const res = await fetch(`/api/form-filler/download?id=${encodeURIComponent(btn.dataset.id)}${finalParam}`, {
+            headers: { 'Authorization': `Bearer ${session.access_token}` },
+          });
+          if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+          const blob = await res.blob();
+          const url  = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (err) {
+          Utils.toast(err.message || 'Failed to open document.', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = orig;
+        }
+      });
+    });
+  }
+
+  async function runFormFillerGenerate(body) {
+    const btn = document.getElementById('ff-generate-package-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch('/api/form-filler/generate', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body:    JSON.stringify(body),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || `Error ${res.status}`);
+
+      const errors = (result.results || []).filter(r => r.status === 'error' || r.status === 'skipped');
+      if (errors.length) {
+        Utils.toast(`Generated with ${errors.length} issue(s) — see console.`, 'error');
+        console.warn('[form-filler] generate issues:', errors);
+      } else {
+        Utils.toast('Forms generated.', 'success');
+      }
+      _formFillerLoaded = false;
+      await loadFormFiller();
+    } catch (err) {
+      Utils.toast(err.message || 'Failed to generate forms.', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Generate Package'; }
+    }
+  }
+
+  // ── Files tab ────────────────────────────────────────────────────────────────
+
+  const MATTER_FOLDERS = [
+    { key: 'all',            label: 'All Files' },
+    { key: 'client_uploads', label: 'Client Uploads' },
+    { key: 'pleadings',      label: 'Pleadings' },
+    { key: 'agreements',     label: 'Agreements' },
+    { key: 'correspondence', label: 'Correspondence' },
+    { key: 'financial',      label: 'Financial' },
+    { key: 'attorney_notes', label: 'Attorney Notes' },
+    { key: 'court_orders',   label: 'Court Orders' },
+    { key: 'trial_docs',     label: 'Trial Docs' },
+    { key: 'admin',          label: 'Admin' },
+    { key: 'other',          label: 'Other' },
+  ];
+
+  const FOLDER_DOC_TYPE = {
+    pleadings:      'pleading',
+    agreements:     'agreement',
+    correspondence: 'correspondence',
+    financial:      'financial',
+    client_uploads: 'id',
+    court_orders:   'court_order',
+  };
+
+  const EXT_MIME = {
+    pdf:  'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    doc:  'application/msword',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xls:  'application/vnd.ms-excel',
+    jpg:  'image/jpeg',
+    jpeg: 'image/jpeg',
+    png:  'image/png',
+    tiff: 'image/tiff',
+    tif:  'image/tiff',
+    webp: 'image/webp',
+  };
+
+  const ALLOWED_MIME = new Set(Object.values(EXT_MIME));
+
+  function resolveContentType(file) {
+    if (file.type && ALLOWED_MIME.has(file.type)) return file.type;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    return EXT_MIME[ext] || null;
+  }
+
+  let _filesLoaded  = false;
+  let _filesFolder  = 'all';
+  let _filesAllDocs = [];
+
+  function wireFilesTab() {
+    if (!matter) return;
+    document.getElementById('subtab-btn-files')?.classList.remove('hidden');
+    _subtabLoaders.files = async () => {
+      if (_filesLoaded) return;
+      _filesLoaded = true;
+      await loadFiles();
+    };
+  }
+
+  async function loadFiles() {
+    const root = document.getElementById('files-panel-root');
+    if (!root || !matter) return;
+    root.innerHTML = `<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--space-4) 0">Loading files…</p>`;
+
+    const { data: docs, error } = await db
+      .from('documents')
+      .select('id, name, file_name, file_size, content_type, folder_path, doc_type, status, created_at, uploaded_by, deleted_at')
+      .eq('matter_id', matter.id)
+      .is('deleted_at', null)
+      .neq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      root.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm)">Failed to load files.</p>`;
+      return;
+    }
+
+    _filesAllDocs = docs || [];
+    renderFilesPanel(root);
+  }
+
+  function renderFilesPanel(root) {
+    const counts = {};
+    for (const doc of _filesAllDocs) {
+      const fp = doc.folder_path || 'other';
+      counts[fp] = (counts[fp] || 0) + 1;
+    }
+    const total = _filesAllDocs.length;
+
+    const sidebarItems = MATTER_FOLDERS.map(f => {
+      const cnt = f.key === 'all' ? total : (counts[f.key] || 0);
+      const active = _filesFolder === f.key ? 'files-folder-btn--active' : '';
+      return `<button class="files-folder-btn ${active}" data-folder="${Utils.esc(f.key)}">
+        <span>${Utils.esc(f.label)}</span>
+        <span class="folder-count">${cnt}</span>
+      </button>`;
+    }).join('');
+
+    root.innerHTML = `
+      <div class="detail-section" style="padding:var(--space-5)">
+      <div class="files-layout">
+        <nav class="files-sidebar">
+          <div class="files-sidebar-title">Folders</div>
+          ${sidebarItems}
+        </nav>
+        <div class="files-main">
+          <div class="files-drop-zone" id="files-drop-zone">
+            <div class="files-upload-row">
+              <button class="btn btn--secondary btn--sm" id="files-upload-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload Files
+              </button>
+              <button class="btn btn--ghost btn--sm" id="files-folder-upload-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                Upload Folder
+              </button>
+            </div>
+            <p>or drag &amp; drop files here</p>
+          </div>
+          <input type="file" id="files-input-multi" multiple style="display:none">
+          <input type="file" id="files-input-folder" multiple webkitdirectory style="display:none">
+          <div id="files-upload-queue" class="upload-queue"></div>
+          <div id="files-list-container"></div>
+        </div>
+      </div>
+      </div>`;
+
+    renderFilesList();
+    wireFilesActions(root);
+  }
+
+  function renderFilesList() {
+    const container = document.getElementById('files-list-container');
+    if (!container) return;
+
+    const visible = _filesFolder === 'all'
+      ? _filesAllDocs
+      : _filesAllDocs.filter(d => (d.folder_path || 'other') === _filesFolder);
+
+    if (visible.length === 0) {
+      const folderLabel = MATTER_FOLDERS.find(f => f.key === _filesFolder)?.label || _filesFolder;
+      container.innerHTML = `<div class="files-empty">No files in ${Utils.esc(folderLabel)} yet.</div>`;
+      return;
+    }
+
+    const iconFor = (ct) => {
+      if (!ct) return '📄';
+      if (ct === 'application/pdf') return '🗒';
+      if (ct.includes('word')) return '📝';
+      if (ct.includes('sheet') || ct.includes('excel')) return '📊';
+      if (ct.startsWith('image/')) return '🖼';
+      return '📄';
+    };
+
+    const formatSize = (bytes) => {
+      if (!bytes) return '';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`;
+      return `${(bytes / 1048576).toFixed(1)} MB`;
+    };
+
+    const rows = visible.map(doc => {
+      const date = new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const folder = MATTER_FOLDERS.find(f => f.key === (doc.folder_path || 'other'))?.label || 'Other';
+      const size = formatSize(doc.file_size);
+      return `<tr>
+        <td style="font-weight:500">
+          <span style="margin-right:var(--space-2)">${iconFor(doc.content_type)}</span>${Utils.esc(doc.name || doc.file_name)}
+        </td>
+        ${_filesFolder === 'all' ? `<td style="color:var(--color-text-muted);font-size:var(--text-sm)">${Utils.esc(folder)}</td>` : ''}
+        <td style="color:var(--color-text-muted);font-size:var(--text-sm)">${size}</td>
+        <td style="color:var(--color-text-muted);font-size:var(--text-sm)">${date}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn btn--ghost btn--sm files-download-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.file_name)}" title="Download">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <button class="btn btn--ghost btn--sm files-delete-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.name || doc.file_name)}" title="Delete" style="color:var(--color-danger)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const showFolderCol = _filesFolder === 'all';
+    container.innerHTML = `
+      <div class="files-list-card">
+        <table class="data-table">
+          <thead><tr>
+            <th>File</th>
+            ${showFolderCol ? '<th>Folder</th>' : ''}
+            <th>Size</th>
+            <th>Date</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+
+    container.querySelectorAll('.files-download-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/get-download-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ document_id: btn.dataset.docId }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+          const { download_url } = await res.json();
+          const a = document.createElement('a');
+          a.href = download_url;
+          a.download = btn.dataset.fileName;
+          a.target = '_blank';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } catch (err) {
+          Utils.toast(err.message || 'Download failed.', 'error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.files-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!await Utils.confirm(`Delete "${btn.dataset.fileName}"? This cannot be undone.`, { confirmLabel: 'Delete File', danger: true })) return;
+        btn.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/delete-document', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ document_id: btn.dataset.docId }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+          Utils.toast('File deleted.', 'success');
+          _filesAllDocs = _filesAllDocs.filter(d => d.id !== btn.dataset.docId);
+          renderFilesList();
+          // refresh sidebar counts
+          const root = document.getElementById('files-panel-root');
+          if (root) renderFilesPanel(root);
+        } catch (err) {
+          Utils.toast(err.message || 'Delete failed.', 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  function wireFilesActions(root) {
+    // Folder nav
+    root.querySelectorAll('.files-folder-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _filesFolder = btn.dataset.folder;
+        root.querySelectorAll('.files-folder-btn').forEach(b => b.classList.remove('files-folder-btn--active'));
+        btn.classList.add('files-folder-btn--active');
+        renderFilesList();
+      });
+    });
+
+    // Upload buttons → hidden file inputs
+    const multiInput  = document.getElementById('files-input-multi');
+    const folderInput = document.getElementById('files-input-folder');
+    document.getElementById('files-upload-btn')?.addEventListener('click', () => multiInput?.click());
+    document.getElementById('files-folder-upload-btn')?.addEventListener('click', () => folderInput?.click());
+
+    multiInput?.addEventListener('change', e => {
+      if (e.target.files?.length) handleFileUpload(Array.from(e.target.files));
+      e.target.value = '';
+    });
+    folderInput?.addEventListener('change', e => {
+      if (e.target.files?.length) handleFileUpload(Array.from(e.target.files));
+      e.target.value = '';
+    });
+
+    // Drag and drop
+    const dropZone = document.getElementById('files-drop-zone');
+    if (dropZone) {
+      dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length) handleFileUpload(files);
+      });
+    }
+  }
+
+  async function handleFileUpload(files) {
+    const queue  = document.getElementById('files-upload-queue');
+    if (!queue || !matter) return;
+
+    const targetFolder = _filesFolder === 'all' ? 'other' : _filesFolder;
+    const session = await Auth.getSession();
+
+    // Build initial queue UI
+    const items = files.map((f, i) => ({ file: f, id: `uq-${i}`, status: 'pending', msg: '' }));
+    queue.innerHTML = items.map(it => `
+      <div class="upload-queue-item uploading" id="${it.id}">
+        <span class="uq-name">${Utils.esc(it.file.name)}</span>
+        <span class="uq-msg">Waiting…</span>
+      </div>`).join('');
+
+    let anyUploaded = false;
+
+    for (const item of items) {
+      const el = document.getElementById(item.id);
+
+      const ct = resolveContentType(item.file);
+      if (!ct) {
+        if (el) {
+          el.className = 'upload-queue-item skipped';
+          el.querySelector('.uq-msg').textContent = 'Skipped — unsupported type';
+        }
+        continue;
+      }
+
+      if (el) el.querySelector('.uq-msg').textContent = 'Uploading…';
+
+      try {
+        // 1. Get upload URL
+        const urlRes = await fetch('/api/get-upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({
+            matter_id:    matter.id,
+            file_name:    item.file.name,
+            file_size:    item.file.size,
+            content_type: ct,
+            name:         item.file.name,
+            doc_type:     FOLDER_DOC_TYPE[targetFolder] || 'other',
+            folder_path:  targetFolder,
+          }),
+        });
+        if (!urlRes.ok) {
+          const err = await urlRes.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${urlRes.status}`);
+        }
+        const { upload_url, document_id } = await urlRes.json();
+
+        // 2. PUT to R2
+        const putRes = await fetch(upload_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': ct },
+          body: item.file,
+        });
+        if (!putRes.ok) throw new Error(`Upload failed (${putRes.status})`);
+
+        // 3. Confirm
+        if (el) el.querySelector('.uq-msg').textContent = 'Scanning…';
+        const cfRes = await fetch('/api/confirm-upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ document_id }),
+        });
+        if (!cfRes.ok) {
+          const cerr = await cfRes.json().catch(() => ({}));
+          throw new Error(cerr.error || 'Scan failed');
+        }
+
+        if (el) {
+          el.className = 'upload-queue-item done';
+          el.querySelector('.uq-msg').textContent = 'Done';
+        }
+
+        // Add to local state immediately
+        _filesAllDocs.unshift({
+          id: document_id,
+          name: item.file.name,
+          file_name: item.file.name,
+          file_size: item.file.size,
+          content_type: ct,
+          folder_path: targetFolder,
+          doc_type: FOLDER_DOC_TYPE[targetFolder] || 'other',
+          status: 'received',
+          created_at: new Date().toISOString(),
+          uploaded_by: null,
+          deleted_at: null,
+        });
+        anyUploaded = true;
+
+      } catch (err) {
+        if (el) {
+          el.className = 'upload-queue-item error';
+          el.querySelector('.uq-msg').textContent = err.message || 'Failed';
+        }
+      }
+    }
+
+    if (anyUploaded) {
+      const root = document.getElementById('files-panel-root');
+      if (root) renderFilesPanel(root);
+    }
+
+    // Auto-clear queue after 4s
+    setTimeout(() => {
+      const q = document.getElementById('files-upload-queue');
+      if (q) q.innerHTML = '';
+    }, 4000);
+  }
+
+  // ── Stage tracker ────────────────────────────────────────────────────────────
+
+  function wireStageTracker() {
+    const container = document.getElementById('stage-tracker-container');
+    if (!container) return;
+
+    if (!matter || !_stageList.length) {
+      container.innerHTML = '';
+      return;
+    }
+
+    const activeIdx = _stageList.findIndex(s => s.id === matter.current_stage_id);
+
+    const steps = _stageList.map((s, i) => {
+      const isDone   = activeIdx >= 0 && i < activeIdx;
+      const isActive = i === activeIdx;
+      const cls = isDone ? 'stage-step--done' : isActive ? 'stage-step--active' : '';
+      return `<div class="stage-step ${cls}" data-stage-id="${Utils.esc(s.id)}" title="Set stage: ${Utils.esc(s.name)}">
+        <div class="stage-dot"></div>
+        <div class="stage-label">${Utils.esc(s.name)}</div>
+      </div>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="stage-tracker">
+        <div class="stage-tracker-header">
+          <span class="stage-tracker-title">Case Progress</span>
+          ${activeIdx >= 0 ? '<button class="btn btn--ghost btn--sm" id="btn-clear-stage" style="font-size:var(--text-xs);color:var(--color-text-muted)">Clear stage</button>' : ''}
+        </div>
+        <div class="stage-pipeline">${steps}</div>
+      </div>`;
+
+    container.querySelectorAll('.stage-step').forEach(el => {
+      el.addEventListener('click', async () => {
+        const stageId = el.dataset.stageId;
+        if (stageId === matter.current_stage_id) return;
+        try {
+          await callFunction('/api/set-matter-stage', { matter_id: matter.id, stage_id: stageId });
+          matter.current_stage_id = stageId;
+          _currentStage = _stageList.find(s => s.id === stageId) || null;
+          wireStageTracker();
+          renderHero();
+          Utils.toast(`Stage set to "${_currentStage?.name || ''}"`, 'success');
+        } catch (err) {
+          Utils.toast(err.message, 'error');
+        }
+      });
+    });
+
+    document.getElementById('btn-clear-stage')?.addEventListener('click', async () => {
+      try {
+        await callFunction('/api/set-matter-stage', { matter_id: matter.id, stage_id: null });
+        matter.current_stage_id = null;
+        _currentStage = null;
+        wireStageTracker();
+        renderHero();
+        Utils.toast('Stage cleared', 'success');
+      } catch (err) {
+        Utils.toast(err.message, 'error');
       }
     });
   }
@@ -2315,14 +3286,13 @@
           throw new Error(errData.error || `Server error (${res.status})`);
         }
 
-        const html = await res.text();
-        const blob = new Blob([html], { type: 'text/html' });
-        const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank');
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        const data = await res.json();
+        // Trigger the ms-word: URI — opens the filled .docx in native Word via WebDAV
+        window.location.href = data.word_url;
 
         closeModal(modalEl);
-        Utils.toast('Document generated — print or save as PDF from the new tab.', 'success');
+        Utils.toast(`Opening "${data.file_name}" in Word…`, 'success');
+        _draftsLoaded = false; // invalidate so Drafts tab reloads on next click
       } catch (err) {
         errEl.textContent = err.message || 'Failed to generate document.';
         errEl.classList.remove('hidden');
@@ -2543,12 +3513,17 @@
     const hasFamilyLaw   = practiceAreas.some(p => p.key === 'family_law');
     const hasImmigration = practiceAreas.some(p => p.key === 'immigration');
 
-    ['opposing', 'children', 'financial'].forEach(tabKey => {
-      const btn   = document.querySelector(`.detail-tab[data-tab="${tabKey}"]`);
-      const panel = document.getElementById(`tab-${tabKey}`);
-      if (btn)   btn.classList.toggle('hidden', !hasFamilyLaw);
-      if (panel) panel.classList.toggle('hidden', !hasFamilyLaw);
+    // Family-law party sections inside the Case tab
+    ['opposing-container', 'children-container'].forEach(id => {
+      document.getElementById(id)?.classList.toggle('hidden', !hasFamilyLaw);
     });
+
+    // Financial → Overview sub-tab is family-law only; others land on Trust
+    const ovBtn   = document.querySelector('.subtab[data-group="fin"][data-subtab="fin-overview"]');
+    const ovPanel = document.getElementById('subpanel-fin-overview');
+    if (ovBtn)   ovBtn.classList.toggle('hidden', !hasFamilyLaw);
+    if (ovPanel) ovPanel.classList.toggle('hidden', !hasFamilyLaw);
+    if (!hasFamilyLaw) activateSubtab('fin', 'trust', { skipLoad: true });
 
     const immBtn   = document.querySelector('.detail-tab[data-tab="immigration"]');
     const immPanel = document.getElementById('tab-immigration');
@@ -2959,14 +3934,11 @@
   let _pendingReversal   = null; // { milestoneId, invoiceId, amount, desc }
 
   function wireTrustTab() {
-    const tab = document.querySelector('[data-tab="trust"]');
-    if (!tab) return;
-
-    tab.addEventListener('click', async () => {
+    _subtabLoaders.trust = async () => {
       if (_trustLoaded) return;
       _trustLoaded = true;
       await loadTrust();
-    });
+    };
 
     document.getElementById('btn-trust-new-entry')?.addEventListener('click', openTrustEntryModal);
     document.getElementById('trust-entry-close')?.addEventListener('click', closeTrustEntryModal);
@@ -3486,7 +4458,7 @@
   }
 
   async function voidInvoice(invoiceId) {
-    if (!confirm('Void this invoice? This cannot be undone.')) return;
+    if (!await Utils.confirm('Void this invoice? This cannot be undone.', { confirmLabel: 'Void Invoice', danger: true })) return;
     const { error } = await db.from('invoices').update({ status: 'void' }).eq('id', invoiceId);
     if (error) { Utils.toast('Failed to void invoice. ' + (error.message || ''), 'error'); return; }
     Utils.toast('Invoice voided', 'success');
@@ -3495,7 +4467,7 @@
   }
 
   async function markMilestoneEarned(milestoneId, invoiceId) {
-    if (!confirm('Mark this milestone as earned? This will create a disbursement from trust.')) return;
+    if (!await Utils.confirm('Mark this milestone as earned? This will create a disbursement from trust.', { confirmLabel: 'Mark Earned' })) return;
 
     const { data: ms, error: msLookupErr } = await db.from('flat_fee_milestones')
       .select('amount, description')

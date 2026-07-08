@@ -14,6 +14,11 @@
   const PAGE_SIZE   = 25;
   let offset        = 0;
 
+  let sortBy  = 'last_name';
+  let sortDir = 'asc';
+  const SERVER_SORT_COLS  = new Set(['last_name', 'first_name']);
+  const NEXT_DATE_TYPES   = new Set(['hearing', 'mediation', 'trial']);
+
   let practiceAreas   = [];
   let caseTypesData   = [];
   let caseTypeMap     = new Map();  // id → case_type row
@@ -92,11 +97,11 @@
       .from('clients')
       .select(`
         id, first_name, last_name, email, phone, active, is_dv_confidential,
-        matters ( id, case_type, case_number, status, assigned_attorney_id,
+        matters ( id, case_type, case_type_id, case_number, status, assigned_attorney_id,
           key_dates ( date_type, date_value )
         )
       `, { count: 'exact' })
-      .order('last_name');
+      .order(SERVER_SORT_COLS.has(sortBy) ? sortBy : 'last_name', { ascending: SERVER_SORT_COLS.has(sortBy) ? sortDir === 'asc' : true });
 
     if (searchQuery) {
       const q = searchQuery.replace(/'/g, "''");
@@ -109,7 +114,9 @@
     if (error) { Utils.handleError(error, 'clients load'); return; }
 
     allClients = data || [];
+    if (!SERVER_SORT_COLS.has(sortBy)) sortClientsInPlace(allClients);
     renderTable(allClients, count);
+    updateSortArrows();
     renderPagination(count);
   }
 
@@ -141,12 +148,12 @@
               ${Utils.initials(c)}
             </div>
             <div>
-              <div style="font-weight:500;display:flex;align-items:center;gap:var(--space-2)">${Utils.esc(Utils.fullName(c))}${c.is_dv_confidential ? ' <span class="badge badge--dv" title="DV confidential">DV</span>' : ''}${unreadMap[c.id] ? `<span class="badge badge--msg-unread" title="${unreadMap[c.id]} unread message${unreadMap[c.id] > 1 ? 's' : ''}">💬 ${unreadMap[c.id]}</span>` : ''}</div>
+              <div style="font-weight:500;display:flex;align-items:center;gap:var(--space-2)">${Utils.esc(c.last_name)}, ${Utils.esc(c.first_name)}${c.is_dv_confidential ? ' <span class="badge badge--dv" title="DV confidential">DV</span>' : ''}${unreadMap[c.id] ? `<span class="badge badge--msg-unread" title="${unreadMap[c.id]} unread message${unreadMap[c.id] > 1 ? 's' : ''}">💬 ${unreadMap[c.id]}</span>` : ''}</div>
               <div class="text-muted text-sm">${Utils.esc(c.email || '')}</div>
             </div>
           </div>
         </td>
-        <td>${matter ? caseTypeBadge(matter.case_type) : '<span class="text-muted">—</span>'}</td>
+        <td>${matter ? caseTypeBadge(caseTypeMap.get(matter.case_type_id)?.key || matter.case_type) : '<span class="text-muted">—</span>'}</td>
         <td>${Utils.esc(matter?.case_number || '—')}</td>
         <td>${matter ? `<span class="badge badge--${matter.status}">${Utils.titleCase(matter.status)}</span>` : '<span class="text-muted">—</span>'}</td>
         <td>${attorney
@@ -165,10 +172,51 @@
   function nextHearingDate(dates) {
     const today = new Date().toISOString().slice(0, 10);
     return (dates || [])
-      .filter(d => d.date_type === 'hearing' && d.date_value >= today)
+      .filter(d => NEXT_DATE_TYPES.has(d.date_type) && d.date_value >= today)
       .sort((a, b) => a.date_value.localeCompare(b.date_value))[0]?.date_value;
   }
   function isOverdue(dateStr) { return dateStr < new Date().toISOString().slice(0, 10); }
+
+  const SVG_SORT_INACTIVE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:3px;opacity:0.35"><polyline points="18 9 12 4 6 9"/><polyline points="6 15 12 20 18 15"/></svg>`;
+  const SVG_SORT_ASC  = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:3px"><polyline points="18 15 12 9 6 15"/></svg>`;
+  const SVG_SORT_DESC = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:3px"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+  function updateSortArrows() {
+    document.querySelectorAll('.sort-arrow').forEach(el => {
+      const col = el.dataset.arrow;
+      if (col === sortBy) {
+        el.innerHTML = sortDir === 'asc' ? SVG_SORT_ASC : SVG_SORT_DESC;
+      } else {
+        el.innerHTML = SVG_SORT_INACTIVE;
+      }
+    });
+  }
+
+  function sortClientsInPlace(clients) {
+    clients.sort((a, b) => {
+      const m1 = (a.matters || [])[0];
+      const m2 = (b.matters || [])[0];
+      let v1, v2;
+      if (sortBy === 'case_type') {
+        v1 = caseTypeMap.get(m1?.case_type_id)?.name || m1?.case_type || '';
+        v2 = caseTypeMap.get(m2?.case_type_id)?.name || m2?.case_type || '';
+      } else if (sortBy === 'case_number') {
+        v1 = m1?.case_number || ''; v2 = m2?.case_number || '';
+      } else if (sortBy === 'status') {
+        v1 = m1?.status || ''; v2 = m2?.status || '';
+      } else if (sortBy === 'attorney') {
+        const u1 = users.find(u => u.id === m1?.assigned_attorney_id);
+        const u2 = users.find(u => u.id === m2?.assigned_attorney_id);
+        v1 = u1 ? Utils.fullName(u1) : ''; v2 = u2 ? Utils.fullName(u2) : '';
+      } else if (sortBy === 'next_date') {
+        v1 = nextHearingDate(m1?.key_dates) || '9999'; v2 = nextHearingDate(m2?.key_dates) || '9999';
+      } else {
+        return 0;
+      }
+      const cmp = v1.localeCompare(v2, undefined, { numeric: true, sensitivity: 'base' });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }
 
   function renderPagination(total) {
     if (!total || total <= PAGE_SIZE) { pagination.innerHTML = ''; return; }
@@ -216,6 +264,9 @@
     modalEl.querySelector('#modal-cancel').addEventListener('click', closeModal);
     modalEl.querySelector('#client-form').addEventListener('submit', handleSave);
     modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
+
+    const deleteBtn = modalEl.querySelector('#modal-delete');
+    if (deleteBtn) deleteBtn.addEventListener('click', () => handleDelete(clientId));
   }
 
   function closeModal() { modalEl.classList.add('hidden'); modalEl.innerHTML = ''; }
@@ -405,6 +456,7 @@
         </div>
         <div class="modal-footer">
           <div id="modal-error" class="form-error hidden" style="flex:1;margin-right:auto"></div>
+          ${clientId ? `<button type="button" class="btn btn--ghost btn--sm" id="modal-delete" style="color:var(--color-danger);margin-right:auto">Delete client</button>` : ''}
           <button type="button" class="btn btn--secondary" id="modal-cancel">Cancel</button>
           <button type="submit" class="btn btn--primary" id="modal-save">
             ${clientId ? 'Save changes' : 'Create client'}
@@ -578,9 +630,42 @@
     }
   }
 
+  async function handleDelete(clientId) {
+    const client = allClients.find(c => c.id === clientId);
+    const name   = client ? Utils.fullName(client) : 'this client';
+    const ok = await Utils.confirm(
+      `Permanently delete ${name}? This will remove all their matters, documents, and records. This cannot be undone.`,
+      { confirmLabel: 'Delete permanently', danger: true }
+    );
+    if (!ok) return;
+
+    const { error } = await db.from('clients').delete().eq('id', clientId);
+    if (error) {
+      Utils.toast('Delete failed: ' + error.message, 'error');
+      return;
+    }
+    closeModal();
+    Utils.toast(`${name} deleted.`, 'success');
+    loadClients();
+  }
+
   // ── Event wiring ─────────────────────────────────────────────────────────────
 
   document.getElementById('btn-new-client').addEventListener('click', () => openModal());
+
+  document.getElementById('clients-thead').addEventListener('click', e => {
+    const th = e.target.closest('th[data-sort]');
+    if (!th) return;
+    const col = th.dataset.sort;
+    if (col === sortBy) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortBy  = col;
+      sortDir = 'asc';
+    }
+    offset = 0;
+    loadClients();
+  });
 
   document.getElementById('client-search').addEventListener('input', Utils.debounce(e => {
     searchQuery = e.target.value;

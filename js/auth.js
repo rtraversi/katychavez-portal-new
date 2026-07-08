@@ -125,6 +125,7 @@ window.Auth = (function () {
       .from('users')
       .select(`
         id, first_name, last_name, email, active,
+        phone, bar_number, licensing_authority, uscis_account_number, fax,
         role:roles (
           id, name, is_system_role,
           access:role_module_access ( module_key, access_level )

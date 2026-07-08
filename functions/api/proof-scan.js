@@ -2,6 +2,7 @@
 // POST only. Body: { file_base64: string, filename: string }
 
 import { verifyAuth, json, makeAdminClient } from './_helpers.js';
+import { notifyProofScanComplete } from './_notifications.js';
 
 const FALLBACK_EDITIONS = 'G-1145|1p|09/26/14, G-1450|1p|06/03/25, G-1650|1p|06/03/25, G-28|4p|09/17/18, I-90|7p|01/20/25, I-130|12p|04/01/24, I-130A|6p|04/01/24, I-131|14p|01/20/25, I-485|24p|01/20/25, I-751|11p|04/01/24, I-765|7p|08/21/25, I-765WS|1p|08/21/25, I-821D|7p|01/20/25, I-864|12p|10/17/24, N-400|14p|01/20/25';
 
@@ -25,11 +26,11 @@ CHECK FOR:
 2. Page counts — flag missing or extra pages for each form identified
 3. Blank or duplicate pages. Note: multiple G-1450 and/or G-1650 forms in a single package are normal and expected (one per filing fee) — do not flag them as duplicates.
 4. Required signatures — applicant and attorney/preparer on all applicable forms. Exception: the I-765WS does not require a signature — do not flag it.
-5. Signature dates — attorney must not sign before applicant
-6. Name consistency — BENEFICIARY name must match across all USCIS forms and beneficiary supporting documents. PETITIONER/SPONSOR documents in a different name are expected and should not be flagged.
-7. A-Number consistency — must match across all forms where present. A-Numbers may appear as A-XXXXXXXXX or XXX-XXX-XXX — treat these as equivalent formats and only flag if the underlying digits actually differ.
-8. Address consistency — mailing address must match across forms
-9. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
+5. Name consistency — BENEFICIARY name must match across all USCIS forms and beneficiary supporting documents. PETITIONER/SPONSOR documents in a different name are expected and should not be flagged.
+6. A-Number consistency — must match across all forms where present. A-Numbers may appear as A-XXXXXXXXX or XXX-XXX-XXX — treat these as equivalent formats and only flag if the underlying digits actually differ.
+7. Address consistency — mailing address must match across forms
+8. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
+9. G-28 page 3 checkboxes — boxes 1.a, 1.b, and 1.c on page 3 of the G-28 must be UNCHECKED. Flag the G-28 if any of these boxes is checked.
 
 USCIS FORM REFERENCE (current editions — updated daily from USCIS.gov):
 {{FORM_EDITIONS}}
@@ -48,10 +49,10 @@ NOTES:
 Format your response as:
 - A summary section (overall status: PASS / NEEDS CORRECTION), including the identified case type and the names of the beneficiary and petitioner/sponsor if determinable
 - An HTML table: Status | Form/Document | Issue | Detail
-- A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address, signature date order)
+- A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address)
 - If a G-1650 is found: a Bank Validation section showing routing number, bank name on form, expected bank, and match status. (G-1450 is credit card — no routing validation needed.)`;
 
-export async function onRequest({ request, env }) {
+export async function onRequest({ request, env, ctx }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
 
   const auth = await verifyAuth(request, env, 'write', 'proof_scan');
@@ -78,14 +79,16 @@ export async function onRequest({ request, env }) {
     }
   } catch { /* use fallback */ }
 
-  // Fetch custom instructions; fail-open
+  // Fetch custom instructions + notify email; fail-open
   let customInstructions = '';
+  let notifyEmail = '';
   try {
     const { data: rows } = await admin
       .from('proof_scan_config')
-      .select('custom_instructions')
+      .select('custom_instructions, notify_email')
       .limit(1);
     customInstructions = rows?.[0]?.custom_instructions?.trim() || '';
+    notifyEmail        = rows?.[0]?.notify_email?.trim()        || '';
   } catch { /* fail-open */ }
 
   const basePrompt = SYSTEM_PROMPT_BASE.replace('{{FORM_EDITIONS}}', formEditions);
@@ -158,6 +161,18 @@ export async function onRequest({ request, env }) {
   } catch (err) {
     console.error('[proof-scan] DB save error:', err.message);
     // Don't block response if DB save fails
+  }
+
+  // Send email notification — use ctx.waitUntil so the Worker stays alive after returning the response
+  if (notifyEmail) {
+    ctx.waitUntil(
+      notifyProofScanComplete(env, {
+        toEmail:    notifyEmail,
+        filename:   filename || 'document.pdf',
+        status,
+        resultHtml: html,
+      }).catch(err => console.error('[proof-scan] notify error:', err.message))
+    );
   }
 
   return json(200, {

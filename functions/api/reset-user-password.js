@@ -3,7 +3,7 @@
 // Sends a password reset email to a staff user. Owner or Staff Admin only.
 
 import { makeAdminClient, json } from './_helpers.js';
-import { createClient } from '@supabase/supabase-js';
+import { sendPasswordReset } from './_notifications.js';
 
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -45,15 +45,29 @@ export async function onRequest({ request, env }) {
 
   if (userErr || !user) return json(404, { error: 'User not found.' });
 
-  // Use anon client to trigger Supabase's built-in reset email
-  const anonClient = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
-  const { error: resetErr } = await anonClient.auth.resetPasswordForEmail(user.email, {
-    redirectTo: `${env.PORTAL_URL || 'https://divorcedifferently.com'}/reset-password`,
+  // Generate the recovery link, then send it via Resend
+  const { data: linkData, error: resetErr } = await admin.auth.admin.generateLink({
+    type: 'recovery',
+    email: user.email,
+    options: { redirectTo: `${env.PORTAL_URL}/reset-password` },
   });
 
   if (resetErr) {
-    console.error('[reset-user-password] reset error:', resetErr.message);
-    return json(500, { error: 'Failed to send reset email. Please try again.' });
+    console.error('[reset-user-password] generateLink error:', resetErr.message);
+    return json(500, { error: 'Failed to generate reset link. Please try again.' });
+  }
+
+  const actionLink = linkData?.properties?.action_link;
+  if (!actionLink) {
+    console.error('[reset-user-password] no action_link returned');
+    return json(500, { error: 'Failed to generate reset link. Please try again.' });
+  }
+
+  try {
+    await sendPasswordReset(env, { toEmail: user.email, resetLink: actionLink });
+  } catch (err) {
+    console.error('[reset-user-password] email error:', err.message);
+    return json(500, { error: 'Reset link generated but email failed to send.' });
   }
 
   return json(200, { ok: true });

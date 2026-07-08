@@ -18,6 +18,7 @@
   const rulesTextarea   = document.getElementById('ps-rules-textarea');
   const rulesSaveBtn    = document.getElementById('ps-rules-save-btn');
   const rulesResetBtn   = document.getElementById('ps-rules-reset-btn');
+  const notifyEmailInput = document.getElementById('ps-notify-email');
 
   const resultsWrap     = document.getElementById('ps-results-wrap');
   const resultsContent  = document.getElementById('ps-results-content');
@@ -35,6 +36,7 @@
   let selectedFile    = null;
   let rulesOpen       = false;
   let rulesOriginal   = '';
+  let notifyEmailOriginal = '';
   let rulesChanged    = false;
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -179,10 +181,12 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      rulesOriginal          = data.custom_instructions || '';
-      rulesTextarea.value    = rulesOriginal;
-      rulesTextarea.disabled = false;
-      rulesChanged           = false;
+      rulesOriginal           = data.custom_instructions || '';
+      notifyEmailOriginal     = data.notify_email        || '';
+      rulesTextarea.value     = rulesOriginal;
+      notifyEmailInput.value  = notifyEmailOriginal;
+      rulesTextarea.disabled  = false;
+      rulesChanged            = false;
     } catch (err) {
       rulesTextarea.value = '';
       rulesTextarea.disabled = false;
@@ -190,10 +194,13 @@
     }
   }
 
-  rulesTextarea.addEventListener('input', () => {
-    rulesChanged          = rulesTextarea.value !== rulesOriginal;
+  function checkRulesChanged() {
+    rulesChanged          = rulesTextarea.value !== rulesOriginal ||
+                            notifyEmailInput.value.trim() !== notifyEmailOriginal;
     rulesSaveBtn.disabled = !rulesChanged;
-  });
+  }
+  rulesTextarea.addEventListener('input', checkRulesChanged);
+  notifyEmailInput.addEventListener('input', checkRulesChanged);
 
   rulesSaveBtn.addEventListener('click', async () => {
     rulesSaveBtn.disabled    = true;
@@ -208,13 +215,17 @@
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type':  'application/json',
         },
-        body: JSON.stringify({ custom_instructions: rulesTextarea.value }),
+        body: JSON.stringify({
+          custom_instructions: rulesTextarea.value,
+          notify_email:        notifyEmailInput.value.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      rulesOriginal = rulesTextarea.value;
-      rulesChanged  = false;
-      setRulesFeedback('Rules saved. They will apply to the next scan.', 'success');
+      rulesOriginal       = rulesTextarea.value;
+      notifyEmailOriginal = notifyEmailInput.value.trim();
+      rulesChanged        = false;
+      setRulesFeedback('Settings saved. They will apply to the next scan.', 'success');
     } catch (err) {
       setRulesFeedback('Save failed: ' + err.message, 'error');
     } finally {

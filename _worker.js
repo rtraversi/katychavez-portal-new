@@ -33,6 +33,7 @@ import { onRequest as calendarEvents }           from './functions/api/calendar-
 import { onRequest as calendarOutlookOauthUrl }      from './functions/api/calendar-outlook-oauth-url.js';
 import { onRequest as calendarOutlookOauthCallback } from './functions/api/calendar-outlook-oauth-callback.js';
 import { onRequest as resetUserPassword }            from './functions/api/reset-user-password.js';
+import { onRequest as updatePassword }              from './functions/api/update-password.js';
 import { onRequest as deleteUser }                   from './functions/api/delete-user.js';
 import { onRequest as processMessageNotifications, run as runMessageNotifications } from './functions/api/process-message-notifications.js';
 import { onRequest as draftingGenerate }            from './functions/api/drafting-generate.js';
@@ -46,6 +47,23 @@ import { onRequest as saveAttorneySig }             from './functions/api/save-a
 import { onRequest as proofScan }                   from './functions/api/proof-scan.js';
 import { onRequest as proofScanHistory }            from './functions/api/proof-scan-history.js';
 import { onRequest as proofScanConfig }             from './functions/api/proof-scan-config.js';
+import { onRequest as translationStart }            from './functions/api/translation-start.js';
+import { onRequest as translationPoll }             from './functions/api/translation-poll.js';
+import { onRequest as translationDownload }         from './functions/api/translation-download.js';
+import { onRequest as translationToPdf }            from './functions/api/translation-topdf.js';
+import { onRequest as translationHistory }          from './functions/api/translation-history.js';
+import { onRequest as helpChat }                    from './functions/api/help-chat.js';
+import { onRequest as updateAvatar }               from './functions/api/update-avatar.js';
+import { onRequest as updateMyProfile }             from './functions/api/update-my-profile.js';
+import { onRequest as setMatterStage }              from './functions/api/set-matter-stage.js';
+import { onRequest as draftingOpen }                from './functions/api/drafting-open.js';
+import { onRequest as webDAVHandler }               from './functions/api/webdav.js';
+import { onRequest as formFillerPackage }           from './functions/api/form-filler-package.js';
+import { onRequest as formFillerGenerate }          from './functions/api/form-filler-generate.js';
+import { onRequest as formFillerDownload }          from './functions/api/form-filler-download.js';
+import { onRequest as formFillerFinalize }          from './functions/api/form-filler-finalize.js';
+import { onRequest as formFillerTemplateDefaults }  from './functions/api/form-filler-template-defaults.js';
+import { onRequest as formFillerReset }             from './functions/api/form-filler-reset.js';
 
 const routes = {
   '/api/confirm-upload': confirmUpload,
@@ -82,6 +100,7 @@ const routes = {
   '/api/calendar/disconnect':            calendarDisconnect,
   '/api/calendar/events':                calendarEvents,
   '/api/reset-user-password':            resetUserPassword,
+  '/api/update-password':               updatePassword,
   '/api/delete-user':                    deleteUser,
   '/api/process-message-notifications':  processMessageNotifications,
   '/api/drafting/generate':              draftingGenerate,
@@ -95,6 +114,22 @@ const routes = {
   '/api/proof-scan':                     proofScan,
   '/api/proof-scan-history':             proofScanHistory,
   '/api/proof-scan-config':              proofScanConfig,
+  '/api/translation-start':             translationStart,
+  '/api/translation-poll':              translationPoll,
+  '/api/translation-download':          translationDownload,
+  '/api/translation-topdf':             translationToPdf,
+  '/api/translation-history':           translationHistory,
+  '/api/help-chat':                     helpChat,
+  '/api/update-avatar':                 updateAvatar,
+  '/api/update-my-profile':             updateMyProfile,
+  '/api/set-matter-stage':              setMatterStage,
+  '/api/drafting/open':                 draftingOpen,
+  '/api/form-filler/package':           formFillerPackage,
+  '/api/form-filler/generate':          formFillerGenerate,
+  '/api/form-filler/download':          formFillerDownload,
+  '/api/form-filler/finalize':          formFillerFinalize,
+  '/api/form-filler/template-defaults': formFillerTemplateDefaults,
+  '/api/form-filler/reset':             formFillerReset,
 };
 
 const HTML_REWRITES = {
@@ -139,13 +174,26 @@ export default {
     }
   },
 
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // WebDAV paths are dynamic (/webdav/{doc_id}) — handle before exact-match table
+    if (url.pathname.startsWith('/webdav/')) {
+      try {
+        return await webDAVHandler({ request, env, ctx, params: {}, data: {} });
+      } catch (err) {
+        console.error('[worker] webdav error', err?.message || err);
+        return new Response(JSON.stringify({ error: 'Internal server error' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     const handler = routes[url.pathname];
     if (handler) {
       try {
-        return await handler({ request, env, params: {}, data: {} });
+        return await handler({ request, env, ctx, params: {}, data: {} });
       } catch (err) {
         console.error('[worker] unhandled error in', url.pathname, err?.message || err);
         return new Response(JSON.stringify({ error: 'Internal server error' }), {

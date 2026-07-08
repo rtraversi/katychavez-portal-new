@@ -206,9 +206,11 @@ window.Menu = (function () {
   // ── Settings sub-navigation ──────────────────────────────────────────────
 
   const SETTINGS_NAV = [
+    { route: 'settings/firm',           name: 'Firm Profile' },
     { route: 'settings/users',          name: 'Users' },
     { route: 'settings/permissions',    name: 'Permissions' },
     { route: 'settings/practice-areas', name: 'Practice Areas' },
+    { route: 'settings/workflows',      name: 'Workflows' },
     { route: 'settings/calendar',       name: 'Calendar Sync' },
     { route: 'settings/signature',      name: 'Attorney Signature' },
   ];
@@ -238,14 +240,21 @@ window.Menu = (function () {
 
     main.innerHTML = '<div class="page-skeleton" aria-busy="true" aria-label="Loading…"></div>';
 
+    // Route aliases: some sidebar entries deep-link into another page's
+    // bundle rather than having their own page files (e.g. "Case Intake"
+    // reuses client-portal and auto-selects its Intake tab on load).
+    const ROUTE_ALIASES = { 'case-intake': 'client-portal' };
+    const pageRoute = ROUTE_ALIASES[route] || route;
+
     try {
-      const res = await fetch(`/pages/${route}/index.html`);
-      if (!res.ok) throw new Error(`Page not found: ${route}`);
+      const v = window.APP_CONFIG?.deployVersion || '';
+      const res = await fetch(`/pages/${pageRoute}/index.html?v=${v}`);
+      if (!res.ok) throw new Error(`Page not found: ${pageRoute}`);
       let pageHtml = await res.text();
-      if (route.startsWith('settings/')) pageHtml = buildSettingsNav(route) + pageHtml;
+      if (pageRoute.startsWith('settings/')) pageHtml = buildSettingsNav(pageRoute) + pageHtml;
       main.innerHTML = pageHtml;
 
-      const scriptSrc = `/pages/${route}/${route.split('/').pop()}.js`;
+      const scriptSrc = `/pages/${pageRoute}/${pageRoute.split('/').pop()}.js?v=${v}`;
       if (_currentScript) _currentScript.remove();
       const s = document.createElement('script');
       s.src = scriptSrc;

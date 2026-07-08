@@ -70,8 +70,18 @@
     resetBtn.textContent = 'Updating…';
 
     try {
-      var result = await db.auth.updateUser({ password: pw });
-      if (result.error) throw result.error;
+      // Use server-side endpoint so admin client bypasses AAL2 MFA requirement
+      var session = await db.auth.getSession();
+      var token = session?.data?.session?.access_token;
+      if (!token) throw new Error('Session expired — please request a new password reset link.');
+
+      var res = await fetch('/api/update-password', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update password.');
 
       resetOk.textContent = 'Password updated! Redirecting to portal…';
       resetOk.hidden = false;

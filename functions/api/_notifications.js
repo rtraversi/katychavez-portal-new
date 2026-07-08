@@ -69,6 +69,18 @@ function row(label, value) {
     : '';
 }
 
+export async function sendPasswordReset(env, { toEmail, resetLink }) {
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  await sendEmail(env, toEmail, `Reset your ${firmName} portal password`,
+    layout(env, `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">Password reset request</p>
+      <p style="margin:0 0 16px;color:#374151">A password reset was requested for your account at <strong>${firmName}</strong>. Click the button below to set a new password.</p>
+      <p style="margin:0 0 20px;font-size:13px;color:#6b7280">This link expires in 1 hour. If you didn't request a password reset, you can ignore this email.</p>
+      ${btn(resetLink, 'Reset my password')}
+    `), 'password_reset'
+  );
+}
+
 export async function notifyClientInvited(env, { toEmail, clientName, inviteLink }) {
   const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   const firmName  = env.PORTAL_FIRM_NAME || 'Your Law Firm';
@@ -191,6 +203,34 @@ export async function notifySignatureSigned(env, { toEmail, signerName, document
 
 export async function notifySignatureCompleted(env, { documentName, requestId }) {
   console.log(`[notify] Signature completed for "${documentName}" (request ${requestId}) — no email configured yet`);
+}
+
+export async function notifyProofScanComplete(env, { toEmail, filename, status, resultHtml }) {
+  const label    = status === 'needs_correction' ? 'NEEDS CORRECTION' : 'PASS';
+  const subject  = `Proof Scan — ${label} — ${filename}`;
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  const color    = status === 'needs_correction' ? '#b91c1c' : '#15803d';
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+<div style="max-width:860px;margin:40px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)">
+  <div style="background:#1a3a5c;padding:22px 32px;display:flex;align-items:center;justify-content:space-between">
+    <p style="margin:0;color:#fff;font-size:17px;font-weight:600">${firmName}</p>
+    <p style="margin:0;color:#fff;font-size:13px;opacity:.8">Proof Scan Result</p>
+  </div>
+  <div style="padding:24px 32px 8px">
+    <p style="margin:0 0 4px;font-size:18px;font-weight:700;color:${color}">${label}</p>
+    <p style="margin:0 0 20px;font-size:13px;color:#6b7280">${filename}</p>
+  </div>
+  <div style="padding:0 32px 32px;font-size:13px;line-height:1.6;color:#111">
+    ${resultHtml}
+  </div>
+  <div style="padding:14px 32px;background:#f9fafb;font-size:11px;color:#9ca3af;text-align:center">
+    Secure notification from your client portal — do not reply to this email.
+  </div>
+</div>
+</body></html>`;
+  await sendEmail(env, toEmail, subject, html, 'proof_scan');
 }
 
 export async function notifySignatureDeclined(env, { toEmail, clientName, documentName, reason }) {

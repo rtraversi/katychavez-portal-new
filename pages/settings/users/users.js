@@ -18,7 +18,7 @@
   async function loadData() {
     const [r, u] = await Promise.all([
       db.from('roles').select('id,name').order('name'),
-      db.from('users').select('id,first_name,last_name,email,active,role_id,color,invited_by,invited_at,roles(name)').order('last_name'),
+      db.from('users').select('id,first_name,last_name,email,active,role_id,color,invited_by,invited_at,phone,bar_number,licensing_authority,uscis_account_number,fax,roles(name)').order('last_name'),
     ]);
     roles = (r.data || []).filter(r => r.name !== 'Client');
     users = (u.data || []).filter(u => u.roles?.name !== 'Client');
@@ -43,7 +43,10 @@
         <td>${Utils.esc(u.roles?.name || '—')}</td>
         <td><span class="badge badge--${u.active ? 'active' : 'closed'}">${u.active ? 'Active' : 'Inactive'}</span></td>
         <td class="text-muted text-sm">${inviter ? Utils.fullName(inviter) : '—'}</td>
-        <td>
+        <td style="white-space:nowrap">
+          <button class="btn btn--ghost btn--sm btn-reset-pw-user" data-id="${u.id}" data-email="${Utils.esc(u.email)}" title="Send password reset email" style="margin-right:4px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </button>
           <button class="btn btn--ghost btn--sm btn-edit-user" data-id="${u.id}" title="Edit user">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
@@ -98,6 +101,33 @@
                     title="${c}"></button>`).join('')}
               </div>
             </div>
+          </div>
+          <div class="field" style="margin-top:var(--space-2);padding-top:var(--space-3);border-top:1px solid var(--color-border)">
+            <label style="font-weight:600">Professional info <span class="text-muted text-sm" style="font-weight:400">(autofilled onto USCIS forms for matters assigned to this attorney)</span></label>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="user-phone">Direct phone</label>
+              <input type="tel" id="user-phone" name="phone" value="${Utils.esc(user?.phone || '')}" placeholder="Digits only">
+            </div>
+            <div class="field">
+              <label for="user-fax">Fax</label>
+              <input type="tel" id="user-fax" name="fax" value="${Utils.esc(user?.fax || '')}" placeholder="Digits only">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="user-bar">Bar number</label>
+              <input type="text" id="user-bar" name="bar_number" value="${Utils.esc(user?.bar_number || '')}">
+            </div>
+            <div class="field">
+              <label for="user-uscis-acct">USCIS Online Account #</label>
+              <input type="text" id="user-uscis-acct" name="uscis_account_number" value="${Utils.esc(user?.uscis_account_number || '')}" maxlength="12">
+            </div>
+          </div>
+          <div class="field">
+            <label for="user-licensing">Licensing authority</label>
+            <input type="text" id="user-licensing" name="licensing_authority" value="${Utils.esc(user?.licensing_authority || '')}" placeholder="e.g. State Bar of Texas">
           </div>` : ''}
         </div>
         <div class="modal-footer">
@@ -135,11 +165,8 @@
     }
   }
 
-  async function handleResetPassword(userId, email) {
+  async function sendPasswordReset(userId, email) {
     if (!await Utils.confirm(`Send a password reset email to ${email}?`, { confirmLabel: 'Send Reset Email' })) return;
-    const btn = modalEl.querySelector('#btn-reset-pw');
-    btn.disabled = true;
-    btn.textContent = 'Sending…';
     try {
       const session = await Auth.getSession();
       const res = await fetch('/api/reset-user-password', {
@@ -150,12 +177,17 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       Utils.toast(`Password reset email sent to ${email}.`, 'success');
-      closeModal();
     } catch (err) {
       Utils.toast(err.message || 'Failed to send reset email.', 'error');
-      btn.disabled = false;
-      btn.textContent = 'Reset password';
     }
+  }
+
+  async function handleResetPassword(userId, email) {
+    const btn = modalEl.querySelector('#btn-reset-pw');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    await sendPasswordReset(userId, email);
+    if (btn) { btn.disabled = false; btn.textContent = 'Reset password'; }
+    closeModal();
   }
 
   async function handleDeleteUser(userId, user) {
@@ -204,6 +236,11 @@
           role_id:    f.elements['role_id'].value,
           active:     f.elements['active'].checked,
           color:      colorEl?.value || null,
+          phone:                f.elements['phone'].value.trim() || null,
+          fax:                  f.elements['fax'].value.trim() || null,
+          bar_number:           f.elements['bar_number'].value.trim() || null,
+          uscis_account_number: f.elements['uscis_account_number'].value.trim() || null,
+          licensing_authority:  f.elements['licensing_authority'].value.trim() || null,
         }).eq('id', userId);
         if (error) throw error;
         Utils.toast('User updated.', 'success');
@@ -239,8 +276,11 @@
 
   document.getElementById('btn-invite-user').addEventListener('click', () => openModal());
   document.getElementById('users-tbody').addEventListener('click', e => {
-    const btn = e.target.closest('.btn-edit-user');
-    if (btn) openModal(btn.dataset.id);
+    const editBtn = e.target.closest('.btn-edit-user');
+    if (editBtn) { openModal(editBtn.dataset.id); return; }
+
+    const resetBtn = e.target.closest('.btn-reset-pw-user');
+    if (resetBtn) sendPasswordReset(resetBtn.dataset.id, resetBtn.dataset.email);
   });
 
   await loadData();

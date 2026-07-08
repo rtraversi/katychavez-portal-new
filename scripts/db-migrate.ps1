@@ -47,6 +47,13 @@ if (-not $dbUrl) {
   exit 1
 }
 
+# A non-URI value (e.g. a leftover placeholder) makes psql treat it as a local
+# database NAME and silently try localhost:5432 -- fail loudly instead.
+if ($dbUrl -notmatch '^postgres(ql)?://') {
+  Write-Error "$dbUrlVar does not look like a connection string (got: $dbUrl).`nGet it from Supabase dashboard -> Connect -> Session pooler URI, then set it in .env."
+  exit 1
+}
+
 # -- Safety check for prod ----------------------------------------------------
 
 if ($Target -eq 'prod' -and -not $DryRun) {
@@ -93,6 +100,13 @@ if ($DryRun) {
 }
 
 # -- Apply migrations ---------------------------------------------------------
+# psql only. (The old Supabase CLI fallback called `supabase db execute`, a
+# subcommand that no longer exists in the modern CLI.)
+
+if (-not (Get-Command psql -ErrorAction SilentlyContinue)) {
+  Write-Error "psql not found on PATH. Install it first, e.g.:  scoop install postgresql"
+  exit 1
+}
 
 $failed = @()
 foreach ($mig in $pending) {
@@ -100,22 +114,19 @@ foreach ($mig in $pending) {
 
   $success = $false
 
-  try {
-    $result = & psql $dbUrl -f $mig.FullName 2>&1
-    if ($LASTEXITCODE -eq 0) {
-      $success = $true
-    } else {
-      Write-Warning "psql exited with code $LASTEXITCODE"
-    }
-  } catch {
-    Write-Warning "psql not found or failed. Trying Supabase CLI..."
-    try {
-      $result = & supabase db execute --db-url $dbUrl -f $mig.FullName 2>&1
-      if ($LASTEXITCODE -eq 0) { $success = $true }
-    } catch {
-      Write-Error "Neither psql nor Supabase CLI found. Install one to apply migrations."
-      exit 1
-    }
+  # EAP=Continue for the native call: psql writes NOTICEs to stderr, which
+  # under Stop + 2>&1 in PS 5.1 become fatal NativeCommandError exceptions.
+  # ON_ERROR_STOP makes psql exit non-zero on SQL errors (otherwise it keeps
+  # going and exits 0, and a broken migration would be recorded as applied).
+  $eap = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  $result = & psql $dbUrl -v ON_ERROR_STOP=1 -f $mig.FullName 2>&1
+  $ErrorActionPreference = $eap
+
+  if ($LASTEXITCODE -eq 0) {
+    $success = $true
+  } else {
+    Write-Warning "psql exited with code $LASTEXITCODE"
   }
 
   if ($success) {

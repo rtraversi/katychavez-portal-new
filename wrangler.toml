@@ -25,14 +25,14 @@ SUPABASE_URL      = "https://syqpooenhygbkedfthwe.supabase.co"
 SUPABASE_ANON_KEY = "sb_publishable_1iHAF45Itws20diDdJG0bg_O1wKk5H2"
 R2_ACCOUNT_ID     = "463b69cee7d11e6b333a14670b98c6b5"
 R2_BUCKET_NAME    = "katychavez-portal"
-PORTAL_URL        = "https://katychavez-portal-new.shy-union-b269.workers.dev"
+PORTAL_URL        = "https://portal.katychavez.com"
 PORTAL_FIRM_NAME  = "Katy Chavez, Atty"
-PORTAL_FROM_EMAIL = "katychavezlaw@gmail.com"
+PORTAL_FROM_EMAIL = "portal@katychavez.com"
 B2_ENDPOINT       = "s3.us-east-005.backblazeb2.com"
 B2_BUCKET_NAME    = "katychavez-portal-backup"
 ATTACHMENTAV_API_URL = "https://us.developer.attachmentav.com"
-GOOGLE_REDIRECT_URI  = "https://katychavez-portal-new.katycab.workers.dev/api/calendar/oauth-callback"
-OUTLOOK_REDIRECT_URI = "https://katychavez-portal-new.katycab.workers.dev/api/calendar/outlook-oauth-callback"
+GOOGLE_REDIRECT_URI  = "https://portal.katychavez.com/api/calendar/oauth-callback"
+OUTLOOK_REDIRECT_URI = "https://portal.katychavez.com/api/calendar/outlook-oauth-callback"
 
 
 # ── Secrets — set via CLI, never in this file ────────────────────────────────

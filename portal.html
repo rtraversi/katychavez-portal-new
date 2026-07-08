@@ -18,12 +18,13 @@
 <aside class="sidebar" id="sidebar" aria-label="Main navigation">
 
   <div class="sidebar-brand">
-    <img src="assets/katychavez-logo-small.jpg" class="brand-logo" alt="Katy Chavez Law">
+    <img src="assets/iurisiq-logo-small.png" class="brand-logo" alt="IurisIQ">
     <span class="brand-tagline">Client Portal</span>
-    <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" aria-label="Collapse navigation">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-    </button>
   </div>
+
+  <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" aria-label="Toggle navigation">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
 
   <nav class="sidebar-nav" id="sidebar-nav" aria-label="Portal modules">
     <!-- Rendered by menu.js -->
@@ -35,7 +36,7 @@
   </nav>
 
   <div class="sidebar-footer">
-    <div class="sidebar-footer-user">
+    <div class="sidebar-footer-user" id="sidebar-footer-user">
       <div class="user-card" id="user-card">
         <div class="user-avatar" id="user-avatar" aria-hidden="true">?</div>
         <div class="user-info">
@@ -71,17 +72,20 @@
       </svg>
     </button>
     <nav class="breadcrumb" id="breadcrumb" aria-label="Breadcrumb"></nav>
+    <div class="topbar-search" id="topbar-search-wrap" role="search">
+      <svg class="topbar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" class="topbar-search-input" id="topbar-search-input" placeholder="Search modules or clients…" autocomplete="off" aria-label="Search modules or clients">
+      <div class="topbar-search-results" id="topbar-search-results" hidden role="listbox" aria-label="Search results"></div>
+    </div>
     <div class="topbar-right">
       <div class="topbar-date" id="topbar-date"></div>
       <button id="topbar-theme-btn" class="topbar-settings-btn" aria-label="Change theme">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10c0 1.657-1.343 3-3 3h-1.5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h1.5"/><circle cx="7" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="9.5" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="13" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="16.5" cy="9.5" r="1" fill="currentColor" stroke="none"/></svg>
       </button>
-      <a href="/account" class="topbar-settings-btn" id="topbar-account-link" aria-label="My account" title="My account">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      </a>
-      <a href="#settings/users" class="topbar-settings-btn" id="topbar-settings-link" aria-label="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </a>
+      <button class="topbar-avatar-btn" id="topbar-avatar-btn" aria-label="My account" aria-expanded="false" aria-haspopup="true">
+        <img id="topbar-avatar-img" class="topbar-avatar-img" alt="Profile photo" style="display:none">
+        <span id="topbar-avatar-initials" class="topbar-avatar-initials"></span>
+      </button>
     </div>
   </header>
   <script src="js/portal-date.js"></script>
@@ -104,6 +108,7 @@
 <script src="js/auth.js"></script>
 <script src="modules/registry.js"></script>
 <script src="js/menu.js"></script>
+<script src="js/topbar-search.js"></script>
 <script src="js/portal-init.js"></script>
 
 <!-- Theme picker modal -->
@@ -121,6 +126,89 @@
     </div>
   </div>
 </div>
+
+<!-- ── USER POPOVER ───────────────────────────────────────────────────────── -->
+<div class="user-popover" id="user-popover" role="menu" aria-label="User menu">
+  <div class="user-popover-header">
+    <div class="user-popover-avatar" id="user-popover-avatar"></div>
+    <div class="user-popover-details">
+      <div class="user-popover-name" id="user-popover-name"></div>
+      <div class="user-popover-role" id="user-popover-role"></div>
+    </div>
+  </div>
+  <div class="user-popover-divider"></div>
+  <button class="user-popover-logout" id="user-popover-logout" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    Sign out
+  </button>
+</div>
+
+<!-- ── TOPBAR USER MENU ──────────────────────────────────────────────────── -->
+<div id="topbar-user-menu" class="topbar-user-menu" style="display:none" role="menu" aria-label="User menu">
+  <div class="tum-header">
+    <div class="tum-photo-wrap">
+      <div class="tum-avatar" id="tum-avatar">
+        <img id="tum-avatar-img" alt="Profile photo" style="display:none">
+        <span id="tum-avatar-initials"></span>
+      </div>
+      <label class="tum-upload-btn" id="tum-upload-label" title="Upload profile photo" aria-label="Upload profile photo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <input type="file" id="tum-avatar-file" accept="image/*" style="display:none" tabindex="-1">
+      </label>
+    </div>
+    <div class="tum-info">
+      <div class="tum-name" id="tum-name"></div>
+      <div class="tum-role" id="tum-role"></div>
+    </div>
+  </div>
+  <div class="tum-divider"></div>
+  <button class="tum-item" id="tum-my-profile" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    My Profile
+  </button>
+  <a href="/account" class="tum-item" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    My Account &amp; MFA
+  </a>
+  <a href="#settings/users" class="tum-item" id="tum-settings-link" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    Settings
+  </a>
+  <div class="tum-divider"></div>
+  <button class="tum-item tum-item--danger" id="tum-logout" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    Sign out
+  </button>
+</div>
+
+<!-- ── HELP CHAT WIDGET ───────────────────────────────────────────────────── -->
+<div id="help-chat-panel" class="help-chat-panel" style="display:none" role="dialog" aria-label="Portal Help Chat" aria-modal="false">
+  <div class="help-chat-header">
+    <div class="help-chat-header-info">
+      <div class="help-chat-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div>
+        <div class="help-chat-title">Clause</div>
+        <div class="help-chat-subtitle">Your portal help assistant</div>
+      </div>
+    </div>
+    <button class="help-chat-close" id="help-chat-close" aria-label="Close help chat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="help-chat-messages" id="help-chat-messages"></div>
+  <div class="help-chat-input-area">
+    <textarea class="help-chat-input" id="help-chat-input" placeholder="Ask a question…" rows="1" aria-label="Your question"></textarea>
+    <button class="help-chat-send" id="help-chat-send" aria-label="Send message">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+<button class="help-chat-btn" id="help-chat-toggle" aria-label="Open portal help" aria-expanded="false" aria-controls="help-chat-panel">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+</button>
+<script src="js/help-chat.js"></script>
 
 </body>
 </html>
