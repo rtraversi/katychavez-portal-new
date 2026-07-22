@@ -1,25 +1,30 @@
 <!-- Module: esign — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">E-Sign</h1>
-    <p class="page-subtitle" id="esign-subtitle">Signature requests</p>
-  </div>
+<!-- Docket-kit masthead (see .dk-* in portal.css / DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Documents &amp; Drafting · E-Signatures</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Signatures, <em>executed cleanly</em>.</h1>
+  <p class="dk-sub rise" id="esign-subtitle" style="animation-delay:.13s">Every signature request across the firm — who still owes a signature, what's fully executed, and the audit trail behind each one.</p>
 </div>
 
 <!-- ── Pending counter-signatures (attorney queue) ─────────────────────── -->
-<div class="card" id="esign-countersign-card" style="margin-bottom:var(--space-5)">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4)">
-    <h2 style="font-size:var(--text-md);font-weight:600;margin:0">Awaiting Your Counter-Signature</h2>
-    <span id="esign-countersign-count" class="badge" style="display:none"></span>
+<div class="dk-sec" id="esign-countersign-card">
+  <div class="dk-sec-head">
+    <h2>Awaiting your counter-signature</h2>
+    <span class="dk-sec-rule"></span>
+    <span class="dk-sec-count" id="esign-countersign-count" style="display:none"></span>
   </div>
   <div id="esign-countersign-list"></div>
 </div>
 
-<!-- ── All requests table ──────────────────────────────────────────────── -->
-<div class="card">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4)">
-    <h2 style="font-size:var(--text-md);font-weight:600;margin:0">All Signature Requests</h2>
-    <select id="esign-filter-status" style="font-size:var(--text-sm);padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface)">
+<!-- ── All requests register ───────────────────────────────────────────── -->
+<div class="dk-sec">
+  <div class="dk-sec-head">
+    <h2>All signature requests</h2>
+    <span class="dk-sec-rule"></span>
+  </div>
+  <div class="dk-toolbar">
+    <div class="dk-spacer"></div>
+    <select id="esign-filter-status">
       <option value="">All statuses</option>
       <option value="pending_client">Pending client</option>
       <option value="pending_attorney">Pending attorney</option>
@@ -28,20 +33,8 @@
       <option value="expired">Expired</option>
     </select>
   </div>
-  <div style="overflow-x:auto">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Document</th>
-          <th>Client</th>
-          <th>Status</th>
-          <th>Requested</th>
-          <th>Expires</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="esign-tbody"></tbody>
-    </table>
+  <div id="esign-list">
+    <div class="dk-empty">Loading…</div>
   </div>
 </div>
 

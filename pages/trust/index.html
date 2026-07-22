@@ -1,9 +1,20 @@
 <!-- Trust Accounting — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Trust Accounting</h1>
-    <p class="page-subtitle">IOLTA trust ledger, per-client balances, and reconciliation.</p>
-  </div>
+<!-- Docket-kit masthead (see .dk-* in portal.css / DESIGN-SYSTEM.md). The IOLTA ledger
+     tables below are deliberately left on their existing token-based styling — dark-safe
+     already, and a register rewrite there is high-risk/low-reward. -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Finance · Trust Accounting</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">The <em>trust ledger</em>, to the penny.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Your IOLTA account, per-client balances, outstanding checks, and three-way reconciliation — audit-ready.</p>
+  <button type="button" class="dk-help-btn" title="How billing, invoicing & trust accounting work" onclick="window.HelpDrawer && window.HelpDrawer.open('billing-trust')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span class="dk-help-label">Help</span>
+  </button>
+</div>
+
+<!-- Contextual actions (revealed by trust.js once an account loads) -->
+<div class="dk-toolbar">
+  <div class="dk-spacer"></div>
   <div style="display:flex;gap:var(--space-2)">
     <button class="btn btn--ghost btn--sm" id="ta-account-settings-btn" style="display:none" title="Account Settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -45,24 +56,24 @@
 <div id="ta-main" class="hidden">
 
   <!-- Firm buffer alert (shown when balance is within 2x the minimum) -->
-  <div id="ta-buffer-alert" class="hidden" style="align-items:flex-start;gap:var(--space-3);padding:var(--space-3) var(--space-4);border-radius:8px;background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.3);margin-bottom:var(--space-4);font-size:var(--font-size-sm)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0;margin-top:1px;color:#b45309"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <div id="ta-buffer-alert" class="hidden" style="align-items:flex-start;gap:var(--space-3);padding:var(--space-3) var(--space-4);border-radius:8px;background:var(--color-warning-bg);border:1px solid color-mix(in srgb, var(--color-warning) 32%, transparent);margin-bottom:var(--space-4);font-size:var(--font-size-sm)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0;margin-top:1px;color:var(--color-warning)"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     <div id="ta-buffer-alert-text" style="color:var(--color-text)"></div>
   </div>
 
   <!-- Summary stat cards -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-4);margin-bottom:var(--space-6)">
     <div class="card" style="padding:var(--space-5)">
-      <div class="text-muted text-sm" style="margin-bottom:var(--space-1)">Total in Trust</div>
-      <div id="ta-stat-total" style="font-size:1.5rem;font-weight:700;color:var(--color-text)">—</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px">Total in Trust</div>
+      <div id="ta-stat-total" style="font-family:var(--font-serif);font-size:1.7rem;font-weight:600;color:var(--money)">—</div>
     </div>
     <div class="card" style="padding:var(--space-5)">
-      <div class="text-muted text-sm" style="margin-bottom:var(--space-1)">Open Invoices</div>
-      <div id="ta-stat-invoices" style="font-size:1.5rem;font-weight:700;color:var(--color-text)">—</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px">Open Invoices</div>
+      <div id="ta-stat-invoices" style="font-family:var(--font-serif);font-size:1.7rem;font-weight:600;color:var(--ink)">—</div>
     </div>
     <div class="card" style="padding:var(--space-5)">
-      <div class="text-muted text-sm" style="margin-bottom:var(--space-1)">Last Reconciliation</div>
-      <div id="ta-stat-recon" style="font-size:var(--font-size-base);font-weight:600;padding-top:var(--space-1)">—</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px">Last Reconciliation</div>
+      <div id="ta-stat-recon" style="font-family:var(--font-serif);font-size:var(--font-size-lg,1.125rem);font-weight:600;padding-top:2px;color:var(--ink)">—</div>
     </div>
   </div>
 
@@ -75,7 +86,7 @@
   <!-- Client balances -->
   <div class="card" style="margin-bottom:var(--space-6)">
     <div style="padding:var(--space-5) var(--space-5) 0">
-      <h2 style="font-size:var(--font-size-base);font-weight:600">Client Balances</h2>
+      <h2 style="font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--ink)">Client Balances</h2>
     </div>
     <div id="ta-balances-loading" style="padding:var(--space-6);text-align:center;color:var(--color-text-muted)" class="text-sm">Loading…</div>
     <div id="ta-balances-empty" class="hidden" style="padding:var(--space-8);text-align:center;color:var(--color-text-muted)">No client balances on record.</div>
@@ -95,7 +106,7 @@
   <!-- Recent transactions -->
   <div class="card">
     <div style="padding:var(--space-5) var(--space-5) 0">
-      <h2 style="font-size:var(--font-size-base);font-weight:600">Recent Transactions</h2>
+      <h2 style="font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--ink)">Recent Transactions</h2>
     </div>
     <div id="ta-txn-loading" style="padding:var(--space-6);text-align:center;color:var(--color-text-muted)" class="text-sm">Loading…</div>
     <div id="ta-txn-empty" class="hidden" style="padding:var(--space-8);text-align:center;color:var(--color-text-muted)">No transactions yet.</div>
@@ -123,7 +134,7 @@
   <div class="card" id="ta-stale-card" style="margin-top:var(--space-6);display:none">
     <div style="padding:var(--space-5) var(--space-5) 0;display:flex;align-items:center;justify-content:space-between">
       <div>
-        <h2 style="font-size:var(--font-size-base);font-weight:600">Outstanding Checks</h2>
+        <h2 style="font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--ink)">Outstanding Checks</h2>
         <p class="text-muted text-sm" style="margin-top:2px" id="ta-stale-subtitle"></p>
       </div>
     </div>
@@ -150,7 +161,7 @@
   <!-- Reconciliation History -->
   <div class="card" style="margin-top:var(--space-6)">
     <div style="padding:var(--space-5) var(--space-5) 0;display:flex;align-items:center;justify-content:space-between">
-      <h2 style="font-size:var(--font-size-base);font-weight:600">Reconciliation History</h2>
+      <h2 style="font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--ink)">Reconciliation History</h2>
     </div>
     <div id="ta-recon-history-loading" style="padding:var(--space-6);text-align:center;color:var(--color-text-muted)" class="text-sm">Loading…</div>
     <div id="ta-recon-history-empty" class="hidden" style="padding:var(--space-8);text-align:center;color:var(--color-text-muted)">No reconciliations on record. Use the Reconcile button to create one.</div>
@@ -390,7 +401,7 @@
         </div>
 
         <!-- Jurisdiction-specific compliance notice (shown dynamically) -->
-        <div id="ta-a-jur-notice" class="hidden" style="border-radius:8px;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);font-size:var(--font-size-sm);background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.3);color:var(--color-text)"></div>
+        <div id="ta-a-jur-notice" class="hidden" style="border-radius:8px;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);font-size:var(--font-size-sm);background:var(--color-warning-bg);border:1px solid color-mix(in srgb, var(--color-warning) 32%, transparent);color:var(--color-text)"></div>
 
         <div class="field-row" style="margin-bottom:var(--space-4)">
           <div class="field" style="flex:1">
@@ -551,7 +562,7 @@
       <div id="ta-sl-empty" class="hidden" style="text-align:center;color:var(--color-text-muted);padding:var(--space-6)">No transactions in this range.</div>
       <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
         <table id="ta-sl-table" class="hidden" style="width:100%;border-collapse:collapse;font-size:var(--font-size-sm)">
-          <thead style="position:sticky;top:0;background:var(--color-bg-surface,#fff);z-index:1">
+          <thead style="position:sticky;top:0;background:var(--surface);z-index:1">
             <tr>
               <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:500;color:var(--color-text-muted);border-bottom:1px solid var(--color-border);white-space:nowrap">Date</th>
               <th style="text-align:left;padding:var(--space-2) var(--space-3);font-weight:500;color:var(--color-text-muted);border-bottom:1px solid var(--color-border)">Type</th>

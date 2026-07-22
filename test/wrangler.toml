@@ -1,0 +1,32 @@
+# Test-only Worker config, consumed by vitest (@cloudflare/vitest-pool-workers).
+# COMMITTED to git — every value below is a dummy. The real wrangler.toml stays
+# gitignored; tests must never touch a live Supabase project or R2 bucket.
+# Lives in test/ (not the repo root) so wrangler's dotenv lookup does NOT pick
+# up the root .env, which holds real sandbox credentials.
+name = "iurisiq-portal-test"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+main = "../_worker.js"
+
+[assets]
+directory = "./fixtures/assets"
+binding = "ASSETS"
+# "none" = serve fixture files literally; the default "auto-trailing-slash"
+# redirect of /portal.html → /portal loops against the worker's own rewrite.
+html_handling = "none"
+
+[vars]
+SUPABASE_URL         = "https://test-project.supabase.co"
+SUPABASE_ANON_KEY    = "test-anon-key"
+SUPABASE_SERVICE_KEY = "test-service-key"
+R2_ACCOUNT_ID        = "test-account-id"
+R2_BUCKET_NAME       = "test-bucket"
+R2_ACCESS_KEY_ID     = "test-r2-key"
+R2_SECRET_ACCESS_KEY = "test-r2-secret"
+PORTAL_URL           = "https://test.example.com"
+PORTAL_FIRM_NAME     = "Test Firm"
+PORTAL_FROM_EMAIL    = "portal@test.example.com"
+# 64-char hex (32 bytes) — required shape for ssnEncrypt/ssnDecrypt
+SSN_ENCRYPTION_KEY   = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+UPLOAD_TOKEN_SECRET  = "test-upload-token-secret"
+WEBDAV_TOKEN_SECRET  = "test-webdav-token-secret"

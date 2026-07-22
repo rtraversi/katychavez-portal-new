@@ -94,9 +94,10 @@
   function setActiveTab(view) {
     document.querySelectorAll('.cal-tab-btn').forEach(b => {
       const isActive = b.dataset.view === view;
-      b.style.background  = isActive ? 'var(--color-bg, #fff)' : '';
+      b.style.background  = isActive ? 'var(--surface)' : '';
+      b.style.color       = isActive ? 'var(--daily)'   : '';
       b.style.fontWeight  = isActive ? '600' : '';
-      b.style.boxShadow   = isActive ? '0 1px 3px rgba(0,0,0,.1)' : '';
+      b.style.boxShadow   = isActive ? 'var(--card-shadow)' : '';
     });
   }
 
@@ -172,20 +173,13 @@
 
     const today = new Date().toLocaleDateString('en-US', { timeZone: TZ, weekday: 'long', month: 'long', day: 'numeric' });
 
-    eventsEl.innerHTML = Object.entries(groups).map(([day, evs]) => {
+    const rows = Object.entries(groups).map(([day, evs]) => {
       const isToday = day === today;
-      return `
-        <div style="margin-bottom:var(--space-4)">
-          <div style="font-size:var(--font-size-sm);font-weight:600;
-                      color:${isToday ? 'var(--color-primary)' : 'var(--color-text-muted)'};
-                      margin-bottom:var(--space-2);padding:0 var(--space-1)">
-            ${isToday ? 'Today — ' : ''}${day}
-          </div>
-          <div class="card" style="padding:0;overflow:hidden">
-            ${evs.map(ev => renderEvent(ev)).join('')}
-          </div>
-        </div>`;
+      const head = `<div class="dk-reg-group">${isToday ? 'Today — ' : ''}${escHtml(day)} <span class="n">· ${evs.length}</span></div>`;
+      return head + evs.map(ev => renderEvent(ev)).join('');
     }).join('');
+
+    eventsEl.innerHTML = `<div class="dk-register">${rows}</div>`;
 
     eventsEl.querySelectorAll('.cal-delete-btn').forEach(btn => {
       btn.addEventListener('click', () => deleteEvent(btn.dataset.eventId));
@@ -201,20 +195,24 @@
       ? 'All day'
       : `${fmtTime(startDt)}–${fmtTime(endDt)}`;
 
-    const desc   = ev.description ? `<div class="text-sm text-muted" style="margin-top:2px">${escHtml(ev.description.slice(0, 120))}</div>` : '';
-    const loc    = ev.location    ? `<div class="text-sm text-muted" style="margin-top:2px">📍 ${escHtml(ev.location)}</div>` : '';
-    const delBtn = canWrite
-      ? `<button class="cal-delete-btn btn btn--ghost btn--sm" data-event-id="${ev.id}" style="color:var(--color-text-muted);padding:2px 8px;font-size:11px">Delete</button>`
+    const timeTag = `<span class="dk-tag ${allDay ? 'mut' : 'acc'}">${escHtml(timeStr)}</span>`;
+    const loc     = ev.location    ? `<span>📍 ${escHtml(ev.location)}</span>` : '';
+    const desc    = ev.description ? `<div class="dk-reg-meta" style="display:block">${escHtml(ev.description.slice(0, 140))}</div>` : '';
+    const meta    = loc ? `<div class="dk-reg-meta">${loc}</div>` : '';
+    const delBtn  = canWrite
+      ? `<button class="cal-delete-btn dk-linkbtn d" data-event-id="${ev.id}" title="Delete event">Delete</button>`
       : '';
 
     return `
-      <div style="display:flex;align-items:flex-start;gap:var(--space-4);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--color-border)">
-        <div style="min-width:80px;font-size:var(--font-size-sm);color:var(--color-text-muted);padding-top:2px;flex-shrink:0">${timeStr}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:500;font-size:var(--font-size-sm)">${escHtml(ev.summary || '(No title)')}</div>
-          ${desc}${loc}
+      <div class="dk-reg-row" style="align-items:start">
+        <div style="min-width:0">
+          <div class="dk-reg-title">
+            <span>${escHtml(ev.summary || '(No title)')}</span>
+            ${timeTag}
+          </div>
+          ${meta}${desc}
         </div>
-        <div style="flex-shrink:0">${delBtn}</div>
+        <div class="dk-reg-act">${delBtn}</div>
       </div>`;
   }
 

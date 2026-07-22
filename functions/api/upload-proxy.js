@@ -1,10 +1,12 @@
-// PUT /api/upload-proxy?doc={document_id}
-// Receives the file body and writes it directly to R2 via S3 SDK.
+// PUT /api/upload-proxy?doc={document_id}&t={signed_token}
+// Receives the file body and writes it directly to R2 via the native binding.
 // Routes uploads through the Worker (same-origin) instead of directly to R2,
 // bypassing the CORS limitation on the R2 S3-compatible API endpoint.
-// The document UUID acts as a capability token equivalent to a presigned URL.
+// Access is gated by a short-lived HMAC token minted by /api/get-upload-url
+// (which authenticates the caller and checks matter ownership). The raw
+// document UUID alone is NOT sufficient — it is not secret.
 
-import { makeAdminClient, json } from './_helpers.js';
+import { makeAdminClient, verifyUploadToken, json } from './_helpers.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -21,7 +23,12 @@ async function handleRequest(request, env) {
 
   const url    = new URL(request.url);
   const docId  = url.searchParams.get('doc');
+  const token  = url.searchParams.get('t');
   if (!docId) return json(400, { error: 'Missing doc parameter' });
+
+  if (!(await verifyUploadToken(token, docId, env))) {
+    return json(401, { error: 'Invalid or expired upload token' });
+  }
 
   const admin = makeAdminClient(env);
   const { data: doc, error } = await admin

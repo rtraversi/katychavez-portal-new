@@ -1,20 +1,29 @@
 {
-  "name": "katychavez-portal",
+  "name": "iurisiq-portal",
   "version": "0.1.0",
   "private": true,
-  "description": "Katy Chavez immigration law client & staff portal",
+  "description": "IurisIQ client & staff portal",
   "scripts": {
     "build": "node scripts/build-config.js",
-    "dev": "node scripts/build-config.js && npx serve . -p 3000"
+    "dev": "node scripts/build-config.js && npx serve . -p 3000",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.726.0",
     "@aws-sdk/s3-request-presigner": "^3.726.0",
     "@supabase/supabase-js": "^2.49.0",
     "docx": "^8.5.0",
-    "pdf-lib": "^1.17.1"
+    "docxtemplater": "^3.69.0",
+    "pdf-lib": "^1.17.1",
+    "pizzip": "^3.2.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "supabase": "^2.103.0"
+    "@cantoo/pdf-lib": "^2.7.1",
+    "@cloudflare/vitest-pool-workers": "^0.18.0",
+    "bwip-js": "^4.11.2",
+    "supabase": "^2.103.0",
+    "vitest": "^4.1.10"
   }
 }

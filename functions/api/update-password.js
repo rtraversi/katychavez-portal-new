@@ -4,6 +4,7 @@
 // AAL2 MFA requirement that blocks client-side updateUser() on MFA-enrolled accounts.
 
 import { makeAdminClient, json } from './_helpers.js';
+import { validate, UpdatePasswordSchema } from './_schemas.js';
 
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -15,8 +16,9 @@ export async function onRequest({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'Invalid JSON' }); }
 
-  const { password } = body;
-  if (!password || typeof password !== 'string') return json(400, { error: 'password is required' });
+  const v = validate(UpdatePasswordSchema, body);
+  if (v.error) return v.error;
+  const { password } = v.data;
 
   const admin = makeAdminClient(env);
 

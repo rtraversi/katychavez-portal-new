@@ -3,7 +3,14 @@
 'use strict';
 
 // Roles that must have TOTP enrolled before accessing the portal.
-const MFA_REQUIRED_ROLES = new Set(['Owner', 'Attorney', 'Partner Attorney']);
+// Per-client override via js/config.js (build-config env MFA_REQUIRED_ROLES:
+// comma-separated role names, or 'none' to disable MFA firm-wide — e.g. SSL).
+// null/absent in config = template default below.
+const MFA_REQUIRED_ROLES = new Set(
+  (window.APP_CONFIG && window.APP_CONFIG.mfaRequiredRoles) != null
+    ? window.APP_CONFIG.mfaRequiredRoles
+    : ['Owner', 'Attorney', 'Partner Attorney']
+);
 
 window.Auth = (function () {
 
@@ -162,8 +169,9 @@ window.Auth = (function () {
 
   // ── Login / Logout ──────────────────────────────────────────────────────────
 
-  async function login(email, password) {
-    const { data, error } = await db.auth.signInWithPassword({ email, password });
+  async function login(email, password, captchaToken) {
+    const options = captchaToken ? { captchaToken } : undefined;
+    const { data, error } = await db.auth.signInWithPassword({ email, password, options });
     if (error) throw error;
     clearCache();
     return data;
@@ -175,9 +183,10 @@ window.Auth = (function () {
     window.location.replace('/');
   }
 
-  async function sendPasswordReset(email) {
+  async function sendPasswordReset(email, captchaToken) {
     const { error } = await db.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
+      captchaToken,
     });
     if (error) throw error;
   }

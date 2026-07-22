@@ -10,7 +10,8 @@
 
 import { PDFDocument } from 'pdf-lib';
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
-import { applyFieldMap } from './_form-fill.js';
+import { applyFieldMap, applyManualEdits } from './_form-fill.js';
+import { loadPackageTemplates, seedMatterForms, buildFillContext, loadManualEdits } from './_fill-context.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -44,40 +45,26 @@ async function handleRequest(request, env) {
     .eq('id', matter_id)
     .single();
   if (matterErr || !matter) return json(404, { error: 'Matter not found' });
-  if (!matter.case_type_id) return json(422, { error: 'Matter has no case type set.' });
 
-  const { data: pkg } = await admin
-    .from('form_packages')
-    .select('id, name')
-    .eq('case_type_id', matter.case_type_id)
-    .eq('active', true)
-    .maybeSingle();
-  if (!pkg) return json(422, { error: 'No form package is configured for this case type.' });
+  // Generating is a write, so it also materializes the matter's form list if
+  // this is the first mutating action on the tab (migration 1605).
+  const seedResult = await seedMatterForms(admin, matter, auth.profile?.id || null);
+  if (seedResult.error) return json(seedResult.error.status, { error: seedResult.error.message });
 
-  let itemsQuery = admin
-    .from('form_package_items')
-    .select('sort_order, template:form_templates(id, form_key, label, r2_key, field_map, firm_overrides, active)')
-    .eq('package_id', pkg.id)
-    .order('sort_order', { ascending: true });
-  const { data: items, error: itemsErr } = await itemsQuery;
-  if (itemsErr) return json(500, { error: 'Failed to load form package items' });
+  const pkgResult = await loadPackageTemplates(admin, matter);
+  if (pkgResult.error) return json(pkgResult.error.status, { error: pkgResult.error.message });
+  const { pkg, activeTemplates } = pkgResult;
 
-  const activeTemplates = items.map(i => i.template).filter(t => t.active);
-
-  // "This appearance relates to..." — G-28 Part 3 item 1.b wants the form
-  // numbers the G-28 covers: every other form in the package (not the G-28
-  // itself). Exposed to field maps as source "package.form_numbers".
-  const packageFormNumbers = activeTemplates
-    .filter(t => t.form_key !== 'g-28')
-    .map(t => t.form_key.toUpperCase())
-    .join(', ');
+  if (!activeTemplates.length) {
+    return json(422, { error: 'This matter has no forms yet. Add a form to get started.' });
+  }
 
   let targets = activeTemplates;
   if (Array.isArray(template_ids) && template_ids.length) {
     const wanted = new Set(template_ids);
     targets = targets.filter(t => wanted.has(t.id));
+    if (!targets.length) return json(422, { error: 'Those forms are not on this matter.' });
   }
-  if (!targets.length) return json(422, { error: 'No matching forms to generate.' });
 
   // ── Guard: refuse to version over a finalized row unless force ────────────
   if (!force) {
@@ -95,26 +82,11 @@ async function handleRequest(request, env) {
     }
   }
 
-  // ── Build fill context ──────────────────────────────────────────────────────
-  const [{ data: client }, { data: immigration }, { data: familyMembers }, { data: firm }, { data: attorney }] = await Promise.all([
-    admin.from('clients').select('*').eq('id', matter.client_id).single(),
-    admin.from('client_immigration').select('*').eq('matter_id', matter_id).maybeSingle(),
-    admin.from('client_immigration_family_members').select('*').eq('matter_id', matter_id).order('created_at', { ascending: true }),
-    admin.from('firm_settings').select('*').limit(1).maybeSingle(),
-    matter.assigned_attorney_id
-      ? admin.from('users').select('id, first_name, last_name, email, phone, bar_number, licensing_authority, uscis_account_number, fax').eq('id', matter.assigned_attorney_id).maybeSingle()
-      : Promise.resolve({ data: null }),
+  // ── Build fill context + manual edits ───────────────────────────────────────
+  const [fillContext, editsByTemplate] = await Promise.all([
+    buildFillContext(admin, matter, pkg, activeTemplates),
+    loadManualEdits(admin, matter_id),
   ]);
-
-  const fillContext = {
-    client:        client || {},
-    matter,
-    immigration:   immigration || {},
-    familyMembers: familyMembers || [],
-    firm:          firm || {},
-    attorney:      attorney || {},
-    package:       { name: pkg.name, form_numbers: packageFormNumbers },
-  };
 
   const batchId = crypto.randomUUID();
   const results = [];
@@ -142,6 +114,10 @@ async function handleRequest(request, env) {
       const effectiveMap = { ...(tmpl.field_map || {}), ...(tmpl.firm_overrides || {}) };
       const { filledCount, totalCount } = applyFieldMap(form, effectiveMap, fillContext, env);
 
+      // Per-matter manual edits (form editor) win over autofill AND firm
+      // defaults — this is what makes Regenerate non-destructive.
+      if (editsByTemplate[tmpl.id]) applyManualEdits(form, editsByTemplate[tmpl.id]);
+
       const outBytes = await pdfDoc.save();
 
       const { data: existing } = await admin
@@ -163,7 +139,7 @@ async function handleRequest(request, env) {
         .from('generated_forms')
         .insert({
           matter_id,
-          package_id:    pkg.id,
+          package_id:    pkg?.id || null,   // null for manually-added forms (migration 1605)
           template_id:   tmpl.id,
           batch_id:      batchId,
           version_num:   versionNum,

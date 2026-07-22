@@ -134,3 +134,53 @@ export async function callGraph(accessToken, method, path, body = null) {
   if (body) opts.body = JSON.stringify(body);
   return fetch(`${GRAPH_BASE}${path}`, opts);
 }
+
+// ── Free/busy reads (scheduling module) ───────────────────────────────────────
+// Both return an array of busy intervals as { start, end } UTC ISO strings,
+// or null on API failure (callers must treat null as "can't compute — fail closed").
+
+/**
+ * Outlook free/busy via getSchedule (single call, recurrences pre-expanded).
+ * accountEmail comes from oauth_tokens.account_email. Window limit: 62 days.
+ * Anything not explicitly 'free' or 'workingElsewhere' counts as busy
+ * (tentative blocks a slot — conservative, avoids double-booking).
+ */
+export async function getOutlookFreeBusy(accessToken, accountEmail, fromIso, toIso) {
+  const res = await callGraph(accessToken, 'POST', '/me/calendar/getSchedule', {
+    schedules: [accountEmail],
+    startTime: { dateTime: fromIso, timeZone: 'UTC' },
+    endTime:   { dateTime: toIso,   timeZone: 'UTC' },
+    availabilityViewInterval: 15,
+  });
+  if (!res.ok) {
+    console.error('[booking] getSchedule:', res.status, await res.text());
+    return null;
+  }
+  const data  = await res.json();
+  const items = data.value?.[0]?.scheduleItems || [];
+  return items
+    .filter(i => i.status !== 'free' && i.status !== 'workingElsewhere')
+    .map(i => ({
+      // Graph returns naive datetimes in the requested tz (UTC) — no offset suffix.
+      start: new Date(i.start.dateTime + 'Z').toISOString(),
+      end:   new Date(i.end.dateTime + 'Z').toISOString(),
+    }));
+}
+
+/** Google free/busy on the primary calendar. Window limit: 3 months. */
+export async function getGoogleFreeBusy(accessToken, fromIso, toIso) {
+  const res = await callGoogle(accessToken, 'POST', '/freeBusy', {
+    timeMin: fromIso,
+    timeMax: toIso,
+    items:   [{ id: 'primary' }],
+  });
+  if (!res.ok) {
+    console.error('[booking] freeBusy:', res.status, await res.text());
+    return null;
+  }
+  const data = await res.json();
+  return (data.calendars?.primary?.busy || []).map(b => ({
+    start: new Date(b.start).toISOString(),
+    end:   new Date(b.end).toISOString(),
+  }));
+}

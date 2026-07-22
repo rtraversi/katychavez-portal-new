@@ -35,7 +35,10 @@ export async function onRequest({ request, env }) {
     response_type: 'code',
     scope:         SCOPES,
     access_type:   'offline',
-    prompt:        'consent',
+    // 'select_account' forces the account picker (so a user doesn't silently
+    // reuse another signed-in Google session); 'consent' keeps guaranteeing a
+    // refresh token on every connect.
+    prompt:        'select_account consent',
     state,
   });
 

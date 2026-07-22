@@ -1,0 +1,23 @@
+<!-- Scheduling: Appointments — loaded dynamically into #page-content by menu.js -->
+<!-- Docket-kit masthead (see .dk-* in portal.css / DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Intake &amp; Screening · Appointments</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Consultations, <em>on the books</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Every consult booked through your public page — who's coming in, when they're due, and whether they've paid.</p>
+</div>
+
+<!-- Private booking-link panel mounts here (toggled by the toolbar button) -->
+<div id="offer-slot"></div>
+
+<!-- Toolbar — status filter tabs + count + actions (handler ids preserved) -->
+<div class="dk-toolbar">
+  <div id="appt-tabs" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+  <span id="appt-count" style="font-size:12.5px;color:var(--ink-soft)"></span>
+  <span class="dk-spacer"></span>
+  <button class="btn btn--primary" id="offer-new" type="button">Private booking link</button>
+  <a class="btn btn--secondary" href="/book" target="_blank" rel="noopener">Open booking page</a>
+  <a class="btn btn--secondary" href="#settings/scheduling">Booking settings</a>
+</div>
+
+<!-- Appointments register (rendered by scheduling.js) -->
+<div id="appt-list"><div class="dk-empty">Loading…</div></div>

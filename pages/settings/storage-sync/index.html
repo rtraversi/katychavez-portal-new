@@ -1,0 +1,77 @@
+<!-- Storage Sync — loaded dynamically into #page-content by menu.js -->
+<!-- Docket-kit masthead (see DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · Storage sync</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Storage <em>sync</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Keep the portal and the firm's cloud storage in step — review what has synced, reconcile client folders, and place any files the sync couldn't match on its own.</p>
+</div>
+
+<!-- Sync status -->
+<div class="dk-sec">
+  <div class="dk-sec-head">
+    <h2>Sync status</h2><span class="dk-sec-rule"></span>
+    <button class="dk-sec-add" id="ss-refresh-btn" type="button">Refresh</button>
+  </div>
+  <div id="ss-status">
+    <div class="dk-empty" style="margin-top:0">Loading…</div>
+  </div>
+</div>
+
+<!-- Reconciliation (admin) -->
+<div class="dk-sec" id="ss-recon-card">
+  <div class="dk-sec-head">
+    <h2>Client folder reconciliation</h2><span class="dk-sec-rule"></span>
+    <button class="dk-sec-add" id="ss-recon-btn" type="button">Run report</button>
+  </div>
+  <p class="dk-sub" style="margin:0 0 16px;font-size:13.5px">
+    Compares top-level storage folders against portal clients. Folders without a matching
+    client card must be seeded (or aliased) before their files can attach — until then they
+    land in the review queue below.
+  </p>
+  <div id="ss-recon-results"></div>
+</div>
+
+<!-- Unmatched queue -->
+<div class="dk-sec" style="margin-bottom:0">
+  <div class="dk-sec-head">
+    <h2>Unmatched files</h2><span class="dk-sec-rule"></span>
+    <span id="ss-unmatched-count" class="dk-sec-count hidden">0</span>
+  </div>
+  <p class="dk-sub" style="margin:0 0 16px;font-size:13.5px">
+    Files the sync couldn't attach automatically. Assign them to a matter (optionally mapping
+    the whole folder), or ignore them. Nothing is ever guessed at or lost.
+  </p>
+  <div id="ss-unmatched-list"><div class="dk-empty" style="margin-top:0">Loading…</div></div>
+</div>
+
+<!-- Resolve modal -->
+<div id="ss-resolve-modal" class="hidden" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:var(--space-4)">
+  <div class="card" style="max-width:480px;width:100%;max-height:85vh;overflow:auto">
+    <h3 style="font-size:var(--text-base);font-weight:600;margin-bottom:var(--space-2)">Assign to matter</h3>
+    <p id="ss-resolve-file" style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3);word-break:break-all"></p>
+
+    <label style="display:block;font-size:var(--text-sm);font-weight:500;margin-bottom:var(--space-1)">Client</label>
+    <input id="ss-client-search" type="text" placeholder="Type to search clients…" autocomplete="off"
+      style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius);
+             font-size:var(--text-sm);font-family:inherit;box-sizing:border-box;margin-bottom:var(--space-1)">
+    <div id="ss-client-results" style="margin-bottom:var(--space-3)"></div>
+
+    <label style="display:block;font-size:var(--text-sm);font-weight:500;margin-bottom:var(--space-1)">Matter</label>
+    <select id="ss-matter-select" disabled
+      style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius);
+             font-size:var(--text-sm);font-family:inherit;box-sizing:border-box;margin-bottom:var(--space-3)">
+      <option value="">Select a client first</option>
+    </select>
+
+    <label style="display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-sm);margin-bottom:var(--space-4);cursor:pointer">
+      <span class="dk-toggle"><input type="checkbox" id="ss-create-alias"><span class="dk-toggle-track"></span></span>
+      <span>Always map this folder to this client/matter
+        (<span id="ss-alias-folder" style="font-weight:600"></span>)</span>
+    </label>
+
+    <div style="display:flex;gap:var(--space-2);justify-content:flex-end">
+      <button class="btn btn--ghost" id="ss-resolve-cancel">Cancel</button>
+      <button class="btn btn--primary" id="ss-resolve-confirm" disabled>Import File</button>
+    </div>
+  </div>
+</div>

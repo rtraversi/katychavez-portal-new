@@ -20,6 +20,23 @@ export async function onRequest({ request, env }) {
     return json(400, { error: 'messages array is required' });
   }
 
+  // Bound the request so an authenticated user can't drive unbounded Anthropic
+  // cost by sending a huge conversation. (This is a coarse cap, not a rate limit —
+  // real per-user throttling would need a KV/Durable Object counter.)
+  if (messages.length > 40) {
+    return json(400, { error: 'Conversation too long. Please start a new chat.' });
+  }
+  let totalChars = 0;
+  for (const m of messages) {
+    if (!m || (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string') {
+      return json(400, { error: 'Invalid message format' });
+    }
+    totalChars += m.content.length;
+  }
+  if (totalChars > 24000) {
+    return json(400, { error: 'Message is too long. Please shorten your question.' });
+  }
+
   if (!env.ANTHROPIC_API_KEY) {
     console.warn('[help-chat] ANTHROPIC_API_KEY not configured');
     return json(503, { error: 'Help service not configured' });

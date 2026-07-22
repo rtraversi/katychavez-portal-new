@@ -26,11 +26,11 @@ CHECK FOR:
 2. Page counts — flag missing or extra pages for each form identified
 3. Blank or duplicate pages. Note: multiple G-1450 and/or G-1650 forms in a single package are normal and expected (one per filing fee) — do not flag them as duplicates.
 4. Required signatures — applicant and attorney/preparer on all applicable forms. Exception: the I-765WS does not require a signature — do not flag it.
-5. Name consistency — BENEFICIARY name must match across all USCIS forms and beneficiary supporting documents. PETITIONER/SPONSOR documents in a different name are expected and should not be flagged.
-6. A-Number consistency — must match across all forms where present. A-Numbers may appear as A-XXXXXXXXX or XXX-XXX-XXX — treat these as equivalent formats and only flag if the underlying digits actually differ.
-7. Address consistency — mailing address must match across forms
-8. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
-9. G-28 page 3 checkboxes — boxes 1.a, 1.b, and 1.c on page 3 of the G-28 must be UNCHECKED. Flag the G-28 if any of these boxes is checked.
+5. Signature dates — attorney must not sign before applicant
+6. Name consistency — BENEFICIARY name must match across all USCIS forms and beneficiary supporting documents. PETITIONER/SPONSOR documents in a different name are expected and should not be flagged.
+7. A-Number consistency — must match across all forms where present. A-Numbers may appear as A-XXXXXXXXX or XXX-XXX-XXX — treat these as equivalent formats and only flag if the underlying digits actually differ.
+8. Address consistency — mailing address must match across forms
+9. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
 
 USCIS FORM REFERENCE (current editions — updated daily from USCIS.gov):
 {{FORM_EDITIONS}}
@@ -49,7 +49,7 @@ NOTES:
 Format your response as:
 - A summary section (overall status: PASS / NEEDS CORRECTION), including the identified case type and the names of the beneficiary and petitioner/sponsor if determinable
 - An HTML table: Status | Form/Document | Issue | Detail
-- A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address)
+- A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address, signature date order)
 - If a G-1650 is found: a Bank Validation section showing routing number, bank name on form, expected bank, and match status. (G-1450 is credit card — no routing validation needed.)`;
 
 export async function onRequest({ request, env, ctx }) {
@@ -66,6 +66,21 @@ export async function onRequest({ request, env, ctx }) {
   if (!file_base64) return json(400, { error: 'No file provided' });
 
   const admin = makeAdminClient(env);
+
+  // DEMO_MODE: skip Claude, return pre-seeded scan result
+  if (env.DEMO_MODE === 'true') {
+    const { data: rows } = await admin.from('proof_scans')
+      .select('id, result_html, status')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const seed = rows?.[0];
+    return json(200, {
+      html:     seed?.result_html || '<div class="proof-result pass"><h3>✓ Form Verified — No Issues Found</h3><p>All fields complete. Package is ready to file.</p></div>',
+      scan_id:  seed?.id || null,
+      filename: filename || 'document.pdf',
+      status:   'success',
+    });
+  }
 
   // Fetch form editions from DB; fall back to hardcoded string
   let formEditions = FALLBACK_EDITIONS;

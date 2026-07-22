@@ -1,0 +1,153 @@
+<!-- Settings: Billing & Payments — loaded dynamically into #page-content by menu.js -->
+<!-- Docket-kit masthead (see DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · Billing &amp; payments</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Billing &amp; <em>payments</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Connect the firm's accounting system so the portal can pull unbilled time and send invoices.</p>
+</div>
+
+<!-- Status banner (shown after OAuth redirect) -->
+<div id="fb-banner" class="hidden" style="margin-bottom:var(--space-4);padding:var(--space-3) var(--space-4);border-radius:6px;font-size:var(--font-size-sm)"></div>
+
+<!-- FreshBooks connection -->
+<div class="dk-sec">
+  <div class="dk-sec-head">
+    <h2>Accounting connection</h2><span class="dk-sec-rule"></span>
+  </div>
+
+  <div class="dk-register">
+    <div class="dk-reg-row">
+      <div style="display:flex;align-items:center;gap:var(--space-3)">
+        <!-- FreshBooks mark -->
+        <svg width="32" height="32" viewBox="0 0 24 24" aria-hidden="true" style="flex:none">
+          <rect width="24" height="24" rx="5" fill="#0075DD"/>
+          <text x="12" y="17" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="system-ui,sans-serif">fb</text>
+        </svg>
+        <div>
+          <div class="dk-reg-title">FreshBooks</div>
+          <div class="dk-reg-meta"><span id="fb-status-text">Checking…</span></div>
+        </div>
+      </div>
+      <div class="dk-reg-act">
+        <button id="btn-fb-connect" class="btn btn--primary btn--sm hidden">
+          Connect FreshBooks
+        </button>
+        <button id="btn-fb-disconnect" class="btn btn--ghost btn--sm hidden" style="color:var(--color-danger)">
+          Disconnect
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="fb-connected-info" class="hidden" style="background:var(--color-bg-subtle,#f8f9fa);border-radius:6px;padding:var(--space-3) var(--space-4);font-size:var(--font-size-sm);margin-top:var(--space-3)">
+    <div><strong>Connected account:</strong> <span id="fb-account-email">—</span></div>
+    <div style="margin-top:var(--space-1)"><strong>Business ID:</strong> <span id="fb-business-id" style="font-family:monospace">—</span></div>
+  </div>
+
+  <div id="fb-setup-guide" class="hidden" style="margin-top:var(--space-4);border-top:1px solid var(--color-border);padding-top:var(--space-4)">
+    <p class="text-sm text-muted" style="margin-bottom:var(--space-2)">
+      Clicking <strong>Connect</strong> opens FreshBooks' sign-in page. Sign in as the firm's FreshBooks owner and
+      click <strong>Allow</strong> to grant access. You'll be returned here automatically.
+    </p>
+    <p class="text-sm text-muted">
+      Once connected, sending an invoice from a matter creates it in FreshBooks (matched to the client by email
+      address), and unbilled time is pulled from FreshBooks time tracking. Access can be revoked anytime with
+      <strong>Disconnect</strong>.
+    </p>
+  </div>
+
+  <div id="fb-not-configured" class="hidden" style="margin-top:var(--space-4);border-top:1px solid var(--color-border);padding-top:var(--space-4)">
+    <p class="text-sm text-muted">
+      FreshBooks isn't configured on this deployment yet. The OAuth app credentials
+      (<code>FRESHBOOKS_CLIENT_ID</code>, <code>FRESHBOOKS_CLIENT_SECRET</code>, <code>FRESHBOOKS_REDIRECT_URI</code>)
+      and <code>BILLING_PROVIDER=freshbooks</code> must be set on the worker first.
+    </p>
+  </div>
+</div>
+
+<!-- Billing workflow (migration 1536) -->
+<div class="dk-sec">
+  <div class="dk-sec-head">
+    <h2>Billing workflow</h2><span class="dk-sec-rule"></span>
+  </div>
+
+  <div class="dk-register">
+    <div class="dk-reg-row">
+      <div style="min-width:0">
+        <div class="dk-reg-title">Where invoices are written</div>
+        <div class="dk-reg-meta">Choose the one workflow this firm uses. The Billing page shows that entry point only — sending, resending, voiding and payment tracking work the same either way.</div>
+      </div>
+      <div class="dk-reg-act" style="display:flex;align-items:center;gap:var(--space-2)">
+        <select id="billing-mode" style="width:auto;font-size:var(--font-size-sm)">
+          <option value="portal">In the portal — build from unbilled time</option>
+          <option value="freshbooks_first">In FreshBooks — draft there, send from here</option>
+        </select>
+        <button id="btn-save-billing-mode" class="btn btn--primary btn--sm">Save</button>
+      </div>
+    </div>
+
+    <div class="dk-reg-row">
+      <div style="min-width:0">
+        <div class="dk-reg-title">Collect into the trust account</div>
+        <div class="dk-reg-meta">Payment links for invoices and retainers route to the firm's trust/IOLTA account by default. Turn this off only if the firm bills from an operating account and its fee agreements and jurisdiction allow it — unearned client funds generally must be held in trust.</div>
+      </div>
+      <div class="dk-reg-act" style="display:flex;align-items:center;gap:var(--space-2)">
+        <select id="trust-first" style="width:auto;font-size:var(--font-size-sm)">
+          <option value="on">Trust account (recommended)</option>
+          <option value="off">Operating account</option>
+        </select>
+        <button id="btn-save-trust-first" class="btn btn--primary btn--sm">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Billing increment -->
+<div class="dk-sec">
+  <div class="dk-sec-head">
+    <h2>Billing increment</h2><span class="dk-sec-rule"></span>
+  </div>
+
+  <div class="dk-register">
+    <div class="dk-reg-row">
+      <div style="min-width:0">
+        <div class="dk-reg-title">Minimum time increment</div>
+        <div class="dk-reg-meta">Billable time rounds <strong>up</strong> to this increment when pulled for invoicing. The actual tracked time is always shown next to the rounded value so you can review every adjustment before it reaches an invoice.</div>
+      </div>
+      <div class="dk-reg-act" style="display:flex;align-items:center;gap:var(--space-2)">
+        <select id="billing-increment" style="width:auto;font-size:var(--font-size-sm)">
+          <option value="1">Actual time (no rounding)</option>
+          <option value="6">6 minutes (0.1 hr)</option>
+          <option value="10">10 minutes</option>
+          <option value="15">15 minutes (0.25 hr)</option>
+        </select>
+        <button id="btn-save-increment" class="btn btn--primary btn--sm">Save</button>
+      </div>
+    </div>
+  </div>
+  <p id="increment-example" class="text-sm text-muted" style="margin-top:var(--space-2)"></p>
+</div>
+
+<!-- Retainer prepayments in FreshBooks -->
+<div class="dk-sec" id="fb-prepay-sec">
+  <div class="dk-sec-head">
+    <h2>Retainer prepayments</h2><span class="dk-sec-rule"></span>
+  </div>
+
+  <div class="dk-register">
+    <div class="dk-reg-row">
+      <div style="min-width:0">
+        <div class="dk-reg-title">Auto-record retainers in FreshBooks</div>
+        <div class="dk-reg-meta">When a retainer is paid, also record it in FreshBooks as a <strong>Prepayment credit</strong> under the client, ready to apply against their next invoice. While off, the retainer-paid email reminds the team to record it in FreshBooks manually.</div>
+      </div>
+      <div class="dk-reg-act" style="display:flex;align-items:center;gap:var(--space-2)">
+        <select id="fb-prepay-auto" style="width:auto;font-size:var(--font-size-sm)">
+          <option value="off">Off — record manually</option>
+          <option value="on">On — record automatically</option>
+        </select>
+        <button id="btn-save-fb-prepay" class="btn btn--primary btn--sm">Save</button>
+      </div>
+    </div>
+  </div>
+  <p class="text-sm text-muted" style="margin-top:var(--space-2)">Leave this off until the automatic recording has been verified against the firm's live FreshBooks account.</p>
+</div>

@@ -1,0 +1,235 @@
+<!-- Help guide: Billing, Invoicing & Trust Accounting — How It Works
+     Canonical source of truth (any Google Doc drafts are origin material, not canon).
+     TEMPLATE COPY — keep this generic. A client deployment may ship a tailored
+     version of this file naming its own bank, fee schedule and staff; that copy
+     lives in the client clone and is not synced back here.
+     Rendered as-is inside the Help slide-over (js/help-drawer.js); typography is scoped
+     under .help-doc in css/portal.css. Plain HTML fragment — no <html>/<head>/<body>. -->
+<section class="help-sec">
+  <h2>1 · The big idea (read this first)</h2>
+  <p>The portal is set up <strong>trust-first</strong>. That means:</p>
+  <ul>
+    <li><strong>All client money comes into the trust account.</strong> Retainers, invoice payments, card/ACH payments — everything lands in trust first.</li>
+    <li><strong>Invoices are billed <em>against</em> trust funds.</strong> When you do work, you invoice for it, then the earned money is moved out of trust and into the operating account.</li>
+    <li><strong>The actual bank transfer is done by the firm at the bank.</strong> The portal does <strong>not</strong> move money between bank accounts. What it does is <strong>keep the official ledger</strong> — a permanent, tamper-proof record of every dollar in, every dollar out, and which client it belongs to.</li>
+  </ul>
+  <p>Think of the portal as your <strong>IOLTA-compliant book of record</strong>, plus the tool that creates invoices and payment links. The bank is where the money physically moves; the portal is the paper trail a bar auditor would want to see.</p>
+  <div class="help-callout">
+    <div class="help-callout-title">Two questions the system answers at any moment</div>
+    <ol>
+      <li>How much trust money does each client have right now?</li>
+      <li>For every dollar that left trust, which invoice justified it?</li>
+    </ol>
+  </div>
+</section>
+
+<section class="help-sec">
+  <h2>2 · Vocabulary (so we all mean the same thing)</h2>
+  <div class="help-table-wrap">
+    <table class="help-table">
+      <thead><tr><th>Term</th><th>What it means here</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Trust account</strong></td><td>The IOLTA bank account where all client funds are held before they're earned.</td></tr>
+        <tr><td><strong>Operating account</strong></td><td>The firm's own money — where earned fees end up after they're released from trust.</td></tr>
+        <tr><td><strong>Trust ledger</strong></td><td>The running list of every trust transaction (deposits, releases, etc.). <strong>Permanent — nothing can be edited or deleted.</strong></td></tr>
+        <tr><td><strong>Deposit</strong></td><td>Money going <em>into</em> a client's trust balance (retainer, invoice payment).</td></tr>
+        <tr><td><strong>Disbursement / Release</strong></td><td>Money coming <em>out</em> of trust — earned fees moving to operating. Always tied to an invoice.</td></tr>
+        <tr><td><strong>Invoice</strong></td><td>A bill for a client (time, expenses, admin fee). Status: <strong>Draft → Sent → Paid</strong> (or <strong>Void</strong>).</td></tr>
+        <tr><td><strong>Matter</strong></td><td>A client's case. Trust balances are tracked <strong>per matter</strong>, not just per client.</td></tr>
+        <tr><td><strong>Retainer</strong></td><td>The up-front money a client pays into trust that you draw against as you work.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="help-sec">
+  <h2>3 · One-time setup</h2>
+  <p>Configured once per firm and rarely changed.</p>
+  <h3>a) Billing rates</h3>
+  <p>Rates come from the <strong>signed client agreement</strong>, entered on the client's card — <strong>Clients → client → Financial tab → Billing Rates &amp; Admin Fee</strong>. (This editor used to live under Settings; it moved to the client card so rates are managed where the client is.)</p>
+  <ul>
+    <li>Rates are <strong>per-client <em>and</em> per-person.</strong> On the same client, the lead attorney can bill $500/hr while a second attorney bills $325/hr and a paralegal bills $175/hr.</li>
+    <li>You can also set a <strong>role default</strong> (e.g. "any Paralegal on this client = $175") as a fallback for anyone without a specific rate.</li>
+    <li>These rates turn "2 hours of work" into a dollar amount on an invoice.</li>
+  </ul>
+  <h3>b) Monthly administrative fee</h3>
+  <p>If the firm charges a standing monthly administrative fee, add it to each invoice as an
+  <strong>“Admin Fee” expense</strong> line when you bill — Billing → <strong>+ Add Expense</strong>,
+  category <em>Admin Fee</em>. Nothing happens automatically, which means the fee only ever
+  appears on an invoice a person reviewed.</p>
+  <h3>c) Trust account</h3>
+  <p>The firm's IOLTA account (bank name, last 4 digits, jurisdiction) is registered once. All trust activity posts against it.</p>
+</section>
+
+<section class="help-sec">
+  <h2>4 · The day-to-day billing workflow</h2>
+  <p>The main loop the team runs over and over. It lives on the <strong>Billing</strong> page.</p>
+  <div class="help-flow">Time &amp; expenses&nbsp; →&nbsp; Compose invoice in FreshBooks (leave as Draft)&nbsp; →&nbsp; Portal: Attach pay link &amp; send&nbsp; →&nbsp; Get paid&nbsp; →&nbsp; Release from trust</div>
+
+  <h3>Step 1 — Work gets logged as time</h3>
+  <p>Time entries flow in from the firm's time-tracking stack (Memtime → FreshBooks). Each entry is matched to a person and a client and priced using that client's rate sheet. Unbilled time waits on the matter until you invoice it.</p>
+  <p>You can also <strong>log time directly in the portal</strong>: on the New Invoice screen, <strong>+ Add time entry</strong> takes a description, who did the work, the date, and the <strong>minutes</strong> (e.g. 7 minutes rounds up to 0.2h at the firm's 6-minute increment). It's priced from the client's rate sheet automatically and lands in the unbilled list, pre-checked for the invoice you're building.</p>
+  <div class="help-note">Time logged in FreshBooks as <strong>Unbillable</strong> still comes across so it can appear on the invoice for the record — but it's flagged <strong>“No charge”</strong> at $0, so including it doesn't add to the total. Portal-logged entries have the same option: tick <strong>No charge</strong> and the line shows on the invoice at $0.</div>
+
+  <h3>Step 2 — Compose the invoice in FreshBooks (and stop at Draft)</h3>
+  <p>Build the invoice in FreshBooks exactly the way you always have — pull in the billed time, add expenses, apply discounts or adjustments, tweak line items. Everything FreshBooks can do on an invoice is fair game, because the portal simply mirrors the finished numbers.</p>
+  <p><strong>Then stop. Leave it as a Draft.</strong> In this workflow, a draft in FreshBooks means "ready to send from the portal."</p>
+  <div class="help-callout">
+    <div class="help-callout-title">The one golden rule</div>
+    <p style="margin-bottom:0"><strong>Never send an invoice from inside FreshBooks</strong> — not the Send button, not "mark as sent." FreshBooks' own email has <strong>no payment link</strong> in it. The portal is what sends the invoice <em>with</em> the secure pay link attached — and it marks the invoice Sent in FreshBooks for you.</p>
+  </div>
+  <div class="help-note">Client already has money sitting in trust? Send the invoice normally, then use <strong>Pay from Trust</strong> (Step 4, Path A) once it's sent. Hold off on applying credits <em>inside</em> FreshBooks before sending — support for recording the matching trust release is coming.</div>
+
+  <h3>Step 3 — Send it from the portal (one button does everything)</h3>
+  <p>On the portal's <strong>Billing</strong> page, open <strong>From FreshBooks</strong>. Every unpaid FreshBooks invoice appears — drafts wear a <strong>Draft</strong> badge. For each one:</p>
+  <ol>
+    <li>The matter is matched automatically when the FreshBooks client's email matches the portal's; otherwise pick it from the list.</li>
+    <li>Click <strong>"Attach pay link &amp; send."</strong></li>
+  </ol>
+  <p>That one click does all of this:</p>
+  <ul>
+    <li>Copies the invoice into the portal's Billing records — so the trust ledger and the client's own portal view stay complete.</li>
+    <li>Creates a secure <strong>payment link</strong> that deposits to <strong>trust</strong>, and writes it into the FreshBooks invoice notes.</li>
+    <li>Has <strong>FreshBooks email the client</strong> the invoice — PDF attached, pay link included — and marks it <strong>Sent</strong> in FreshBooks.</li>
+    <li>Saves the invoice <strong>PDF into the matter's Files</strong>, so it's viewable from the portal, not just FreshBooks.</li>
+  </ul>
+  <div class="help-note">If the client already paid part of the invoice in FreshBooks, the pay link only requests the <strong>remaining balance</strong> — never the full amount again.</div>
+
+  <h3>Alternative — the portal can still compose invoices itself</h3>
+  <p>The FreshBooks-first loop above is the recommended day-to-day path. The portal's own invoice builder still works exactly as before if something ever needs billing without FreshBooks. On the <strong>Billing</strong> page, click <strong>+ New Invoice</strong>:</p>
+  <ol>
+    <li>Choose the <strong>matter</strong> (client + case).</li>
+    <li>The screen shows all <strong>unbilled time entries</strong> and any <strong>unbilled expenses</strong> for that matter.</li>
+    <li>Check the items you want to bill (Select-all is available).</li>
+    <li>Optionally set a description and due date, then <strong>Generate Invoice</strong>.</li>
+  </ol>
+  <p>The invoice is created as a <strong>Draft</strong>. Nothing has been sent to the client yet, and no money has moved.</p>
+
+  <h3>Reviewing portal drafts (the staging pool)</h3>
+  <p>Drafts collect in the Billing page's <strong>Pending review</strong> tab (the count shows how many are waiting). This is the review stop before anything goes to a client — open a draft and you can:</p>
+  <ul>
+    <li><strong>Edit the header</strong> — description and due date.</li>
+    <li><strong>Remove a line</strong> (✕) — the time entry or expense goes <em>back to unbilled</em>, so it isn't lost; it'll be offered again on the next invoice.</li>
+    <li><strong>+ Add items</strong> — pull in more of the matter's unbilled time and expenses, or log a quick manual time entry right there.</li>
+  </ul>
+  <p>The invoice total updates as you edit. You can't empty an invoice or edit one that's already been sent — and you can still <strong>Void</strong> a draft that shouldn't exist at all.</p>
+
+  <h3>Sending a portal-composed invoice</h3>
+  <p>Open the draft and click <strong>Send Invoice</strong>. This:</p>
+  <ul>
+    <li>Marks the invoice <strong>Sent</strong>.</li>
+    <li>Generates a <strong>payment link</strong> the client can use to pay by card/ACH (this routes to <strong>trust</strong>).</li>
+    <li>Records the invoice in <strong>FreshBooks</strong>, and FreshBooks <strong>emails it to the client</strong> — with the invoice <strong>PDF attached</strong> and the payment link in the notes. The client's email in the portal must match their email in FreshBooks for this to work.</li>
+  </ul>
+  <p>You can <strong>Resend</strong> to generate a fresh link and email, or <strong>Void</strong> if needed.</p>
+  <div class="help-note">Clients also see their <strong>sent and paid</strong> invoices on their own portal — an <strong>Invoices</strong> card on their Overview tab with a <strong>Pay now</strong> button and a printable <strong>PDF</strong> view. Drafts are never visible to clients.</div>
+
+  <h3>Step 4 — Getting paid: two paths</h3>
+  <p>There are two ways an invoice gets paid, and the button you'll use differs.</p>
+
+  <div class="help-path">
+    <div class="help-path-head">Path A — Client already has trust funds <span class="dk-tag acc">Pay from Trust</span></div>
+    <p>The client has a retainer sitting in trust. You've now billed them, so you draw the earned amount out of trust.</p>
+    <ul>
+      <li>On the <strong>Sent</strong> invoice, click <strong>"Pay from Trust."</strong></li>
+      <li>Confirm (you can enter a check number for the bank transfer if you have one).</li>
+      <li>The system posts a permanent <strong>disbursement</strong> to the trust ledger for that matter, citing the invoice, and marks the invoice <strong>Paid</strong>.</li>
+      <li><strong>You then move that money trust → operating at the bank.</strong> The portal recorded the release; the bank makes it real.</li>
+    </ul>
+    <div class="help-note">The system will <strong>refuse</strong> this if the client doesn't have enough trust funds to cover the invoice (see §6). That's the IOLTA safety net working.</div>
+  </div>
+
+  <div class="help-path">
+    <div class="help-path-head">Path B — Client pays the link by card/ACH <span class="dk-tag ok">Record Trust Release</span></div>
+    <p>The client didn't have trust funds and instead paid the invoice using the payment link.</p>
+    <ol>
+      <li>Client pays the link → the payment processor notifies the portal → the money is recorded as a <strong>trust deposit</strong> and the invoice is marked <strong>Paid</strong> automatically. <em>You don't have to do anything for this part.</em></li>
+      <li>Because that money is now <em>earned</em> (you already billed for it), you release it trust → operating: after you move the funds at the bank, open the paid invoice and click <strong>"Record Trust Release."</strong> This posts the matching disbursement so trust doesn't show money that's really already been earned and moved.</li>
+    </ol>
+  </div>
+
+  <div class="help-callout">
+    <div class="help-callout-title">Rule of thumb</div>
+    <ul>
+      <li><strong>"Pay from Trust"</strong> = they had trust money; you're drawing it down.</li>
+      <li><strong>"Record Trust Release"</strong> = they paid by card into trust; you're logging that the earned money left trust.</li>
+    </ul>
+    <p style="margin-bottom:0">Either way the end state is the same: invoice <strong>Paid</strong>, and one clean <strong>release</strong> on the ledger tying the money that left trust to the invoice that justified it.</p>
+  </div>
+
+  <h3>Bonus — Requesting a retainer up front</h3>
+  <p>From a client's <strong>Financial → Trust</strong> tab, <strong>Request Retainer</strong> emails a secure link that deposits straight into trust (no invoice needed). Two handy options:</p>
+  <ul>
+    <li><strong>Open amount.</strong> Tick <em>“Let the client enter the amount”</em> to send a link with no fixed amount — the client pays what they can (e.g. you ask for $5,000, they pay $1,000). Whatever they actually pay is what posts to trust.</li>
+    <li><strong>Send to a guarantor.</strong> If a parent or someone else is paying on the client's behalf, add them under the client's <strong>Other People</strong> section (Client tab), then pick them in the <em>“Send to”</em> box on the retainer request.</li>
+  </ul>
+  <div class="help-note">While a retainer request is out but unpaid, the client shows an amber <strong>“⏳ … requested”</strong> tag on the Clients list — so you can see at a glance who's been asked for money and hasn't paid yet. It clears automatically when the payment comes in.</div>
+  <div class="help-callout">
+    <div class="help-callout-title">When a retainer is paid — two things happen</div>
+    <ul>
+      <li><strong>The whole team gets an email.</strong> Every staff member receives a "Retainer paid" notice with the client, matter, and amount — no need to go check the ledger.</li>
+      <li style="margin-bottom:0"><strong>Record it in FreshBooks as a Prepayment credit</strong> — <em>never</em> as an invoice. In FreshBooks: <strong>Credits → New Credit → Prepayment</strong>, under the client, for the amount paid. (Entering it as an invoice makes the client look like they <em>owe</em> that money.) The team email includes this reminder. The portal can eventually do this step automatically — that switch stays off until it's been verified against the firm's live FreshBooks account.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="help-sec">
+  <h2>5 · Expenses (hard costs)</h2>
+  <p>Postage, copies, filing fees, etc. that you front on a matter and bill back.</p>
+  <ul>
+    <li><strong>Log one</strong> from the <strong>Billing</strong> page (<strong>+ Add Expense</strong>) or from the client's card (<strong>Financial → Trust tab → Expense</strong>). Pick the matter, date, category (Postage, Copies, Filing fee, Mailing, <strong>Admin Fee</strong>, or Other), amount, and description.</li>
+    <li>It shows up in the <strong>Expenses register</strong> as <strong>Unbilled</strong>.</li>
+    <li>Next time you make an invoice for that matter, the unbilled expense is offered as a line item — check it to include it. Once billed, it's marked <strong>Billed</strong> and linked to the invoice.</li>
+    <li>Unbilled expenses can be deleted; billed ones cannot (they're part of an invoice).</li>
+  </ul>
+  <p>Expenses are reimbursed <strong>out of the client's trust funds</strong>, same as earned fees.</p>
+</section>
+
+<section class="help-sec">
+  <h2>6 · The Trust Accounting page (the book of record)</h2>
+  <p>The compliance heart of the system. It shows:</p>
+  <ul>
+    <li><strong>Per-matter trust balances</strong> — how much each client/case has in trust right now, computed live from the ledger.</li>
+    <li><strong>The trust ledger</strong> — every deposit and disbursement, in order, with a running balance after each entry.</li>
+    <li><strong>Reconciliation</strong> — the three-way check (bank statement vs. firm ledger vs. sum of all client balances). The system computes whether all three match; you enter the bank statement figure from the actual statement.</li>
+  </ul>
+
+  <h3>What the system will NOT let you do (on purpose)</h3>
+  <p>These guardrails exist because IOLTA violations mean real liability — the portal enforces them at the database level so no one can get them wrong:</p>
+  <ol class="help-guardrails">
+    <li><strong>A client's trust balance can never go negative.</strong> You cannot spend one client's money on another. An attempt to over-draw is rejected outright.</li>
+    <li><strong>You can't release money for an invoice that hasn't been sent.</strong> The client has to be billed first.</li>
+    <li><strong>Ledger entries can never be edited or deleted.</strong> If something is wrong, you post a correcting <strong>adjustment</strong> entry — the full history stays intact for an auditor.</li>
+    <li><strong>One release per invoice.</strong> You can't accidentally release the same invoice's funds twice.</li>
+  </ol>
+  <div class="help-note">If you ever hit an error about "insufficient trust balance" or "invoice not sent," that's the system protecting the firm — not a bug.</div>
+</section>
+
+<section class="help-sec">
+  <h2>7 · Quick reference — who does what</h2>
+  <div class="help-table-wrap">
+    <table class="help-table">
+      <thead><tr><th>Task</th><th>Where</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Set a client's hourly rates</td><td>Clients → client → <strong>Financial</strong> tab</td><td>Time gets priced correctly</td></tr>
+        <tr><td>Log time by hand (in minutes)</td><td>New Invoice → <strong>+ Add time entry</strong></td><td>Priced, unbilled entry</td></tr>
+        <tr><td><strong>Send a FreshBooks invoice with a pay link</strong> <em>(the main loop)</em></td><td>Compose in FreshBooks, leave as <strong>Draft</strong> → Billing → <strong>From FreshBooks</strong> → Attach pay link &amp; send</td><td><strong>Sent</strong> + FB email w/ PDF + trust pay link; PDF in matter Files</td></tr>
+        <tr><td>Record a paid retainer in FreshBooks</td><td>FreshBooks → Credits → New Credit → <strong>Prepayment</strong> (never an invoice)</td><td>Client shows a credit, not a balance owed</td></tr>
+        <tr><td>Bill time + expenses in the portal instead</td><td>Billing → + New Invoice</td><td>A <strong>Draft</strong> invoice</td></tr>
+        <tr><td>Review / edit a portal draft before it goes out</td><td>Billing → <strong>Pending review</strong> tab</td><td>Edited draft (removed items return to unbilled)</td></tr>
+        <tr><td>Send a portal-composed invoice</td><td>Open draft → Send Invoice</td><td><strong>Sent</strong> + FreshBooks email w/ PDF + payment link</td></tr>
+        <tr><td>Client has retainer, draw it down</td><td>Sent invoice → <strong>Pay from Trust</strong></td><td><strong>Paid</strong> + trust release logged</td></tr>
+        <tr><td>Client pays the link by card</td><td><em>(automatic)</em></td><td><strong>Paid</strong> + deposit logged</td></tr>
+        <tr><td>Log earned money leaving trust after a card payment</td><td>Paid invoice → <strong>Record Trust Release</strong></td><td>Release logged</td></tr>
+        <tr><td>Record a hard cost (incl. the admin fee)</td><td>Billing → + Add Expense (category <strong>Admin Fee</strong> for the monthly fee)</td><td><strong>Unbilled</strong> expense</td></tr>
+        <tr><td>Ask a client to fund a retainer</td><td>Client → Financial → Trust → <strong>Request Retainer</strong></td><td>Trust deposit link (fixed <em>or</em> open amount)</td></tr>
+        <tr><td>See who was sent a retainer but hasn't paid</td><td>Clients list → amber <strong>⏳ requested</strong> tag</td><td>At-a-glance unpaid requests</td></tr>
+        <tr><td>Client checks their own invoices</td><td>Client portal → Overview → <strong>Invoices</strong> card</td><td>Sent/paid invoices + Pay now + PDF</td></tr>
+        <tr><td>Add a guarantor / other payer</td><td>Client tab → <strong>Other People</strong></td><td>Selectable as a retainer recipient</td></tr>
+        <tr><td>See who's paid recently</td><td>Home dashboard → <strong>Recent Payments</strong></td><td>Latest paid retainers &amp; invoices</td></tr>
+        <tr><td>Check a client's trust balance</td><td>Trust page</td><td>Live balance</td></tr>
+        <tr><td>Monthly compliance check</td><td>Trust page → Reconciliation</td><td>Three-way match</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>

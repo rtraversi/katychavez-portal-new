@@ -1,6 +1,7 @@
-// save-attorney-signature.js — Store attorney signature PNG into R2.
+// save-attorney-signature.js — Store the current user's signature PNG into R2.
 // POST only. Body: { image_base64: string } — base64-encoded PNG.
-// Only Owner / Admin roles may save.
+// Each staff member manages their OWN signature (keyed by users.id). Any active
+// staff member (core access) may save theirs; clients are excluded by core gate.
 
 import { verifyAuth, json } from './_helpers.js';
 
@@ -11,16 +12,10 @@ export async function onRequest({ request, env }) {
     return json(405, { error: 'Method not allowed' });
   }
 
-  const auth = await verifyAuth(request, env, 'write', 'sig_stamp');
+  // Managing your own signature is a profile-level action — gate on core access
+  // (all staff roles have it; clients do not), not on the sig_stamp module.
+  const auth = await verifyAuth(request, env, 'read', 'core');
   if (auth.httpError) return json(auth.httpError.status, { error: auth.httpError.message });
-
-  // Role check — Owner or role with admin access
-  const roleName = auth.profile?.roles?.name;
-  const isOwner  = roleName === 'Owner';
-  const isAdmin  = auth.accessLevel === 'admin';
-  if (!isOwner && !isAdmin) {
-    return json(403, { error: 'Only Owners can update the attorney signature' });
-  }
 
   let body;
   try { body = await request.json(); }
@@ -43,7 +38,7 @@ export async function onRequest({ request, env }) {
   if (buffer.byteLength === 0) return json(400, { error: 'Image is empty' });
   if (buffer.byteLength > MAX_BYTES) return json(400, { error: 'Image exceeds 5 MB limit' });
 
-  const key = 'firm/attorney-signature.png';
+  const key = `firm/signatures/${auth.profile.id}.png`;
   await env.R2.put(key, buffer, {
     httpMetadata: { contentType: 'image/png' },
   });

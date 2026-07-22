@@ -44,7 +44,7 @@
   }
 
   async function loadTasks() {
-    listEl.innerHTML = `<div style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">Loading…</div>`;
+    listEl.innerHTML = `<div class="dk-empty">Loading…</div>`;
 
     let query = db.from('tasks').select(`
       id, title, description, priority, status, due_date, reminder_at, completed_at, created_at,
@@ -66,65 +66,86 @@
 
   // ── Rendering ─────────────────────────────────────────────────────────────────
 
+  // Priority → dk-tag kind (token-driven; dark-safe unlike the old .badge--*)
+  const PRIORITY_KIND = { urgent: 'crit', high: 'warn', normal: 'mut', low: 'mut' };
+
+  const deskbarEl = document.getElementById('tasks-deskbar');
+
   function renderTasks(tasks) {
     if (!tasks.length) {
+      if (deskbarEl) deskbarEl.innerHTML = '';
       listEl.innerHTML = `
-        <div class="empty-state">
-          <p class="empty-state-title">No tasks</p>
-          <p>Create a task to track work for a matter.</p>
+        <div class="dk-empty" style="text-align:center;padding:36px 20px">
+          <p style="font-family:var(--font-serif);font-size:18px;color:var(--ink);margin:0 0 6px">No tasks</p>
+          <p style="margin:0 0 16px">Create a task to track work for a matter.</p>
           <button class="btn btn--primary" onclick="document.getElementById('btn-new-task').click()">New task</button>
         </div>`;
       return;
     }
 
     const GROUP_ORDER = ['Open', 'Completed', 'Cancelled'];
+    const GROUP_ID = { Open: 'taskgroup-open', Completed: 'taskgroup-completed', Cancelled: 'taskgroup-cancelled' };
     const grouped = {};
+    let overdue = 0;
+    const today = new Date().toISOString().slice(0, 10);
     tasks.forEach(t => {
       const g = t.status === 'completed' ? 'Completed' : t.status === 'cancelled' ? 'Cancelled' : 'Open';
       (grouped[g] = grouped[g] || []).push(t);
+      if (t.due_date && t.due_date < today && !['completed', 'cancelled'].includes(t.status)) overdue++;
     });
 
-    listEl.innerHTML = GROUP_ORDER.filter(g => grouped[g]).map(group => `
-      <div>
-        <div style="padding:var(--space-3) var(--space-5);background:var(--color-bg);font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);border-bottom:1px solid var(--color-border)">
-          ${group} · ${grouped[group].length}
-        </div>
-        ${grouped[group].map(t => renderTask(t)).join('')}
-      </div>`).join('');
+    // At-a-glance desk chips over the loaded set
+    if (deskbarEl) {
+      const chips = [];
+      if (grouped.Open)      chips.push({ n: grouped.Open.length, label: 'Open', jump: GROUP_ID.Open });
+      if (overdue)           chips.push({ n: overdue, label: 'Overdue', tone: 'warn' });
+      if (grouped.Completed) chips.push({ n: grouped.Completed.length, label: 'Completed', jump: GROUP_ID.Completed });
+      deskbarEl.innerHTML = chips.length ? DK.deskbar(chips) : '';
+      DK.wireDeskbar(deskbarEl);
+    }
+
+    listEl.innerHTML = `<div class="dk-register">` + GROUP_ORDER.filter(g => grouped[g]).map(group => `
+      <div class="dk-reg-group" id="${GROUP_ID[group]}">${group} <span class="n">· ${grouped[group].length}</span></div>
+      ${grouped[group].map(t => renderTask(t)).join('')}`).join('') + `</div>`;
   }
 
   function renderTask(t) {
-    const assignee  = users.find(u => u.id === t.assigned_to);
-    const isOverdue = t.due_date && t.due_date < new Date().toISOString().slice(0, 10) && !['completed','cancelled'].includes(t.status);
-    const done      = t.status === 'completed' || t.status === 'cancelled';
+    const assignee   = users.find(u => u.id === t.assigned_to);
+    const isOverdue  = t.due_date && t.due_date < new Date().toISOString().slice(0, 10) && !['completed', 'cancelled'].includes(t.status);
+    const done       = t.status === 'completed' || t.status === 'cancelled';
     const inProgress = t.status === 'in_progress';
 
-    return `<div class="task-row" data-id="${t.id}" style="display:flex;align-items:flex-start;gap:var(--space-3);padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--color-border);${done ? 'opacity:.6' : ''}">
+    const tags = [
+      DK.tag(Utils.titleCase(t.priority), PRIORITY_KIND[t.priority] || 'mut'),
+      inProgress ? DK.tag('In progress', 'acc') : '',
+      t.matter ? `<span class="dk-tag mut">${Utils.esc(caseLabel(t.matter.case_type))}${t.matter.case_number ? ' · ' + Utils.esc(t.matter.case_number) : ''}</span>` : '',
+    ].filter(Boolean).join('');
 
-      <button class="task-check btn--ghost" data-id="${t.id}" data-status="${t.status}"
-              style="margin-top:2px;width:20px;height:20px;border:2px solid ${done ? 'var(--color-success)' : inProgress ? 'var(--color-primary)' : 'var(--color-border-mid)'};border-radius:4px;flex-shrink:0;background:${done ? 'var(--color-success)' : 'transparent'};cursor:pointer;display:grid;place-items:center"
+    const meta = [
+      t.due_date ? `<span class="${isOverdue ? 'danger' : ''}">${isOverdue ? '⚠ ' : ''}Due ${Utils.formatDate(t.due_date)}</span>` : '',
+      assignee ? `<span>→ ${Utils.esc(Utils.fullName(assignee))}</span>` : '',
+      t.client ? `<span>${Utils.esc(Utils.fullName(t.client))}</span>` : '',
+    ].filter(Boolean).join('<span class="sep">·</span>');
+
+    return `<div class="dk-reg-row task-row" data-id="${t.id}" style="grid-template-columns:auto minmax(0,1fr) auto;align-items:start;${done ? 'opacity:.6' : ''}">
+
+      <button class="task-check" data-id="${t.id}" data-status="${t.status}"
+              style="margin-top:2px;width:20px;height:20px;padding:0;border:2px solid ${done ? 'var(--color-success)' : inProgress ? 'var(--daily)' : 'var(--line-strong)'};border-radius:5px;flex:none;background:${done ? 'var(--color-success)' : 'transparent'};cursor:pointer;display:grid;place-items:center"
               title="${done ? 'Reopen' : 'Mark complete'}">
         ${done ? '<svg style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
       </button>
 
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap">
-          <span style="font-weight:500;${done ? 'text-decoration:line-through;color:var(--color-text-muted)' : ''}">${Utils.esc(t.title)}</span>
-          <span class="badge badge--${t.priority}">${Utils.titleCase(t.priority)}</span>
-          ${inProgress ? `<span class="badge badge--normal" style="background:#dbeafe;color:#1d4ed8">In Progress</span>` : ''}
-          ${t.matter ? `<span class="badge badge--normal" style="font-size:10px">${caseLabel(t.matter.case_type)}${t.matter.case_number ? ' · ' + t.matter.case_number : ''}</span>` : ''}
+      <div style="min-width:0">
+        <div class="dk-reg-title">
+          <span style="${done ? 'text-decoration:line-through;color:var(--ink-faint)' : ''}">${Utils.esc(t.title)}</span>
+          ${tags}
         </div>
-        ${t.description ? `<div class="text-muted text-sm" style="margin-top:2px">${Utils.truncate(Utils.esc(t.description), 120)}</div>` : ''}
-        <div style="display:flex;gap:var(--space-4);margin-top:var(--space-2);font-size:var(--text-xs);color:var(--color-text-muted);flex-wrap:wrap">
-          ${t.due_date ? `<span style="color:${isOverdue ? 'var(--color-danger)' : 'inherit'}">${isOverdue ? '⚠ ' : ''}Due ${Utils.formatDate(t.due_date)}</span>` : ''}
-          ${assignee ? `<span>→ ${Utils.fullName(assignee)}</span>` : ''}
-          ${t.client ? `<span>${Utils.fullName(t.client)}</span>` : ''}
-        </div>
+        ${t.description ? `<div class="dk-reg-meta" style="display:block">${Utils.truncate(Utils.esc(t.description), 120)}</div>` : ''}
+        ${meta ? `<div class="dk-reg-meta">${meta}</div>` : ''}
       </div>
 
-      <button class="btn btn--ghost btn--sm btn-edit-task" data-id="${t.id}" title="Edit task"
-              style="flex-shrink:0;opacity:.5;margin-top:-2px">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      <button class="dk-linkbtn btn-edit-task" data-id="${t.id}" title="Edit task" style="align-self:center">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       </button>
     </div>`;
   }
@@ -364,7 +385,9 @@
     filterMine = !filterMine;
     this.classList.toggle('btn--primary', filterMine);
     this.classList.toggle('btn--secondary', !filterMine);
-    document.getElementById('tasks-subtitle').textContent = filterMine ? 'My open tasks' : 'All tasks';
+    document.getElementById('tasks-subtitle').textContent = filterMine
+      ? 'The open tasks assigned to you — what you own right now.'
+      : "Everything open across the firm — what's due, who owns it, and which matter it moves forward.";
     loadTasks();
   });
 

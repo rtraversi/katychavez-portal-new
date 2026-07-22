@@ -175,6 +175,72 @@ window.Utils = (function () {
     });
   }
 
+  // ── Custom prompt dialog ─────────────────────────────────────────────────────
+  // Usage: const name = await Utils.prompt('New folder name'); // string | null
+  // Options: { confirmLabel, cancelLabel, defaultValue, placeholder }
+
+  function prompt(message, opts = {}) {
+    const { confirmLabel = 'OK', cancelLabel = 'Cancel', defaultValue = '', placeholder = '' } = opts;
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = [
+        'position:fixed', 'inset:0', 'z-index:9999',
+        'display:flex', 'align-items:center', 'justify-content:center',
+        'background:rgba(0,0,0,.45)', 'backdrop-filter:blur(2px)',
+        'animation:fadeIn .12s ease',
+      ].join(';');
+
+      overlay.innerHTML = `
+        <div role="dialog" aria-modal="true" style="
+          background:var(--color-bg,#fff);
+          border-radius:var(--radius-lg,10px);
+          box-shadow:0 20px 60px rgba(0,0,0,.25);
+          padding:var(--space-6,24px);
+          max-width:420px;
+          width:calc(100vw - 48px);
+          animation:slideUp .15s ease;
+        ">
+          <p style="
+            margin:0 0 var(--space-4,16px);
+            font-size:var(--font-size-base,14px);
+            line-height:1.55;
+            color:var(--color-text,#111);
+          ">${esc(message)}</p>
+          <input id="_prompt-input" type="text" value="${esc(defaultValue)}" placeholder="${esc(placeholder)}" style="
+            width:100%;box-sizing:border-box;
+            padding:var(--space-2,8px) var(--space-3,12px);
+            border:1px solid var(--color-border,#ddd);
+            border-radius:var(--radius,6px);
+            font-size:var(--font-size-base,14px);
+            font-family:inherit;
+            margin-bottom:var(--space-5,20px);
+          ">
+          <div style="display:flex;justify-content:flex-end;gap:var(--space-3,12px)">
+            <button id="_prompt-cancel" class="btn btn--secondary" style="min-width:80px">${esc(cancelLabel)}</button>
+            <button id="_prompt-ok" class="btn btn--primary" style="min-width:80px">${esc(confirmLabel)}</button>
+          </div>
+        </div>`;
+
+      document.body.appendChild(overlay);
+      const input = overlay.querySelector('#_prompt-input');
+      input.focus();
+      input.select();
+
+      function finish(result) {
+        overlay.remove();
+        resolve(result);
+      }
+
+      overlay.querySelector('#_prompt-ok').addEventListener('click', () => finish(input.value.trim() || null));
+      overlay.querySelector('#_prompt-cancel').addEventListener('click', () => finish(null));
+      overlay.addEventListener('click', e => { if (e.target === overlay) finish(null); });
+      overlay.addEventListener('keydown', e => {
+        if (e.key === 'Escape') finish(null);
+        if (e.key === 'Enter') finish(input.value.trim() || null);
+      });
+    });
+  }
+
   // ── Debounce ─────────────────────────────────────────────────────────────────
 
   function debounce(fn, ms = 300) {
@@ -193,7 +259,7 @@ window.Utils = (function () {
   }
 
   return {
-    toast, confirm, formatDate, formatDateTime, relativeDate,
+    toast, confirm, prompt, formatDate, formatDateTime, relativeDate,
     fullName, initials, titleCase, truncate,
     qs, qsa, show, hide, setLoading,
     handleError, esc, debounce, fileSize,

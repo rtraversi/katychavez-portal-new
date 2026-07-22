@@ -1,8 +1,12 @@
 // CF Worker: POST /api/drafting/generate
 // Body: { template_id, matter_id, wizard_data }
-// Returns: HTML document ready to print/save as PDF
+// Fills a .docx template with docxtemplater, stores as draft_document v1 in R2,
+// and returns { word_url, doc_id } so the UI can open it directly in Word.
 
+import Docxtemplater          from 'docxtemplater';
+import PizZip                 from 'pizzip';
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
+import { generateWebDAVToken } from './webdav.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -32,16 +36,17 @@ async function handleRequest(request, env) {
   // ── Fetch template ────────────────────────────────────────────────────────
   const { data: tmpl, error: tmplErr } = await admin
     .from('draft_templates')
-    .select('id, name, template_html, wizard_schema')
+    .select('id, name, template_docx_r2_key, wizard_schema')
     .eq('id', template_id)
     .single();
   if (tmplErr || !tmpl) return json(404, { error: 'Template not found' });
 
-  // ── Fetch matter + client + OP + children + key_dates + users ─────────────
-  const [
-    { data: matter },
-    { data: users },
-  ] = await Promise.all([
+  if (!tmpl.template_docx_r2_key) {
+    return json(422, { error: 'No .docx template has been uploaded for this template. Please upload one in Settings > Doc Templates.' });
+  }
+
+  // ── Fetch matter + client + OP + children + users ─────────────────────────
+  const [{ data: matter }, { data: users }] = await Promise.all([
     admin.from('matters').select(`
       id, case_number, court_county, court_number, judge_name,
       date_of_marriage, separation_date, assigned_attorney_id,
@@ -75,8 +80,8 @@ async function handleRequest(request, env) {
     await admin.from('matters').update(matterpatch).eq('id', matter_id);
 
   // ── Build variables ───────────────────────────────────────────────────────
-  const client = matter.client;
-  const op     = matter.opposing_parties?.[0] || null;
+  const client   = matter.client;
+  const op       = matter.opposing_parties?.[0] || null;
   const children = matter.children || [];
 
   const isClientPetitioner = wizard_data.is_client_petitioner !== 'false' && wizard_data.is_client_petitioner !== false;
@@ -97,7 +102,7 @@ async function handleRequest(request, env) {
     return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   }
 
-  const hasChildren = children.length > 0;
+  const hasChildren  = children.length > 0;
   const childrenNoun = children.length === 1 ? 'child' : 'children';
 
   const discoveryLabels = {
@@ -119,7 +124,7 @@ async function handleRequest(request, env) {
     felony:           'Since the marriage, Respondent has been convicted of a felony; has been imprisoned for at least one year in the Texas Department of Criminal Justice, a federal penitentiary, or the penitentiary of another state; and has not been pardoned. Respondent was not convicted on the testimony of Petitioner.',
     abandonment:      'Respondent has left Petitioner with the intention of abandonment and has remained away for at least one year.',
     living_apart:     'Petitioner and Respondent have lived apart without cohabitation for at least three years.',
-    mental_disorder:  'Respondent has been confined in a mental hospital in Texas or another state for at least three years, and it appears that Respondent\'s mental disorder is of such a degree and nature that adjustment is unlikely or that, if adjustment occurs, a relapse is probable.',
+    mental_disorder:  "Respondent has been confined in a mental hospital in Texas or another state for at least three years, and it appears that Respondent's mental disorder is of such a degree and nature that adjustment is unlikely or that, if adjustment occurs, a relapse is probable.",
   };
 
   const attorney = (users || []).find(u => u.id === matter.assigned_attorney_id);
@@ -134,13 +139,13 @@ async function handleRequest(request, env) {
   const petDL  = lastN(petitioner?.driver_license_number, 3);
   const petSSN = lastN(petitioner?.ssn_last4, 3);
 
-  const discoveryLevel = String(wizard_data.discovery_level || '2');
+  const discoveryLevel  = String(wizard_data.discovery_level || '2');
   const conservatorship = wizard_data.conservatorship || 'jmc_petitioner';
-  const serviceType = wizard_data.service_type || 'personal';
-  const reliefType = wizard_data.relief_type || 'monetary_nonmonetary_250k';
-  const grounds = wizard_data.grounds || 'insupportability';
+  const serviceType     = wizard_data.service_type || 'personal';
+  const reliefType      = wizard_data.relief_type || 'monetary_nonmonetary_250k';
+  const grounds         = wizard_data.grounds || 'insupportability';
+  const wizNameChange   = wizard_data.name_change === true || wizard_data.name_change === 'true';
 
-  // Key Dates are the canonical source for marriage/separation dates
   const kdMarriage   = matter.key_dates?.find(d => d.date_type === 'marriage')?.date_value;
   const kdSeparation = matter.key_dates?.find(d => d.date_type === 'separation')?.date_value;
 
@@ -154,43 +159,43 @@ async function handleRequest(request, env) {
     court_county:  effectiveCourtCounty.toUpperCase(),
     case_number:   matter.case_number || '[Case Number]',
 
-    petitioner_name:    fullName(petitioner),
-    respondent_name:    fullName(respondent),
-    petitioner_dl_last3: petDL  || '',
-    petitioner_ssn_last3: petSSN || '',
-    petitioner_has_dl:  !!petDL,
-    petitioner_has_ssn: !!petSSN,
+    petitioner_name:         fullName(petitioner),
+    respondent_name:         fullName(respondent),
+    petitioner_dl_last3:     petDL  || '',
+    petitioner_ssn_last3:    petSSN || '',
+    petitioner_has_dl:       !!petDL,
+    petitioner_has_ssn:      !!petSSN,
     respondent_full_address: respAddr,
 
-    discovery_label:          discoveryLabels[discoveryLevel] || discoveryLabels['2'],
+    discovery_label:            discoveryLabels[discoveryLevel] || discoveryLabels['2'],
     discovery_no_children_note: discoveryLevel === '1',
 
     object_to_associate_judge: wizard_data.object_to_associate_judge === true || wizard_data.object_to_associate_judge === 'true',
     petitioner_tx_domiciliary: (wizard_data.domicile_scenario || 'petitioner') === 'petitioner',
-    service_personal:   serviceType === 'personal',
-    service_none:       serviceType === 'none',
-    service_substituted: serviceType === 'substituted',
+    service_personal:          serviceType === 'personal',
+    service_none:              serviceType === 'none',
+    service_substituted:       serviceType === 'substituted',
 
-    relief_text:  reliefTexts[reliefType] || reliefTexts['monetary_nonmonetary_250k'],
-    grounds_text: groundsTexts[grounds]   || groundsTexts['insupportability'],
+    relief_text:  reliefTexts[reliefType]  || reliefTexts['monetary_nonmonetary_250k'],
+    grounds_text: groundsTexts[grounds]    || groundsTexts['insupportability'],
 
     marriage_date_display:   fmtDate(effectiveMarriageDate),
     separation_date_display: fmtDate(effectiveSeparationDate),
 
-    has_children:   hasChildren,
-    children_noun:  childrenNoun,
+    has_children:  hasChildren,
+    children_noun: childrenNoun,
     children: children.map(c => ({
-      name:      fullName(c),
+      name:        fullName(c),
       dob_display: fmtDate(c.dob),
-      sex_label: c.sex === 'M' ? 'Male' : c.sex === 'F' ? 'Female' : c.sex || '',
+      sex_label:   c.sex === 'M' ? 'Male' : c.sex === 'F' ? 'Female' : c.sex || '',
     })),
 
-    conservatorship_jmc:              conservatorship === 'jmc_petitioner' || conservatorship === 'jmc_respondent',
+    conservatorship_jmc:                conservatorship === 'jmc_petitioner' || conservatorship === 'jmc_respondent',
     conservatorship_petitioner_primary: conservatorship === 'jmc_petitioner',
-    conservatorship_sole:             conservatorship === 'petitioner_sole',
-    conservatorship_possessory:       conservatorship === 'petitioner_possessory',
+    conservatorship_sole:               conservatorship === 'petitioner_sole',
+    conservatorship_possessory:         conservatorship === 'petitioner_possessory',
 
-    name_change: wizard_data.name_change === true || wizard_data.name_change === 'true',
+    name_change: wizNameChange,
     new_name:    wizard_data.new_name || '',
 
     attorney_name:       attyName,
@@ -201,60 +206,79 @@ async function handleRequest(request, env) {
     firm_email:          attorney?.email || '[Firm Email]',
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  const html = renderTemplate(tmpl.template_html, vars);
+  // ── Fetch .docx template from R2 ─────────────────────────────────────────
+  const tmplObj = await env.R2.get(tmpl.template_docx_r2_key);
+  if (!tmplObj) return json(422, { error: 'Template file not found in storage. Please re-upload the .docx template.' });
+  const tmplBuf = await tmplObj.arrayBuffer();
 
-  // ── Log generated document ────────────────────────────────────────────────
-  await admin.from('draft_documents').insert({
-    matter_id,
-    template_id,
-    generated_by: auth.profile?.id || null,
-    wizard_data,
-    file_name: `${tmpl.name} — ${fullName(client)}.html`,
-  });
-
-  return new Response(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  });
-}
-
-// ── Template engine ───────────────────────────────────────────────────────────
-
-function renderTemplate(template, vars) {
-  function esc(s) {
-    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // ── Fill with docxtemplater ───────────────────────────────────────────────
+  let docxBuf;
+  try {
+    const zip = new PizZip(new Uint8Array(tmplBuf));
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks:    true,
+      delimiters:    { start: '{{', end: '}}' },
+    });
+    doc.render(vars);
+    docxBuf = doc.getZip().generate({ type: 'arraybuffer' });
+  } catch (dtErr) {
+    console.error('[drafting-generate] docxtemplater error:', dtErr);
+    const msgs = dtErr?.properties?.errors?.map(e => e.message).join('; ') || dtErr.message;
+    return json(500, { error: `Template rendering failed: ${msgs}` });
   }
 
-  function render(tmpl, ctx) {
-    let out = tmpl;
+  // ── Create draft_document record ─────────────────────────────────────────
+  const draftingUser = auth.profile;
+  const initials = (
+    (draftingUser.first_name?.[0] || '') + (draftingUser.last_name?.[0] || '')
+  ).toUpperCase() || 'XX';
+  const today    = new Date().toISOString().slice(0, 10);
+  const fileName = `${today} ${initials} ${tmpl.name}.docx`;
 
-    // #each loops
-    out = out.replace(/\{\{#each (\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_, key, body) => {
-      const arr = ctx[key];
-      if (!Array.isArray(arr) || arr.length === 0) return '';
-      return arr.map(item => render(body, { ...ctx, ...item })).join('');
-    });
+  const { data: newDoc, error: insertErr } = await admin
+    .from('draft_documents')
+    .insert({
+      matter_id,
+      template_id,
+      generated_by:        auth.profile?.id || null,
+      wizard_data,
+      file_name:           fileName,
+      current_version_num: 1,
+    })
+    .select('id')
+    .single();
 
-    // #if conditionals (two passes for nesting)
-    for (let i = 0; i < 2; i++) {
-      out = out.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, key, body) => {
-        return ctx[key] ? render(body, ctx) : '';
-      });
-    }
-
-    // ^inverse conditionals
-    out = out.replace(/\{\{\^(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, key, body) => {
-      return !ctx[key] ? render(body, ctx) : '';
-    });
-
-    // Simple variables
-    out = out.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-      const val = ctx[key];
-      return val != null ? esc(val) : '';
-    });
-
-    return out;
+  if (insertErr || !newDoc) {
+    console.error('[drafting-generate] insert error:', insertErr);
+    return json(500, { error: 'Failed to create document record.' });
   }
 
-  return render(template, vars);
+  const docId = newDoc.id;
+  const r2Key = `drafts/${matter_id}/${docId}/v1.docx`;
+
+  // ── Store v1 in R2 ────────────────────────────────────────────────────────
+  await env.R2.put(r2Key, docxBuf, {
+    httpMetadata: { contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+  });
+
+  // ── Insert version record ─────────────────────────────────────────────────
+  await admin.from('draft_document_versions').insert({
+    document_id: docId,
+    version_num: 1,
+    r2_key:      r2Key,
+    size_bytes:  docxBuf.byteLength,
+    created_by:  auth.profile?.id || null,
+  });
+
+  // ── Generate signed WebDAV token and return Word URI ─────────────────────
+  // URL must include the .docx filename segment — Word uses the extension to
+  // identify the document type before issuing PROPFIND.
+  const token     = await generateWebDAVToken(auth.profile.id, docId, env);
+  const origin    = new URL(request.url).origin;
+  const safeName  = encodeURIComponent(fileName);
+  const webdavUrl = `${origin}/webdav/${token}/${docId}/${safeName}`;
+  const wordUrl   = `ms-word:ofe|u|${webdavUrl}`;
+
+  return json(200, { word_url: wordUrl, doc_id: docId, file_name: fileName });
 }

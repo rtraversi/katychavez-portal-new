@@ -1,8 +1,16 @@
 // CF Worker: GET /api/form-filler/package?matter_id=<uuid>
-// Resolves a matter's case type -> form package -> ordered form list, with
-// each form's latest generated_forms status for this matter (if any).
+//
+// Returns the matter's ordered form list with each form's latest
+// generated_forms status, plus the catalog of forms available to add.
+//
+// Since migration 1605 the list comes from matter_forms when it exists,
+// falling back to the case-type package as a suggestion when it doesn't.
+// This endpoint stays PURE — it never seeds. A read-only user (can_read
+// without can_write on draft_forms) must be able to open the tab without
+// creating data; the first mutating action materializes the list instead.
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
+import { loadPackageTemplates } from './_fill-context.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -33,25 +41,11 @@ async function handleRequest(request, env) {
     .single();
   if (matterErr || !matter) return json(404, { error: 'Matter not found' });
 
-  if (!matter.case_type_id) return json(200, { package: null, forms: [] });
+  const pkgResult = await loadPackageTemplates(admin, matter);
+  if (pkgResult.error) return json(pkgResult.error.status, { error: pkgResult.error.message });
+  const { pkg, seeded, activeTemplates } = pkgResult;
 
-  const { data: pkg } = await admin
-    .from('form_packages')
-    .select('id, name')
-    .eq('case_type_id', matter.case_type_id)
-    .eq('active', true)
-    .maybeSingle();
-
-  if (!pkg) return json(200, { package: null, forms: [] });
-
-  const { data: items, error: itemsErr } = await admin
-    .from('form_package_items')
-    .select('sort_order, required, template:form_templates(id, form_key, label, r2_key, field_count, active)')
-    .eq('package_id', pkg.id)
-    .order('sort_order', { ascending: true });
-  if (itemsErr) return json(500, { error: 'Failed to load form package items' });
-
-  const templateIds = items.map(i => i.template.id);
+  const templateIds = activeTemplates.map(t => t.id);
 
   const { data: generated } = await admin
     .from('generated_forms')
@@ -66,14 +60,12 @@ async function handleRequest(request, env) {
     if (!latestByTemplate[row.template_id]) latestByTemplate[row.template_id] = row;
   }
 
-  const forms = items.map(item => {
-    const tmpl   = item.template;
+  const forms = activeTemplates.map(tmpl => {
     const latest = latestByTemplate[tmpl.id] || null;
     return {
       template_id:       tmpl.id,
       form_key:          tmpl.form_key,
       label:             tmpl.label,
-      required:          item.required,
       template_ready:    !!tmpl.r2_key && tmpl.active,
       generated_form_id: latest?.id || null,
       status:            latest?.status || null,
@@ -83,5 +75,25 @@ async function handleRequest(request, env) {
     };
   });
 
-  return json(200, { package: { id: pkg.id, name: pkg.name }, forms });
+  // Catalog for the "Add form" picker: every ready template not already on the
+  // matter. Templates without an r2_key aren't offered — they can't generate.
+  const onMatter = new Set(templateIds);
+  const { data: allTemplates } = await admin
+    .from('form_templates')
+    .select('id, form_key, label, r2_key, active')
+    .eq('active', true)
+    .order('form_key', { ascending: true });
+
+  const available = (allTemplates || [])
+    .filter(t => !onMatter.has(t.id) && !!t.r2_key)
+    .map(t => ({ template_id: t.id, form_key: t.form_key, label: t.label }));
+
+  return json(200, {
+    package: pkg ? { id: pkg.id, name: pkg.name } : null,
+    // false = the list shown is still the case type's suggestion, not yet
+    // owned by the matter. The UI renders both identically.
+    seeded,
+    forms,
+    available,
+  });
 }

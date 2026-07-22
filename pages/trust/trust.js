@@ -508,8 +508,8 @@
       const cn = m?.clients ? `${m.clients.first_name} ${m.clients.last_name}` : '—';
       const ml = matterLabel(m);
       return `<tr>
-        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${cn}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#6b7280">${ml}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${Utils.esc(cn)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#6b7280">${Utils.esc(ml)}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmt(b.balance)}</td>
       </tr>`;
     }).join('');
@@ -1179,7 +1179,7 @@
 
     const rows = [...slBody.querySelectorAll('tr')].map(r => r.outerHTML).join('');
     const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<title>Trust Sub-Ledger — ${_slClientName}</title>
+<title>Trust Sub-Ledger — ${Utils.esc(_slClientName)}</title>
 <style>
   body { font-family: 'Times New Roman', serif; font-size: 11pt; color: #111; max-width: 8in; margin: 0 auto; padding: 24px; }
   @page { size: letter; margin: 1in; }
@@ -1192,8 +1192,8 @@
 </style></head><body>
 <button class="btn no-print" onclick="window.print()">Print / Save as PDF</button>
 <h1>${firmName} — Client Trust Sub-Ledger</h1>
-<h2>${_slClientName} &nbsp;·&nbsp; ${_slMatterName} &nbsp;·&nbsp; ${rangeStr}</h2>
-<p style="font-size:10pt;color:#6b7280">Account: ${acct ? acct.account_label + ' — ' + acct.bank_name + ' ****' + acct.account_number_last4 : '—'}</p>
+<h2>${Utils.esc(_slClientName)} &nbsp;·&nbsp; ${Utils.esc(_slMatterName)} &nbsp;·&nbsp; ${rangeStr}</h2>
+<p style="font-size:10pt;color:#6b7280">Account: ${acct ? Utils.esc(acct.account_label + ' — ' + acct.bank_name + ' ****' + acct.account_number_last4) : '—'}</p>
 <table>
   <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Check #</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance</th></tr></thead>
   <tbody>${rows}</tbody>

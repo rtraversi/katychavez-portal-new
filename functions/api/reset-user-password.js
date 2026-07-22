@@ -3,7 +3,7 @@
 // Sends a password reset email to a staff user. Owner or Staff Admin only.
 
 import { makeAdminClient, json } from './_helpers.js';
-import { sendPasswordReset } from './_notifications.js';
+import { notifyPasswordReset } from './_notifications.js';
 
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -49,7 +49,7 @@ export async function onRequest({ request, env }) {
   const { data: linkData, error: resetErr } = await admin.auth.admin.generateLink({
     type: 'recovery',
     email: user.email,
-    options: { redirectTo: `${env.PORTAL_URL}/reset-password` },
+    options: { redirectTo: `${env.PORTAL_URL}/portal` },
   });
 
   if (resetErr) {
@@ -63,12 +63,9 @@ export async function onRequest({ request, env }) {
     return json(500, { error: 'Failed to generate reset link. Please try again.' });
   }
 
-  try {
-    await sendPasswordReset(env, { toEmail: user.email, resetLink: actionLink });
-  } catch (err) {
-    console.error('[reset-user-password] email error:', err.message);
-    return json(500, { error: 'Reset link generated but email failed to send.' });
-  }
+  await notifyPasswordReset(env, { toEmail: user.email, resetLink: actionLink }).catch(err =>
+    console.error('[reset-user-password] notify error:', err.message)
+  );
 
   return json(200, { ok: true });
 }

@@ -26,10 +26,15 @@ export async function onRequest({ request, env }) {
 
     const translation = rows?.[0] ?? null;
 
+    // Row not inserted yet — still starting up
     if (!translation) return json(200, { status: 'pending' });
-    if (translation.status === 'pending') return json(200, { status: 'pending' });
+
+    // 'processing' = claimed by /api/translation-process, still generating
+    if (translation.status === 'pending' || translation.status === 'processing')
+      return json(200, { status: 'pending' });
     if (translation.status === 'error')   return json(200, { status: 'error' });
 
+    // Completed — return preview + metadata
     const fullText = translationText(translation.translated_text);
     const preview  = fullText
       ? fullText.substring(0, 600) + (fullText.length > 600 ? '…' : '')

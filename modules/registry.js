@@ -4,15 +4,39 @@
 //
 // IMPORTANT: keep this in sync with migration 002_rbac.sql module seed data.
 // The DB is authoritative for access control; this file is authoritative for UI routing.
+//
+// `group` assigns each module to a color-coded section (home page) and nav
+// group (sidebar). MODULE_GROUPS below is the single source of truth for the
+// groups themselves — labels, hue tokens, and display order. `icon` is the
+// home-tile icon (flat, colored); `navIcon` is the sidebar icon (monochrome
+// stroke). Order within a group follows sortOrder.
+//
+// badgeFn contract: resolves to a display string; when it starts with
+// "<count> <word>" (e.g. "23 ACTIVE →") the leading count is also parsed for
+// the home-tile pill and the sidebar nav count. Keep that shape for live counts.
 
 'use strict';
+
+// Group key → section metadata. `hue` names the CSS accent token pair
+// (--<hue> / --<hue>-tint in css/variables.css). Object order = display order.
+// `matter` is the client-facing view; staff pages skip it.
+window.MODULE_GROUPS = {
+  daily:   { label: 'Daily Work',           hue: 'daily'   },
+  intake:  { label: 'Intake & Screening',   hue: 'intake'  },
+  docs:    { label: 'Documents & Drafting', hue: 'docs'    },
+  money:   { label: 'Finance',              hue: 'money'   },
+  horizon: { label: 'On the Horizon',       hue: 'horizon' },
+  matter:  { label: 'Your Matter',          hue: 'daily'   },
+};
 
 window.MODULE_REGISTRY = [
   // ── Wave 0 (always present) ────────────────────────────────────────────────
   {
     key:         'client_portal',
     name:        'My Matter',
+    group:       'matter',
     icon:        'user',
+    navIcon:     'user',
     route:       'client-portal',
     wave:        0,
     sortOrder:   5,
@@ -20,9 +44,23 @@ window.MODULE_REGISTRY = [
     badge:       'VIEW MATTER →',
   },
   {
+    key:         'case_intake',
+    name:        'Case Intake',
+    group:       'intake',
+    icon:        'tile-case-intake',
+    navIcon:     'check-square',
+    route:       'case-intake',
+    wave:        0,
+    sortOrder:   6,
+    description: 'Fill in the details of your case — opposing party, marriage, children, and finances.',
+    badge:       'START →',
+  },
+  {
     key:         'core',
     name:        'Clients & Matters',
-    icon:        'users',
+    group:       'daily',
+    icon:        'tile-clients',
+    navIcon:     'users',
     route:       'clients',
     wave:        0,
     sortOrder:   10,
@@ -36,7 +74,9 @@ window.MODULE_REGISTRY = [
   {
     key:         'tasks',
     name:        'Tasks',
-    icon:        'check-square',
+    group:       'daily',
+    icon:        'tile-tasks',
+    navIcon:     'check-square',
     route:       'tasks',
     wave:        0,
     sortOrder:   20,
@@ -52,7 +92,9 @@ window.MODULE_REGISTRY = [
   {
     key:         'conflict_checker',
     name:        'Conflict Check',
-    icon:        'shield',
+    group:       'intake',
+    icon:        'tile-conflict',
+    navIcon:     'shield',
     route:       'conflict-checker',
     wave:        1,
     sortOrder:   25,
@@ -62,7 +104,9 @@ window.MODULE_REGISTRY = [
   {
     key:         'uploads',
     name:        'Document Intake',
-    icon:        'upload',
+    group:       'intake',
+    icon:        'tile-uploads',
+    navIcon:     'upload',
     route:       'uploads',
     wave:        1,
     sortOrder:   30,
@@ -76,7 +120,9 @@ window.MODULE_REGISTRY = [
   {
     key:         'messaging',
     name:        'Messages',
-    icon:        'message-circle',
+    group:       'daily',
+    icon:        'tile-messages',
+    navIcon:     'message-circle',
     route:       'messaging',
     wave:        1,
     sortOrder:   40,
@@ -91,42 +137,88 @@ window.MODULE_REGISTRY = [
   },
   {
     key:         'doc_templates',
-    name:        'Doc Templates',
-    icon:        'file-text',
+    name:        'Client Document Checklist',
+    group:       'docs',
+    icon:        'tile-doc-templates',
+    navIcon:     'file-text',
     route:       'settings/doc-templates',
     wave:        1,
-    sortOrder:   85,
+    sortOrder:   71,
     staffOnly:   true,
-    description: 'Build and manage reusable document templates for the firm.',
+    description: 'Required-document checklists applied to matters at intake (Apply Checklist).',
     badge:       'VIEW TEMPLATES →',
+  },
+  {
+    key:         'doc_drafting',
+    name:        'Word Templates',
+    group:       'docs',
+    icon:        'tile-word-templates',
+    navIcon:     'file-text',
+    route:       'settings/word-templates',
+    wave:        1,
+    sortOrder:   72,
+    staffOnly:   true,
+    description: 'Reusable Word (.docx) templates for drafting and the "New from Template" action.',
+    badge:       'MANAGE →',
   },
   {
     key:         'calendar',
     name:        'Calendar',
-    icon:        'calendar',
+    group:       'daily',
+    icon:        'tile-calendar',
+    navIcon:     'calendar',
     route:       'calendar',
     wave:        1,
-    sortOrder:   45,
+    sortOrder:   35,
     staffOnly:   true,
     premium:     true,
     description: 'Track deadlines, hearings, and court appearances.',
     badge:       'VIEW CALENDAR →',
   },
   {
+    key:         'scheduling',
+    name:        'Appointments',
+    group:       'intake',
+    icon:        'tile-calendar',
+    navIcon:     'calendar',
+    route:       'scheduling',
+    wave:        1,
+    sortOrder:   36,
+    staffOnly:   true,
+    premium:     true,
+    requires:    'calendar',
+    description: 'Online consult booking — prospects see real availability and book from your website.',
+    badge:       'APPOINTMENTS →',
+    badgeFn:     async db => {
+      const { count } = await db.from('appointments').select('*', { count: 'exact', head: true })
+        .eq('status', 'booked').gte('starts_at', new Date().toISOString());
+      return count ? `${count} UPCOMING →` : 'APPOINTMENTS →';
+    },
+  },
+  {
     key:         'billing',
-    name:        'Billing & Time',
-    icon:        'dollar-sign',
+    name:        'Billing & Invoicing',
+    group:       'money',
+    icon:        'money-flat',
+    navIcon:     'dollar-sign',
     route:       'billing',
     wave:        1,
     sortOrder:   50,
+    staffOnly:   true,
     premium:     true,
-    comingSoon:  true,
-    description: 'Track billable hours, generate invoices, and manage fee arrangements.',
+    description: 'Create invoices from time entries, send to clients, and track payments.',
+    badge:       'VIEW →',
+    badgeFn:     async db => {
+      const { count } = await db.from('invoices').select('*', { count: 'exact', head: true }).eq('status', 'draft');
+      return count ? `${count} DRAFT →` : 'VIEW →';
+    },
   },
   {
     key:         'trust_accounting',
     name:        'Trust Accounting',
-    icon:        'briefcase',
+    group:       'money',
+    icon:        'bank-flat',
+    navIcon:     'briefcase',
     route:       'trust',
     wave:        1,
     sortOrder:   55,
@@ -136,7 +228,9 @@ window.MODULE_REGISTRY = [
   {
     key:         'ai_brain',
     name:        'AI Assistant',
-    icon:        'cpu',
+    group:       'horizon',
+    icon:        'tile-ai',
+    navIcon:     'cpu',
     route:       'ai-brain',
     wave:        1,
     sortOrder:   60,
@@ -147,20 +241,24 @@ window.MODULE_REGISTRY = [
   {
     key:         'draft_forms',
     name:        'USCIS Forms',
-    icon:        'file-text',
+    group:       'docs',
+    icon:        'tile-draft-forms',
+    navIcon:     'file-text',
     route:       'draft-forms',
     wave:        1,
-    sortOrder:   70,
+    sortOrder:   79,
     premium:     true,
     description: 'Autofill and generate USCIS immigration form packages (DACA, etc.) from client and matter data.',
   },
   {
     key:         'esign',
     name:        'E-Signatures',
-    icon:        'pen-tool',
+    group:       'docs',
+    icon:        'tile-esign',
+    navIcon:     'pen-tool',
     route:       'esign',
     wave:        1,
-    sortOrder:   80,
+    sortOrder:   74,
     premium:     true,
     description: 'Send, track, and collect legally binding signature requests.',
     badge:       'OPEN →',
@@ -168,10 +266,12 @@ window.MODULE_REGISTRY = [
   {
     key:       'sig_stamp',
     name:      'Signature Stamp',
-    icon:      'pen-tool',
+    group:     'docs',
+    icon:      'record-flat',
+    navIcon:   'pen-tool',
     route:     'sig-stamp',
     wave:      1,
-    sortOrder: 82,
+    sortOrder: 76,
     staffOnly: true,
     description: 'Apply authenticated signatures to documents.',
     badge:     'STAMP DOCS →',
@@ -179,18 +279,23 @@ window.MODULE_REGISTRY = [
   {
     key:       'translation',
     name:      'Translation',
-    icon:      'globe',
+    group:     'docs',
+    icon:      'tile-translation',
+    navIcon:   'globe',
     route:     'translation',
     wave:      1,
-    sortOrder: 58,
+    sortOrder: 78,
     staffOnly: true,
-    description: 'AI-powered Spanish-to-English certified translation with DOCX & PDF export.',
+    premium:   true,
+    description: 'AI-powered document translation to English with optional certification — DOCX & PDF export.',
     badge:     'TRANSLATE →',
   },
   {
     key:       'proof_scan',
     name:      'Proof Scan',
-    icon:      'shield',
+    group:     'intake',
+    icon:      'tile-proof-scan',
+    navIcon:   'shield',
     route:     'proof-scan',
     wave:      1,
     sortOrder: 57,
@@ -204,7 +309,9 @@ window.MODULE_REGISTRY = [
   {
     key:         'dashboard',
     name:        'Dashboard',
-    icon:        'bar-chart-2',
+    group:       'daily',
+    icon:        'tile-dashboard',
+    navIcon:     'bar-chart-2',
     route:       'dashboard',
     wave:        2,
     sortOrder:   1,
@@ -215,7 +322,9 @@ window.MODULE_REGISTRY = [
   {
     key:         'word_embed',
     name:        'Word Integration',
-    icon:        'file',
+    group:       'horizon',
+    icon:        'tile-word-embed',
+    navIcon:     'file',
     route:       'word-embed',
     wave:        2,
     sortOrder:   100,

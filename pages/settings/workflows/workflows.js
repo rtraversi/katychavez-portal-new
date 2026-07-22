@@ -21,7 +21,7 @@
     const enabledSet = new Set((enabledKeys || []).map(r => r.practice_area_key));
     enabledPAs = (allPas || []).filter(p => enabledSet.has(p.key));
     if (!enabledPAs.length) {
-      root.innerHTML = '<p class="text-muted" style="padding:var(--space-4) 0">No practice areas enabled. Enable practice areas in Settings → Practice Areas first.</p>';
+      root.innerHTML = '<div class="dk-empty" style="margin-top:var(--space-4)">No practice areas enabled. Enable practice areas in Settings → Practice Areas first.</div>';
       return;
     }
     if (!activePa) activePa = enabledPAs[0].key;
@@ -43,46 +43,51 @@
       `<button class="wf-pa-tab${pa.key === activePa ? ' wf-pa-tab--active' : ''}" data-pa="${Utils.esc(pa.key)}">${Utils.esc(pa.name)}</button>`
     ).join('');
 
-    const stageRows = stages.length
-      ? stages.map((s, i) => `
-          <div class="stage-row" data-id="${Utils.esc(s.id)}">
-            <span class="stage-row-drag">⠿</span>
-            <span class="stage-row-dot stage-dot-${s.color}"></span>
-            <span class="stage-row-name">${Utils.esc(s.name)}</span>
-            ${s.is_terminal ? '<span class="stage-row-terminal badge badge--inactive">Terminal</span>' : ''}
-            ${isAdmin ? `<div class="stage-row-actions">
-              <button class="btn btn--ghost btn--sm stage-up-btn" data-idx="${i}" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
-              <button class="btn btn--ghost btn--sm stage-down-btn" data-idx="${i}" title="Move down" ${i === stages.length - 1 ? 'disabled' : ''}>↓</button>
-              <button class="btn btn--ghost btn--sm stage-terminal-btn" data-id="${Utils.esc(s.id)}" data-terminal="${s.is_terminal}" title="${s.is_terminal ? 'Unmark terminal' : 'Mark as terminal (case closed)'}">${s.is_terminal ? '⚑' : '⚐'}</button>
-              <button class="btn btn--ghost btn--sm stage-delete-btn" data-id="${Utils.esc(s.id)}" data-name="${Utils.esc(s.name)}" style="color:var(--color-danger)">✕</button>
-            </div>` : ''}
-          </div>`)
-        .join('')
-      : '<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--space-3) 0">No stages defined yet. Add your first stage below.</p>';
+    const stageRows = stages.map((s, i) => `
+      <div class="stage-row dk-reg-row" data-id="${Utils.esc(s.id)}">
+        <div>
+          <div class="dk-reg-title"><span class="stage-row-dot stage-dot-${s.color}"></span>${Utils.esc(s.name)}${s.is_terminal ? ' ' + DK.tag('Terminal', 'mut') : ''}</div>
+          <div class="dk-reg-meta">
+            <span>Step ${i + 1} of ${stages.length}</span>
+            ${s.is_terminal ? '<span class="sep">·</span><span>Closes the matter</span>' : ''}
+          </div>
+        </div>
+        ${isAdmin ? `<div class="dk-reg-act">
+          <button class="dk-linkbtn stage-up-btn" data-idx="${i}" type="button" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button class="dk-linkbtn stage-down-btn" data-idx="${i}" type="button" title="Move down" ${i === stages.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="dk-linkbtn stage-terminal-btn" data-id="${Utils.esc(s.id)}" data-terminal="${s.is_terminal}" type="button" title="${s.is_terminal ? 'Unmark terminal' : 'Mark as terminal (case closed)'}">${s.is_terminal ? '⚑' : '⚐'}</button>
+          <button class="dk-linkbtn d stage-delete-btn" data-id="${Utils.esc(s.id)}" data-name="${Utils.esc(s.name)}" type="button" title="Delete stage">✕</button>
+        </div>` : ''}
+      </div>`).join('');
+
+    const stageBlock = stages.length
+      ? `<div class="dk-register">${stageRows}</div>`
+      : '<div class="dk-empty">No stages defined yet. Add your first stage below.</div>';
 
     const addForm = isAdmin ? `
       <div class="add-stage-form" id="add-stage-form">
-        <div>
-          <label>Stage Name</label>
-          <input class="input" id="new-stage-name" placeholder="e.g. Documents Pending" style="width:240px">
+        <div class="field field-stack" style="flex:1;min-width:240px">
+          <label class="field-label" for="new-stage-name">Stage name</label>
+          <input class="field-input" id="new-stage-name" placeholder="e.g. Documents Pending">
         </div>
-        <div>
-          <label>Color</label>
+        <div class="field field-stack">
+          <label class="field-label">Color</label>
           <div class="color-swatch-row" id="color-swatches">
             ${COLORS.map(c => `<span class="color-swatch${c === 'blue' ? ' selected' : ''}" data-color="${c}" style="background:${COLOR_HEX[c]}" title="${c}"></span>`).join('')}
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:var(--space-2);padding-bottom:2px">
-          <input type="checkbox" id="new-stage-terminal" style="width:auto">
-          <label for="new-stage-terminal" style="text-transform:none;letter-spacing:0;font-size:var(--text-sm);font-weight:400;color:var(--color-text)">Terminal stage (case complete)</label>
+        <div style="display:inline-flex;align-items:center;gap:9px;padding-bottom:8px">
+          <span class="dk-toggle"><input type="checkbox" id="new-stage-terminal"><span class="dk-toggle-track"></span></span>
+          <label for="new-stage-terminal" style="font-size:var(--text-sm);color:var(--color-text);cursor:pointer;margin:0">Terminal stage (case complete)</label>
         </div>
-        <button class="btn btn--primary btn--sm" id="btn-add-stage" style="margin-bottom:1px">Add Stage</button>
+        <button class="btn btn--primary" id="btn-add-stage" type="button">Add stage</button>
       </div>` : '';
 
     root.innerHTML = `
-      <div class="detail-section">
-        <div class="wf-pa-tabs" id="wf-pa-tabs">${tabs}</div>
-        <div class="stage-list" id="stage-list">${stageRows}</div>
+      <div class="wf-pa-tabs" id="wf-pa-tabs">${tabs}</div>
+      <div class="dk-sec" style="margin-bottom:0">
+        ${DK.sectionHead('Pipeline stages')}
+        <div id="stage-list">${stageBlock}</div>
         ${addForm}
       </div>`;
 

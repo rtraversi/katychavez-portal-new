@@ -1,0 +1,257 @@
+<!-- Billing & Invoicing — loaded dynamically into #page-content by menu.js -->
+<!-- Docket-kit masthead (see .dk-* in portal.css / DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Finance · Billing</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Invoices &amp; <em>collections</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Create invoices from unbilled time, send them to clients, and keep track of what's been paid.</p>
+  <button type="button" class="dk-help-btn" title="How billing, invoicing & trust accounting work" onclick="window.HelpDrawer && window.HelpDrawer.open('billing-trust')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span class="dk-help-label">Help</span>
+  </button>
+</div>
+
+<!-- ── Invoice list panel ──────────────────────────────────────────────────── -->
+<div id="bl-list-panel">
+  <div class="dk-toolbar">
+    <div id="bl-filter-tabs" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="bl-tab" data-filter="all"   style="padding:6px 15px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-sans)">All</button>
+      <button class="bl-tab" data-filter="draft" style="padding:6px 15px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-sans)">Pending review</button>
+      <button class="bl-tab" data-filter="sent"  style="padding:6px 15px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-sans)">Sent</button>
+      <button class="bl-tab" data-filter="paid"  style="padding:6px 15px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-sans)">Paid</button>
+    </div>
+    <div class="dk-spacer"></div>
+    <button id="bl-explist-btn" class="btn btn--ghost">Expenses</button>
+    <button id="bl-add-expense-btn" class="btn btn--secondary">+ Add Expense</button>
+    <button id="bl-fb-btn" class="btn btn--secondary">From FreshBooks</button>
+    <button id="bl-new-btn" class="btn btn--primary">+ New Invoice</button>
+  </div>
+
+  <div id="bl-invoice-list">
+    <div class="dk-empty">Loading…</div>
+  </div>
+</div>
+
+<!-- ── New invoice panel ───────────────────────────────────────────────────── -->
+<div id="bl-new-panel" style="display:none">
+  <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-5,1.25rem)">
+    <button id="bl-new-back-btn" class="btn btn--ghost">← Back</button>
+    <h2 style="font-family:var(--font-serif);font-size:19px;font-weight:600;margin:0;color:var(--ink)">New Invoice</h2>
+  </div>
+
+  <!-- Matter selector — searchable picker (see .dk-combo in portal.css) -->
+  <div class="dk-sec">
+    <div class="dk-sec-head"><h2>Select Matter</h2><span class="dk-sec-rule"></span></div>
+    <div class="dk-combo" id="bl-matter-combo" style="max-width:520px">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="search-input" id="bl-matter-search"
+          placeholder="Search matters by client or case number…" autocomplete="off"
+          role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bl-matter-list">
+      </div>
+      <div class="dk-combo-list" id="bl-matter-list" role="listbox" hidden></div>
+      <!-- Holds the chosen matter id; keeps the existing #bl-matter-select contract -->
+      <input type="hidden" id="bl-matter-select">
+    </div>
+  </div>
+
+  <!-- Duplicate-invoice guard (1533): shown when the chosen matter already has
+       a live (draft/sent) invoice, so the same period isn't billed twice -->
+  <div id="bl-dup-warn" style="display:none;align-items:center;flex-wrap:wrap;gap:var(--space-2);margin:0 0 var(--space-4);padding:var(--space-2) var(--space-3);background:var(--paper-deep);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);color:var(--ink-soft);max-width:520px">
+    <span class="dk-tag warn">Existing invoice</span>
+    <span id="bl-dup-warn-text"></span>
+  </div>
+
+  <!-- Unbilled time entries (shown after matter selected) -->
+  <div id="bl-entries-section" style="display:none">
+    <div class="dk-sec">
+      <div class="dk-sec-head">
+        <h2>Unbilled Time Entries</h2>
+        <span class="dk-sec-rule"></span>
+        <button id="bl-add-time-btn" class="btn btn--ghost" style="font-size:12px;padding:4px 10px;white-space:nowrap">+ Add time entry</button>
+        <label style="display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-sm);color:var(--ink-soft);cursor:pointer;user-select:none;white-space:nowrap">
+          <input type="checkbox" id="bl-select-all"> Select all
+        </label>
+      </div>
+      <!-- Manual time entry ("they forgot to bill a call") — minutes in, rounds
+           up to the firm increment and prices from per-client rates on reload -->
+      <div id="bl-add-time-form" style="display:none;margin-bottom:var(--space-3);padding:var(--space-3) var(--space-4);background:var(--paper-deep);border:1px solid var(--line);border-radius:var(--radius)">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--space-3);align-items:end">
+          <div style="grid-column:1/-1">
+            <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Description</label>
+            <input id="bl-at-desc" type="text" placeholder="e.g. Phone call with client re: mediation"
+              style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);box-sizing:border-box">
+          </div>
+          <div>
+            <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Who</label>
+            <select id="bl-at-user"
+              style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);cursor:pointer"></select>
+          </div>
+          <div>
+            <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Minutes</label>
+            <input id="bl-at-minutes" type="number" min="1" max="1440" step="1" placeholder="e.g. 12"
+              style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);box-sizing:border-box">
+          </div>
+          <div>
+            <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Date</label>
+            <input id="bl-at-date" type="date"
+              style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);box-sizing:border-box">
+          </div>
+          <label style="display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-sm);color:var(--ink-soft);cursor:pointer;white-space:nowrap;padding-bottom:var(--space-2)">
+            <input type="checkbox" id="bl-at-nocharge" style="width:16px;height:16px"> No charge
+          </label>
+        </div>
+        <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3)">
+          <button id="bl-at-save" class="btn btn--primary" style="font-size:13px;padding:6px 14px">Add Entry</button>
+          <button id="bl-at-cancel" class="btn btn--ghost" style="font-size:13px;padding:6px 14px">Cancel</button>
+        </div>
+      </div>
+      <div id="bl-entries-list"></div>
+      <div id="bl-no-entries" class="dk-empty" style="display:none">
+        No unbilled time entries for this matter. Time entries are logged by attorneys — check back after time has been recorded.
+      </div>
+    </div>
+  </div>
+
+  <!-- Unbilled expenses (shown after matter selected, only when some exist) -->
+  <div id="bl-expenses-section" style="display:none">
+    <div class="dk-sec">
+      <div class="dk-sec-head">
+        <h2>Unbilled Expenses</h2>
+        <span class="dk-sec-rule"></span>
+        <label style="display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-sm);color:var(--ink-soft);cursor:pointer;user-select:none;white-space:nowrap">
+          <input type="checkbox" id="bl-exp-select-all"> Select all
+        </label>
+      </div>
+      <div id="bl-expenses-list"></div>
+    </div>
+  </div>
+
+  <!-- Review & generate (shown once entries selected) -->
+  <div id="bl-review-section" style="display:none">
+    <div class="dk-sec">
+      <div class="dk-sec-head"><h2>Invoice Details</h2><span class="dk-sec-rule"></span></div>
+
+      <div style="margin-bottom:var(--space-3)">
+        <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Description</label>
+        <input id="bl-inv-description" type="text" value="Legal Services"
+          style="width:100%;max-width:480px;padding:var(--space-2) var(--space-3);border:1px solid var(--line);
+                 border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);box-sizing:border-box">
+      </div>
+
+      <div style="margin-bottom:var(--space-4)">
+        <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Due Date <span style="font-weight:400;color:var(--ink-faint)">(optional)</span></label>
+        <input id="bl-inv-due-date" type="date"
+          style="padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink)">
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--space-3) var(--space-4);
+                  background:var(--paper-deep);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:var(--space-4)">
+        <span id="bl-review-summary" style="font-size:var(--text-sm);color:var(--ink-soft)">0 entries selected</span>
+        <span id="bl-review-total" style="font-family:var(--font-serif);font-size:1.125rem;font-weight:700;color:var(--money)">$0.00</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
+        <button id="bl-generate-btn" class="btn btn--primary" disabled>Generate Invoice</button>
+        <span style="font-size:var(--text-sm);color:var(--ink-soft)">Creates a draft — you can review before sending.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── From FreshBooks panel ───────────────────────────────────────────────── -->
+<div id="bl-fb-panel" style="display:none">
+  <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-5,1.25rem)">
+    <button id="bl-fb-back-btn" class="btn btn--ghost">← Back</button>
+    <h2 style="font-family:var(--font-serif);font-size:19px;font-weight:600;margin:0;color:var(--ink)">From FreshBooks</h2>
+  </div>
+  <p style="font-size:var(--text-sm);color:var(--ink-soft);margin:0 0 var(--space-4)">
+    Invoices composed and finalized in FreshBooks. Choose the matter, then <strong>attach a pay link &amp; send</strong> —
+    FreshBooks emails the client with the invoice, and a copy of the invoice PDF is saved to the matter's Files.
+  </p>
+  <div id="bl-fb-list">
+    <div class="dk-empty">Loading…</div>
+  </div>
+</div>
+
+<!-- ── Expenses list panel ─────────────────────────────────────────────────── -->
+<div id="bl-explist-panel" style="display:none">
+  <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-5,1.25rem)">
+    <button id="bl-explist-back-btn" class="btn btn--ghost">← Back</button>
+    <h2 style="font-family:var(--font-serif);font-size:19px;font-weight:600;margin:0;color:var(--ink)">Expenses</h2>
+    <div class="dk-spacer" style="flex:1"></div>
+    <button id="bl-explist-add-btn" class="btn btn--secondary">+ Add Expense</button>
+  </div>
+  <p style="font-size:var(--text-sm);color:var(--ink-soft);margin:0 0 var(--space-4)">
+    Hard costs advanced on matters. Unbilled expenses can be deleted; billed ones are locked to their invoice.
+  </p>
+  <div id="bl-explist">
+    <div class="dk-empty">Loading…</div>
+  </div>
+</div>
+
+<!-- ── Add expense panel ───────────────────────────────────────────────────── -->
+<div id="bl-expense-panel" style="display:none">
+  <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-5,1.25rem)">
+    <button id="bl-expense-back-btn" class="btn btn--ghost">← Back</button>
+    <h2 style="font-family:var(--font-serif);font-size:19px;font-weight:600;margin:0;color:var(--ink)">Add Expense</h2>
+  </div>
+
+  <div class="dk-sec">
+    <div class="dk-sec-head"><h2>Expense Details</h2><span class="dk-sec-rule"></span></div>
+    <p style="font-size:var(--text-sm);color:var(--ink-soft);margin:0 0 var(--space-4)">
+      Hard costs advanced on a matter (filing fees, postage, copies). They appear as unbilled
+      expenses when generating that matter's next invoice and are reimbursed from trust funds.
+    </p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--space-3);max-width:760px">
+      <div style="grid-column:1/-1">
+        <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Matter</label>
+        <select id="bl-exp-matter"
+          style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);cursor:pointer">
+          <option value="">Choose a matter…</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Date</label>
+        <input id="bl-exp-date" type="date"
+          style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Category</label>
+        <select id="bl-exp-category"
+          style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);cursor:pointer">
+          <option value="filing_fee">Filing fee</option>
+          <option value="postage">Postage</option>
+          <option value="copies">Copies</option>
+          <option value="mailing">Mailing</option>
+          <option value="admin_fee">Admin Fee</option>
+          <option value="other" selected>Other</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Amount</label>
+        <input id="bl-exp-amount" type="number" min="0.01" step="0.01" placeholder="0.00"
+          style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);box-sizing:border-box">
+      </div>
+      <div style="grid-column:1/-1">
+        <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">Description</label>
+        <input id="bl-exp-desc" type="text" placeholder="e.g. District clerk filing fee — Original Petition"
+          style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--text-sm);font-family:var(--font-sans);background:var(--surface);color:var(--ink);box-sizing:border-box">
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:var(--space-3);margin-top:var(--space-4)">
+      <button id="bl-exp-save-btn" class="btn btn--primary">Save Expense</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Invoice detail panel ────────────────────────────────────────────────── -->
+<div id="bl-detail-panel" style="display:none">
+  <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-4);flex-wrap:wrap">
+    <button id="bl-detail-back-btn" class="btn btn--ghost">← Back</button>
+    <div style="flex:1"></div>
+    <div id="bl-detail-actions" style="display:flex;gap:var(--space-2)"></div>
+  </div>
+  <div id="bl-detail-content"></div>
+</div>

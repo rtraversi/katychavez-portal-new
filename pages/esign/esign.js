@@ -15,6 +15,15 @@
     expired:          'Expired',
   };
 
+  // Docket status pill kind — warn|acc|ok|crit|mut (see DK.tag).
+  const STATUS_KIND = {
+    pending_client:   'warn',
+    pending_attorney: 'acc',
+    completed:        'ok',
+    declined:         'crit',
+    expired:          'crit',
+  };
+
   // ── Function caller ──────────────────────────────────────────────────────────
 
   async function callFunction(endpoint, body) {
@@ -76,7 +85,7 @@
 
   function renderAll() {
     renderCountersignQueue();
-    renderTable();
+    renderList();
   }
 
   function renderCountersignQueue() {
@@ -88,7 +97,7 @@
     if (!isAtty) { card.style.display = 'none'; return; }
 
     if (!pending.length) {
-      list.innerHTML = `<p class="text-muted text-sm" style="text-align:center;padding:var(--space-6)">No documents awaiting your counter-signature.</p>`;
+      list.innerHTML = `<div class="dk-empty">No documents awaiting your counter-signature.</div>`;
       countEl.style.display = 'none';
       return;
     }
@@ -96,49 +105,58 @@
     countEl.textContent = pending.length;
     countEl.style.display = '';
 
-    list.innerHTML = pending.map(r => {
+    list.innerHTML = `<div class="dk-register">` + pending.map(r => {
       const client = r.matter?.clients;
       const clientName = client ? `${client.first_name} ${client.last_name}`.trim() : '—';
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-md);margin-bottom:var(--space-3)">
-        <div>
-          <div style="font-weight:500">${Utils.esc(r.document?.file_name || '—')}</div>
-          <div class="text-sm text-muted">${Utils.esc(clientName)} · Client signed</div>
+      return `<div class="dk-reg-row">
+        <div style="min-width:0">
+          <div class="dk-reg-title"><span>${Utils.esc(r.document?.file_name || '—')}</span>${DK.tag('Client signed', 'acc')}</div>
+          <div class="dk-reg-meta"><span>${Utils.esc(clientName)}</span><span class="sep">·</span><span>Ready for your counter-signature</span></div>
         </div>
-        <button class="btn btn--primary btn--sm btn-countersign" data-req-id="${r.id}" data-doc-name="${Utils.esc(r.document?.file_name || '')}">
-          Counter-sign
-        </button>
+        <div class="dk-reg-act">
+          <button class="btn btn--primary btn--sm btn-countersign" data-req-id="${r.id}" data-doc-name="${Utils.esc(r.document?.file_name || '')}">Counter-sign</button>
+        </div>
       </div>`;
-    }).join('');
+    }).join('') + `</div>`;
   }
 
-  function renderTable() {
-    const tbody    = document.getElementById('esign-tbody');
+  function renderList() {
+    const listEl   = document.getElementById('esign-list');
     const filter   = document.getElementById('esign-filter-status').value;
     const filtered = filter ? allRequests.filter(r => r.status === filter) : allRequests;
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:var(--space-8);color:var(--color-text-muted)">No signature requests found.</td></tr>`;
+      listEl.innerHTML = `<div class="dk-empty">No signature requests found.</div>`;
       return;
     }
 
-    tbody.innerHTML = filtered.map(r => {
+    listEl.innerHTML = `<div class="dk-register">` + filtered.map(r => {
       const client = r.matter?.clients;
       const clientName = client ? `${client.first_name} ${client.last_name}`.trim() : '—';
       const expired = new Date(r.expires_at) < new Date();
-      return `<tr>
-        <td style="font-weight:500">${Utils.esc(r.document?.file_name || '—')}</td>
-        <td>${Utils.esc(clientName)}</td>
-        <td><span class="badge badge--${r.status === 'completed' ? 'active' : r.status === 'declined' || r.status === 'expired' ? 'inactive' : 'pending'}">${STATUS_LABELS[r.status] || r.status}</span></td>
-        <td class="text-sm text-muted">${Utils.formatDateTime(r.created_at)}</td>
-        <td class="text-sm ${expired && r.status.startsWith('pending') ? '' : 'text-muted'}" ${expired && r.status.startsWith('pending') ? 'style="color:var(--color-danger)"' : ''}>${Utils.formatDate(r.expires_at)}</td>
-        <td style="white-space:nowrap">
-          <button class="btn btn--ghost btn--sm btn-view-details" data-req-id="${r.id}" style="margin-right:var(--space-2)">Details</button>
+      const overdue = expired && r.status.startsWith('pending');
+      return `<div class="dk-reg-row">
+        <div style="min-width:0">
+          <div class="dk-reg-title">
+            <span>${Utils.esc(r.document?.file_name || '—')}</span>
+            ${DK.tag(STATUS_LABELS[r.status] || r.status, STATUS_KIND[r.status] || 'mut')}
+          </div>
+          <div class="dk-reg-meta">
+            <span>${Utils.esc(clientName)}</span>
+            <span class="sep">·</span>
+            <span>Requested ${Utils.formatDateTime(r.created_at)}</span>
+            <span class="sep">·</span>
+            <span class="${overdue ? 'danger' : ''}">${overdue ? 'Expired' : 'Expires'} ${Utils.formatDate(r.expires_at)}</span>
+          </div>
+        </div>
+        <div class="dk-reg-act">
+          <button class="dk-linkbtn btn-view-details" data-req-id="${r.id}">Details</button>
           ${r.status === 'pending_attorney' && isAtty
             ? `<button class="btn btn--sm btn--primary btn-countersign" data-req-id="${r.id}" data-doc-name="${Utils.esc(r.document?.file_name || '')}">Counter-sign</button>`
             : ''}
-        </td>
-      </tr>`;
-    }).join('');
+        </div>
+      </div>`;
+    }).join('') + `</div>`;
   }
 
   // ── Counter-sign modal ───────────────────────────────────────────────────────
@@ -283,7 +301,7 @@
           return `
           <div style="padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-md);margin-bottom:var(--space-3)">
             <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" style="width:15px;height:15px;flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" style="width:15px;height:15px;flex-shrink:0;stroke:var(--color-success)"><polyline points="20 6 9 17 4 12"/></svg>
               <span style="font-weight:600;font-size:var(--text-sm)">${roleLabel}</span>
               <span class="text-muted text-sm">— ${Utils.esc(signerName)}</span>
             </div>
@@ -334,7 +352,7 @@
 
   // ── Event wiring ─────────────────────────────────────────────────────────────
 
-  document.getElementById('esign-filter-status').addEventListener('change', renderTable);
+  document.getElementById('esign-filter-status').addEventListener('change', renderList);
 
   document.addEventListener('click', e => {
     const detailsBtn = e.target.closest('.btn-view-details');

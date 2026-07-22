@@ -21,43 +21,53 @@
     return res;
   }
 
+  function renderRow(t) {
+    const ready = t.template_ready;
+    const statusTag = !ready
+      ? DK.tag('Not yet available', 'mut')
+      : (t.firm_defaults ? DK.tag('Defaults uploaded', 'ok') : DK.tag('Using blank form', 'mut'));
+
+    const fieldsBit = `<span>${t.data_mapped} autofilled field${t.data_mapped === 1 ? '' : 's'}</span>`;
+    const defaultsBit = t.firm_defaults
+      ? `<span class="sep">·</span><span>${t.firm_defaults} firm default${t.firm_defaults === 1 ? '' : 's'} set</span>`
+      : `<span class="sep">·</span><span>No firm defaults yet</span>`;
+
+    const act = ready
+      ? `<button class="dk-linkbtn" data-act="download" data-id="${t.template_id}" data-key="${Utils.esc(t.form_key)}">Download</button>
+         <button class="dk-linkbtn" data-act="upload" data-id="${t.template_id}" data-key="${Utils.esc(t.form_key)}">Upload edited</button>`
+      : `<span class="dk-reg-meta">Coming soon</span>`;
+
+    return `
+      <div class="dk-reg-row">
+        <div style="min-width:0">
+          <div class="dk-reg-title"><span>${Utils.esc(t.label)}</span>${statusTag}</div>
+          <div class="dk-reg-meta">${fieldsBit}${defaultsBit}</div>
+        </div>
+        <div class="dk-reg-act">${act}</div>
+      </div>`;
+  }
+
   async function loadList() {
-    container.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted)">Loading templates…</p>`;
+    container.innerHTML = `<div class="dk-empty">Loading templates…</div>`;
     let data;
     try {
       const res = await api('/api/form-filler/template-defaults');
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
       data = await res.json();
     } catch (err) {
-      container.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm)">Failed to load: ${Utils.esc(err.message)}</p>`;
+      container.innerHTML = `<div class="dk-empty" style="color:var(--color-danger)">Failed to load: ${Utils.esc(err.message)}</div>`;
       return;
     }
 
     if (!data.templates.length) {
-      container.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted)">No form templates configured yet.</p>`;
+      container.innerHTML = `<div class="dk-empty">No form templates configured yet.</div>`;
       return;
     }
 
     container.innerHTML = `
-      <table class="data-table" style="width:100%">
-        <thead>
-          <tr><th>Form</th><th>Autofilled fields</th><th>Firm defaults</th><th style="text-align:right">Template</th></tr>
-        </thead>
-        <tbody>
-          ${data.templates.map(t => `
-            <tr>
-              <td style="font-size:var(--text-sm)">${Utils.esc(t.label)}</td>
-              <td style="font-size:var(--text-sm)">${t.data_mapped}</td>
-              <td style="font-size:var(--text-sm)">${t.firm_defaults ? `${t.firm_defaults} set` : '<span style="color:var(--color-text-muted)">none</span>'}</td>
-              <td style="text-align:right;white-space:nowrap">
-                ${t.template_ready ? `
-                  <button class="btn btn--sm" data-act="download" data-id="${t.template_id}" data-key="${Utils.esc(t.form_key)}">Download</button>
-                  <button class="btn btn--sm" data-act="upload" data-id="${t.template_id}" data-key="${Utils.esc(t.form_key)}">Upload edited</button>
-                ` : '<span style="font-size:var(--text-xs);color:var(--color-text-muted)">not yet available</span>'}
-              </td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
+      <div class="dk-register">
+        ${data.templates.map(renderRow).join('')}
+      </div>
       <input type="file" id="ff-defaults-file" accept="application/pdf" style="display:none">`;
 
     container.querySelectorAll('button[data-act="download"]').forEach(btn => {

@@ -1,9 +1,13 @@
 // CF Pages Function: delete-document
 // POST { document_id, hard_delete? }
-// Soft-deletes the DB row (deleted_at timestamp). Also deletes the R2 object.
-// hard_delete=true is admin-only and permanently removes the DB row.
+// Soft-deletes the DB row (deleted_at timestamp) — the file moves to the Trash
+// and its R2 object + version history are KEPT so it can be restored. Permanent
+// removal happens later via the Empty-trash action or the 30-day purge cron.
+// hard_delete=true is admin-only and permanently removes the row + every R2
+// object the document owns (current key + all version keys).
 
-import { verifyAuth, deleteR2Object, json } from './_helpers.js';
+import { verifyAuth, json } from './_helpers.js';
+import { purgeDocument } from './_trash.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -43,18 +47,16 @@ async function handleRequest(request, env) {
   if (fetchErr || !doc) return json(404, { error: 'Document not found' });
   if (doc.deleted_at && !hard_delete) return json(410, { error: 'Document already deleted' });
 
-  if (!doc.r2_key.startsWith('pending/')) {
-    try {
-      await deleteR2Object(env, doc.r2_key);
-    } catch (err) {
-      console.error('[delete-document] R2 delete error:', err.message);
-    }
-  }
-
   if (hard_delete) {
-    const { error: delErr } = await admin.from('documents').delete().eq('id', document_id);
-    if (delErr) return json(500, { error: delErr.message });
+    // Permanent removal: drop every R2 object the document owns, then the row.
+    try {
+      await purgeDocument(env, admin, doc);
+    } catch (err) {
+      return json(500, { error: err.message });
+    }
   } else {
+    // Soft delete → Trash. Keep the R2 object + versions so restore works; the
+    // objects are only removed when the trash is emptied or the purge cron runs.
     const { error: updateErr } = await admin
       .from('documents')
       .update({ deleted_at: new Date().toISOString() })

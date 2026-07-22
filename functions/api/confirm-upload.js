@@ -8,18 +8,20 @@
 import { verifyAuth, deleteR2Object, json } from './_helpers.js';
 import { scanR2Object, getR2ObjectSize, MAX_UPLOAD_BYTES } from './_scan.js';
 import { notifyDocumentUploaded, notifyChecklistItemReceived, notifyMalwareBlocked } from './_notifications.js';
+import { syncDocumentToStorage } from './_storage-sync.js';
+import { autoSyncEnabled } from './_adapters/storage/index.js';
 
 export async function onRequest(context) {
-  const { request, env } = context;
+  const { request, env, ctx } = context;
   try {
-    return await handleRequest(request, env);
+    return await handleRequest(request, env, ctx);
   } catch (err) {
     console.error('[confirm-upload] Unhandled error:', err);
     return json(500, { error: `Unexpected error: ${err?.message || err}` });
   }
 }
 
-async function handleRequest(request, env) {
+async function handleRequest(request, env, ctx) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
 
   const auth = await verifyAuth(request, env, 'write', 'uploads', { clientBypass: true });
@@ -36,7 +38,7 @@ async function handleRequest(request, env) {
 
   const { data: doc, error: fetchErr } = await admin
     .from('documents')
-    .select('id, status, uploaded_by, deleted_at, matter_id, r2_key, name, file_name')
+    .select('id, status, uploaded_by, deleted_at, matter_id, r2_key, name, file_name, folder_path, content_type')
     .eq('id', document_id)
     .single();
 
@@ -44,6 +46,19 @@ async function handleRequest(request, env) {
   if (doc.deleted_at)  return json(410, { error: 'Document has been deleted' });
   if (doc.status !== 'pending') return json(409, { error: `Document is already ${doc.status}` });
   if (doc.r2_key.startsWith('pending/')) return json(409, { error: 'No file has been uploaded for this document' });
+
+  // Client-role callers may only confirm documents on their own matter — otherwise
+  // a client could finalize (and trigger scan + attorney notification for) another
+  // client's pending document by guessing its ID.
+  if (auth.isClient) {
+    const { data: matter } = await admin
+      .from('matters').select('id, client_id').eq('id', doc.matter_id).single();
+    const { data: clientRow } = await admin
+      .from('clients').select('id').eq('auth_id', auth.user.id).single();
+    if (!matter || !clientRow || matter.client_id !== clientRow.id) {
+      return json(403, { error: 'You may only confirm documents for your own matter.' });
+    }
+  }
 
   // ── Verify the object actually landed, at a size we allow ────────────────
   // The presigned PUT can't enforce size — a tampered client could declare
@@ -56,7 +71,7 @@ async function handleRequest(request, env) {
       scan_status: 'pending',
       scan_detail: { rejected: 'oversize', actual_bytes: actualSize },
     });
-    return json(413, { error: `File is too large (${(actualSize / 1024 / 1024).toFixed(1)}MB). Maximum size is 25MB.` });
+    return json(413, { error: `File is too large (${(actualSize / 1024 / 1024).toFixed(1)}MB). Maximum size is 100MB.` });
   }
 
   // ── Malware scan (before the document ever becomes visible) ──────────────
@@ -104,6 +119,10 @@ async function handleRequest(request, env) {
     .eq('id', document_id);
 
   if (updateErr) return json(500, { error: updateErr.message });
+
+  // Fire-and-forget storage mirror (runs after response is sent).
+  // Only in two_way mode — manual mode pushes via the explicit Files-tab action.
+  if (autoSyncEnabled(env)) ctx.waitUntil(syncDocumentToStorage(env, doc, admin));
 
   if (auth.isClient) {
     try {

@@ -43,6 +43,16 @@
     expired:  'Expired',
   };
 
+  // status → DK.tag kind (token-driven; dark-safe unlike the old .badge--*)
+  const STATUS_KIND = {
+    pending:  'mut',
+    received: 'acc',
+    reviewed: 'acc',
+    filed:    'ok',
+    signed:   'ok',
+    expired:  'crit',
+  };
+
   // ── Auth ────────────────────────────────────────────────────────────────────
 
   userProfile = await Auth.getProfile();
@@ -66,7 +76,7 @@
   }
 
   async function loadDocuments(matterId) {
-    docsTbody.innerHTML = `<tr><td colspan="6" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">Loading…</td></tr>`;
+    docsTbody.innerHTML = `<tr><td colspan="6"><div class="dk-empty" style="text-align:center;background:transparent;padding:40px 20px">Loading…</div></td></tr>`;
 
     const { data, error } = await db
       .from('documents')
@@ -95,9 +105,9 @@
     if (!active.length) {
       docsTbody.innerHTML = `
         <tr><td colspan="6">
-          <div class="empty-state">
-            <p class="empty-state-title">No documents yet</p>
-            <p>Upload the first document for this matter.</p>
+          <div class="dk-empty" style="text-align:center;background:transparent;padding:44px 20px">
+            <div style="font-family:var(--font-serif);font-size:16px;color:var(--ink);margin-bottom:4px">No documents yet</div>
+            <div>Upload the first document for this matter.</div>
           </div>
         </td></tr>`;
       return;
@@ -110,13 +120,13 @@
 
       return `<tr data-doc-id="${doc.id}">
         <td>
-          <div style="font-weight:500">${Utils.esc(doc.name)}</div>
-          <div class="text-muted text-sm">${Utils.esc(doc.file_name)}${doc.file_size ? ' · ' + Utils.fileSize(doc.file_size) : ''}</div>
+          <div style="font-family:var(--font-serif);font-weight:600;font-size:14.5px;color:var(--ink)">${Utils.esc(doc.name)}</div>
+          <div class="text-sm" style="color:var(--ink-faint)">${Utils.esc(doc.file_name)}${doc.file_size ? ' · ' + Utils.fileSize(doc.file_size) : ''}</div>
         </td>
-        <td>${Utils.esc(DOC_TYPES[doc.doc_type] || doc.doc_type || '—')}</td>
+        <td style="color:var(--ink-soft)">${Utils.esc(DOC_TYPES[doc.doc_type] || doc.doc_type || '—')}</td>
         <td>
-          <button class="btn-status-change" data-doc-id="${doc.id}" data-status="${doc.status}" title="Click to change status">
-            <span class="badge badge--${doc.status}">${STATUS_LABELS[doc.status] || doc.status}</span>
+          <button class="btn-status-change" data-doc-id="${doc.id}" data-status="${doc.status}" title="Click to change status" style="background:none;border:0;padding:0;cursor:pointer">
+            ${DK.tag(STATUS_LABELS[doc.status] || doc.status, STATUS_KIND[doc.status] || 'mut')}
           </button>
         </td>
         <td class="text-sm">${Utils.formatDateTime(doc.created_at)}</td>
@@ -154,17 +164,19 @@
     missingCard.style.display = '';
     missingList.innerHTML = missing.map(doc => {
       const overdue = doc.required_by_date && doc.required_by_date < new Date().toISOString().slice(0, 10);
-      const reminded = doc.last_reminded_at
-        ? `<span class="text-sm text-muted" style="margin-left:var(--space-2)">Reminded ${Utils.formatDate(doc.last_reminded_at.slice(0,10))}</span>`
+      const typeTag = doc.doc_type ? DK.tag(DOC_TYPES[doc.doc_type] || doc.doc_type, 'mut') : '';
+      const dueTag  = doc.required_by_date
+        ? DK.tag(`Due ${Utils.formatDate(doc.required_by_date)}${overdue ? ' — overdue' : ''}`, overdue ? 'crit' : 'warn')
         : '';
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3) 0;border-top:1px solid var(--color-border);gap:var(--space-3);flex-wrap:wrap">
-        <div>
-          <span style="font-weight:500">${Utils.esc(doc.name)}</span>
-          ${doc.doc_type ? `<span class="badge" style="margin-left:var(--space-2)">${DOC_TYPES[doc.doc_type] || doc.doc_type}</span>` : ''}
-          ${doc.required_by_date ? `<span class="text-sm ${overdue ? '' : 'text-muted'}" style="${overdue ? 'color:var(--color-danger)' : ''};margin-left:var(--space-2)">Due ${Utils.formatDate(doc.required_by_date)}${overdue ? ' — OVERDUE' : ''}</span>` : ''}
-          ${reminded}
+      const reminded = doc.last_reminded_at
+        ? `<span>Reminded ${Utils.formatDate(doc.last_reminded_at.slice(0,10))}</span>`
+        : '';
+      return `<div class="dk-reg-row" style="grid-template-columns:minmax(0,1fr) auto">
+        <div style="min-width:0">
+          <div class="dk-reg-title"><span>${Utils.esc(doc.name)}</span>${typeTag}${dueTag}</div>
+          ${reminded ? `<div class="dk-reg-meta">${reminded}</div>` : ''}
         </div>
-        <div style="display:flex;gap:var(--space-2);flex-shrink:0">
+        <div class="dk-reg-act">
           <button class="btn btn--sm btn--primary btn-fulfill-doc" data-doc-id="${doc.id}" data-doc-name="${Utils.esc(doc.name)}" data-doc-type="${doc.doc_type || 'other'}">Upload</button>
           <button class="btn btn--info btn--sm btn-mark-received" data-doc-id="${doc.id}" data-doc-name="${Utils.esc(doc.name)}" title="Mark as received offline">Mark Received</button>
           <button class="btn btn--neutral btn--sm btn-na-doc" data-doc-id="${doc.id}" title="Mark not applicable">N/A</button>
@@ -790,7 +802,7 @@
             <label>Client</label>
             <div id="si-search-wrap">
               <input type="text" id="si-search" placeholder="Type a name to search…" autocomplete="off">
-              <div id="si-results" style="position:absolute;top:100%;left:0;right:0;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:1002;max-height:200px;overflow-y:auto;display:none"></div>
+              <div id="si-results" style="position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--card-shadow-hover);z-index:1002;max-height:200px;overflow-y:auto;display:none"></div>
             </div>
             <div id="si-selected-wrap" style="display:none;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-3);background:var(--color-bg-subtle);border-radius:var(--radius)">
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" style="width:13px;height:13px;flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>
@@ -948,7 +960,7 @@
             <p style="margin:var(--space-1) 0 0;font-size:var(--text-xs);color:var(--color-text-muted)">
               PDF and image files only. Word/Excel must be converted to PDF first.
             </p>
-            <div id="si-analyzing" style="display:none;position:absolute;inset:0;background:rgba(255,255,255,.92);border-radius:var(--radius);flex-direction:column;align-items:center;justify-content:center;gap:var(--space-2)">
+            <div id="si-analyzing" style="display:none;position:absolute;inset:0;background:color-mix(in srgb, var(--surface) 92%, transparent);border-radius:var(--radius);flex-direction:column;align-items:center;justify-content:center;gap:var(--space-2)">
               <div style="width:22px;height:22px;border:3px solid var(--color-primary);border-top-color:transparent;border-radius:50%;animation:si-spin .7s linear infinite"></div>
               <p style="margin:0;font-size:var(--text-sm);color:var(--color-text-muted)">Analyzing document…</p>
             </div>
@@ -1129,8 +1141,8 @@
           <div class="modal" style="max-width:440px">
             <div class="modal-header"><h2 class="modal-title">Document Filed</h2></div>
             <div class="modal-body" style="text-align:center;padding:var(--space-8) var(--space-6)">
-              <div style="width:48px;height:48px;background:#dcfce7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto var(--space-4)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" style="width:22px;height:22px"><polyline points="20 6 9 17 4 12"/></svg>
+              <div style="width:48px;height:48px;background:var(--color-success-bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto var(--space-4)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" style="width:22px;height:22px"><polyline points="20 6 9 17 4 12"/></svg>
               </div>
               <p style="font-weight:600;margin:0 0 var(--space-1)">${Utils.esc(fName)}</p>
               <p class="text-sm text-muted" style="margin:0 0 var(--space-6)">Filed for ${Utils.esc(cName)}</p>
@@ -1198,7 +1210,7 @@
     if (!matter) {
       matterMeta.textContent    = '';
       docCount.textContent      = '';
-      docsTbody.innerHTML       = `<tr><td colspan="6" style="padding:var(--space-12);text-align:center;color:var(--color-text-muted)">Select a matter above to view documents</td></tr>`;
+      docsTbody.innerHTML       = `<tr><td colspan="6"><div class="dk-empty" style="text-align:center;background:transparent;padding:44px 20px">Select a matter above to view documents</div></td></tr>`;
       missingCard.style.display = 'none';
       return;
     }
@@ -1241,25 +1253,25 @@
 
     function renderResults(list, footerMsg) {
       if (!list.length) {
-        resultsDiv.innerHTML = `<div style="padding:var(--space-3) var(--space-4);font-size:var(--text-sm);color:var(--color-text-muted)">No matters found</div>`;
+        resultsDiv.innerHTML = `<div style="padding:var(--space-3) var(--space-4);font-size:var(--text-sm);color:var(--ink-soft)">No matters found</div>`;
       } else {
         resultsDiv.innerHTML = list.map(m => {
           const client = m.clients;
           const name   = client ? Utils.fullName(client) : 'Unknown';
           const label  = `${Utils.titleCase(m.case_type)}${m.case_number ? ' (' + m.case_number + ')' : ''}`;
           return `<div class="matter-opt" data-id="${m.id}"
-            style="padding:var(--space-3) var(--space-4);cursor:pointer;border-bottom:1px solid var(--color-border)">
-            <div style="font-weight:500;font-size:var(--text-sm)">${Utils.esc(name)}</div>
-            <div style="font-size:var(--text-xs);color:var(--color-text-muted)">${Utils.esc(label)} · ${Utils.titleCase(m.status)}</div>
+            style="padding:var(--space-3) var(--space-4);cursor:pointer;border-bottom:1px solid var(--line)">
+            <div style="font-weight:600;font-size:var(--text-sm);color:var(--ink)">${Utils.esc(name)}</div>
+            <div style="font-size:var(--text-xs);color:var(--ink-soft)">${Utils.esc(label)} · ${Utils.titleCase(m.status)}</div>
           </div>`;
         }).join('');
         if (footerMsg) {
-          resultsDiv.innerHTML += `<div style="padding:var(--space-2) var(--space-4);font-size:var(--text-xs);color:var(--color-text-muted);background:var(--color-bg-subtle);border-top:1px solid var(--color-border)">${footerMsg}</div>`;
+          resultsDiv.innerHTML += `<div style="padding:var(--space-2) var(--space-4);font-size:var(--text-xs);color:var(--ink-faint);background:var(--paper-deep);border-top:1px solid var(--line)">${footerMsg}</div>`;
         }
       }
       resultsDiv.style.display = '';
       resultsDiv.querySelectorAll('.matter-opt').forEach(el => {
-        el.addEventListener('mouseenter', () => el.style.background = 'var(--color-bg-subtle)');
+        el.addEventListener('mouseenter', () => el.style.background = 'var(--paper-deep)');
         el.addEventListener('mouseleave', () => el.style.background = '');
         el.addEventListener('click',      () => {
           const m = matters.find(x => x.id === el.dataset.id);

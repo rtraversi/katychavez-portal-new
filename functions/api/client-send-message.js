@@ -6,6 +6,7 @@
 // Body: { body }
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
+import { validate, ClientSendMessageSchema } from './_schemas.js';
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -21,8 +22,9 @@ export async function onRequest({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'Invalid JSON' }); }
 
-  const { body: msgBody } = body;
-  if (!msgBody?.trim()) return json(400, { error: 'Message body is required.' });
+  const v = validate(ClientSendMessageSchema, body);
+  if (v.error) return v.error;
+  const { body: msgBody } = v.data;
 
   const admin = makeAdminClient(env);
 

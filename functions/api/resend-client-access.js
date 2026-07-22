@@ -79,8 +79,8 @@ export async function onRequest(context) {
     return json(500, { error: 'Failed to generate access link. Please try again.' });
   }
 
-  console.log(`[resend-client-access] access link for ${client.email}: ${actionLink}`);
-
+  // NB: never log `actionLink` — it is a live account-recovery capability. Anyone
+  // with Worker log access could use it to take over the client's portal account.
   const clientName = `${client.first_name} ${client.last_name}`.trim();
   await notifyClientInvited(env, { toEmail: client.email, clientName, inviteLink: actionLink }).catch(err =>
     console.error('[resend-client-access] notification error:', err.message)

@@ -1,4 +1,20 @@
 (async function () {
+  // Demo analytics — generate a session ID and fire page_load on first visit
+  if (window.APP_CONFIG && window.APP_CONFIG.demoMode) {
+    if (!sessionStorage.getItem('demo_sid')) {
+      var newSid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+      sessionStorage.setItem('demo_sid', newSid);
+    }
+    fetch('/api/demo-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionStorage.getItem('demo_sid'), event_type: 'page_load' }),
+    }).catch(function () {});
+  }
+
   // Supabase dashboard recovery emails redirect to the site root with a
   // recovery token in the hash. Hand off to the dedicated reset page.
   if (window.location.hash.includes('type=recovery')) {
@@ -71,7 +87,21 @@
     loginBtn.textContent = 'Signing in…';
 
     try {
-      await Auth.login(emailEl.value.trim(), passwordEl.value);
+      var captchaToken = (window.IurisTurnstile && window.IurisTurnstile.enabled())
+        ? window.IurisTurnstile.token('turnstile-login') : undefined;
+      await Auth.login(emailEl.value.trim(), passwordEl.value, captchaToken);
+
+      // Demo analytics — fire login event
+      if (window.APP_CONFIG && window.APP_CONFIG.demoMode) {
+        var dSid  = sessionStorage.getItem('demo_sid');
+        var dProf = await Auth.getProfile();
+        var dRole = dProf && dProf.role ? dProf.role.name.toLowerCase() : null;
+        if (dSid) fetch('/api/demo-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: dSid, role: dRole, event_type: 'login' }),
+        }).catch(function () {});
+      }
 
       // Check MFA assurance level after password auth
       var aal = await Auth.getMFALevel();
@@ -88,6 +118,8 @@
         }
       }
     } catch (err) {
+      // Turnstile tokens are single-use — reset so the next attempt gets a fresh one.
+      if (window.IurisTurnstile) window.IurisTurnstile.reset('turnstile-login');
       errorEl.textContent = err.message === 'Invalid login credentials'
         ? 'Incorrect email or password.' : err.message;
       errorEl.hidden = false;

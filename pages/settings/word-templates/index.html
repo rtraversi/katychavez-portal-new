@@ -1,0 +1,19 @@
+<!-- Settings: Word Templates — .docx templates for drafting + File Manager "New from Template". Loaded into #page-content by menu.js -->
+<!-- Docket-kit masthead (see DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · Word templates</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Your <em>Word</em> templates.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Reusable .docx documents staff can drop into a matter's Files with New from Template, then edit in Word. Optional {{variable}} placeholders auto-fill from the client card.</p>
+</div>
+
+<div class="dk-sec" style="margin-bottom:0">
+  <div class="dk-sec-head" id="wt-sec-head">
+    <h2>Word templates</h2><span class="dk-sec-rule"></span>
+  </div>
+  <div class="dk-register" id="drafting-templates-tbody">
+    <div class="dk-empty" style="margin-top:var(--space-4)">Loading…</div>
+  </div>
+</div>
+
+<!-- Hidden file input for .docx uploads -->
+<input type="file" id="docx-file-input" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none">

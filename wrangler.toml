@@ -33,7 +33,9 @@ B2_BUCKET_NAME    = "katychavez-portal-backup"
 ATTACHMENTAV_API_URL = "https://us.developer.attachmentav.com"
 GOOGLE_REDIRECT_URI  = "https://portal.katychavez.com/api/calendar/oauth-callback"
 OUTLOOK_REDIRECT_URI = "https://portal.katychavez.com/api/calendar/outlook-oauth-callback"
-
+MONDAY_BOARD_ID   = "2468110147"
+MONDAY_GROUP_ID   = "new_group"      # "Immigration cases" — NOT its title, this internal id
+MONDAY_API_VERSION = "2024-10"       # optional
 
 # ── Secrets — set via CLI, never in this file ────────────────────────────────
 # npx wrangler secret put SUPABASE_SERVICE_KEY

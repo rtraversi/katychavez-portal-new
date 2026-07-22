@@ -1,5 +1,6 @@
 // translation-topdf.js — converts a DOCX (base64) to PDF via iLoveAPI.
 // POST { docx_base64, filename? }
+// Returns { pdf_base64, filename }
 // Requires env var: ILOVEPDF_PUBLIC_KEY
 
 import { verifyAuth, json } from './_helpers.js';
@@ -85,7 +86,7 @@ export async function onRequest({ request, env }) {
     const bytes  = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
 
-    const baseName     = (filename || 'document').replace(/\.[^.]+$/, '');
+    const baseName    = (filename || 'document').replace(/\.[^.]+$/, '');
     const docxFilename = baseName + '.docx';
     const pdfFilename  = baseName + '.pdf';
 
@@ -95,10 +96,12 @@ export async function onRequest({ request, env }) {
     await processTask(server, token, task, serverFilename, docxFilename);
     const pdfBytes       = await downloadPdf(server, token, task);
 
+    // Encode PDF bytes to base64
     let binary = '';
     for (let i = 0; i < pdfBytes.length; i++) binary += String.fromCharCode(pdfBytes[i]);
+    const pdf_base64 = btoa(binary);
 
-    return json(200, { pdf_base64: btoa(binary), filename: pdfFilename });
+    return json(200, { pdf_base64, filename: pdfFilename });
 
   } catch (err) {
     console.error('[translation-topdf] error:', err.message);

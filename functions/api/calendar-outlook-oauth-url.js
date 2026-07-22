@@ -35,6 +35,10 @@ export async function onRequest({ request, env }) {
     response_type: 'code',
     scope:         SCOPES,
     response_mode: 'query',
+    // Force the account picker so the connecting user chooses THEIR account
+    // instead of Azure silently reusing whoever is already signed in (which
+    // auto-selected the firm owner and fired her MFA).
+    prompt:        'select_account',
     state,
   });
 

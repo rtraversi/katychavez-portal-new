@@ -1,0 +1,20 @@
+name: Tests
+
+# Pre-deploy gate: the suite runs inside real workerd via
+# @cloudflare/vitest-pool-workers. Rule: only deploy to clients on green.
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test

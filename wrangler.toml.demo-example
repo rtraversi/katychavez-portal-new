@@ -1,0 +1,42 @@
+# IurisIQ Demo Portal — Cloudflare Workers config
+# SETUP: copy to C:\Sites\iurisiq-demo\wrangler.toml and fill in placeholders.
+# wrangler.toml is gitignored — never commit it with real credentials.
+
+name = "iurisiq-demo"
+account_id = "a381f8482fbfa21bfe514e557964b3f0"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+main = "./_worker.js"
+
+routes = [
+  { pattern = "demo.iurisiq.com", custom_domain = true }
+]
+
+[assets]
+directory = "."
+binding = "ASSETS"
+
+[[r2_buckets]]
+binding    = "R2"
+bucket_name = "iurisiq-demo"
+
+[triggers]
+crons = ["0 8 * * *"]   # 08:00 UTC = 2:00 AM CDT — matches demo_nightly_reset pg_cron
+
+[vars]
+SUPABASE_URL      = "https://einmwurackowlxgynrfu.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_yNmzetWrBGlhGEzqXJX_Ag_Q6DgIvYB"
+R2_ACCOUNT_ID     = "2809122619f6ccd79e32edeb6e98504c"
+R2_BUCKET_NAME    = "iurisiq-demo"
+PORTAL_URL        = "https://demo.iurisiq.com"
+PORTAL_FIRM_NAME  = "Nexus Legal Group, PLLC"
+PORTAL_FROM_EMAIL = "demo@iurisiq.com"
+DEMO_MODE         = "true"
+CF_BEACON_TOKEN   = "YOUR-CF-BEACON-TOKEN"
+
+# ── Secrets — set via CLI ────────────────────────────────────────────────────
+# npx wrangler secret put SUPABASE_SERVICE_KEY     # from Supabase: Settings → API → service_role key
+# npx wrangler secret put ANTHROPIC_API_KEY        # same key as sandbox (proof scan stub bypasses it in demo mode)
+# npx wrangler secret put DEMO_STATS_TOKEN         # paste: c680e6cc1eaa399a23d2697f82e483bd62db2f4c42e11886be16f93724e3f37e
+# npx wrangler secret put SSN_ENCRYPTION_KEY       # 32-char random string (required by worker init)
+# npx wrangler secret put RESEND_API_KEY           # same key as sandbox (email stubs fire for real — ok for demo)

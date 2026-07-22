@@ -1,7 +1,14 @@
 // POST /api/run-conflict-check
 // Staff-only: search for potential conflicts of interest by name.
-// Searches clients and opposing_parties tables using ILIKE matching.
-// Logs every check to conflict_checks for the audit trail.
+// Searches THREE sources using ILIKE matching:
+//   1. clients            — existing/active client cards
+//   2. opposing_parties   — adverse parties recorded on matters
+//   3. conflict_checks     — names from PRIOR conflict checks (prospective
+//                            clients who inquired but may never have retained)
+// (3) matters because a prospective-client consultation by any channel can
+// conflict the firm out of the adverse spouse (ABA Model Rule 1.18) even when
+// no one retained — so a name that only ever appeared in a past inquiry must
+// still surface. Logs every check to conflict_checks for the audit trail.
 //
 // Body for a new search:
 //   { prospective_client_name, opposing_party_name?, additional_names?: string[] }
@@ -10,6 +17,15 @@
 //   { save: true, check_id, outcome: 'clear'|'conflict'|'review_needed', notes? }
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
+
+// PostgREST embeds .or() filters as a comma-separated string, so a raw name token
+// containing , ( ) . or the ilike wildcards %/_/\ can break out of the intended
+// predicate and alter the query. Strip everything that isn't a plain name character
+// before interpolation. Names legitimately contain letters, spaces, hyphens and
+// apostrophes — nothing here needs the reserved characters.
+function sanitizeNameToken(token) {
+  return token.replace(/[^\p{L}\p{N}\-' ]/gu, '').trim();
+}
 
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -55,9 +71,20 @@ export async function onRequest({ request, env }) {
   const seen  = new Set();
   const matches = [];
 
+  // Prior conflict checks — pulled once, matched in-app. The names live in two
+  // text columns plus a text[] (additional_names); a single in-memory scan lets
+  // us ILIKE-match all three consistently (PostgREST can't ILIKE array elements).
+  // The current check is inserted only AFTER this search, so it can't self-match.
+  const { data: priorChecks } = await admin
+    .from('conflict_checks')
+    .select('id, checked_at, prospective_client_name, opposing_party_name, additional_names, outcome, notes, checked_by, users:checked_by(first_name, last_name)')
+    .order('checked_at', { ascending: false })
+    .limit(1000);
+
   for (const fullName of namesToSearch) {
-    // Split into tokens (first + last) and search each separately
-    const tokens = fullName.split(/\s+/).filter(t => t.length >= 2);
+    // Split into tokens (first + last) and search each separately.
+    // Sanitize each token so it cannot inject PostgREST filter syntax.
+    const tokens = fullName.split(/\s+/).map(sanitizeNameToken).filter(t => t.length >= 2);
     if (!tokens.length) continue;
 
     // Search clients table
@@ -124,6 +151,46 @@ export async function onRequest({ request, env }) {
             id: matter.id, case_type: matter.case_type,
             status: matter.status, case_number: matter.case_number,
           } : null,
+        });
+      }
+    }
+
+    // Search prior conflict checks (in-memory). A hit on any name recorded in a
+    // past inquiry is surfaced — even one previously marked "clear", because a
+    // prior "clear" was about that inquirer's side, not our ability to now take
+    // the party adverse to them.
+    for (const token of tokens) {
+      const t = token.toLowerCase();
+      for (const chk of (priorChecks || [])) {
+        const key = `check:${chk.id}`;
+        if (seen.has(key)) continue;
+
+        const fields = [
+          ['Prospective client', chk.prospective_client_name],
+          ['Opposing party',     chk.opposing_party_name],
+          ...(Array.isArray(chk.additional_names)
+            ? chk.additional_names.map(n => ['Additional name', n])
+            : []),
+        ];
+        const hit = fields.find(([, val]) => val && val.toLowerCase().includes(t));
+        if (!hit) continue;
+
+        seen.add(key);
+        matches.push({
+          type:            'prior_inquiry',
+          entity_id:       chk.id,
+          name:            chk.prospective_client_name,
+          matched_in:      'Prior Conflict Check',
+          matched_field:   hit[0],
+          matched_value:   hit[1],
+          searched_for:    fullName,
+          opposing_party:  chk.opposing_party_name || null,
+          prior_outcome:   chk.outcome || null,
+          checked_at:      chk.checked_at,
+          checked_by_name: chk.users
+            ? `${chk.users.first_name} ${chk.users.last_name}`.trim()
+            : null,
+          notes:           chk.notes || null,
         });
       }
     }

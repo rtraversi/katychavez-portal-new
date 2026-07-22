@@ -10,6 +10,7 @@ const ALLOWED_FIELDS = [
   'preferred_contact',
   'employer', 'employer_address_line1', 'employer_city', 'employer_state', 'employer_zip',
   'emergency_contact_name', 'emergency_contact_phone',
+  'texas_residency_duration', 'county_residency_90_days',
 ];
 
 const PREFERRED_CONTACT_VALUES = new Set(['phone', 'email', 'portal', 'text']);

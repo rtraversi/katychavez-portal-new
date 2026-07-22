@@ -47,20 +47,6 @@
     }
   }
 
-  // ── Role check ───────────────────────────────────────────────────────────────
-
-  async function checkRole() {
-    const profile = await Auth.getProfile();
-    const roleName = profile?.role?.name || profile?.roles?.name;
-    const isOwner  = roleName === 'Owner';
-
-    if (isOwner) {
-      sigUploadSection.classList.remove('hidden');
-    } else {
-      sigReadOnlyMsg.classList.remove('hidden');
-    }
-  }
-
   // ── Background removal ───────────────────────────────────────────────────────
 
   function applyThreshold(threshold) {
@@ -180,7 +166,7 @@
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
       setStatus('Signature saved successfully.');
-      Utils.toast('Attorney signature updated.', 'success');
+      Utils.toast('Your signature was updated.', 'success');
 
       // Refresh the preview
       await loadCurrentSignature();
@@ -196,6 +182,8 @@
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 
-  await Promise.all([loadCurrentSignature(), checkRole()]);
+  // Every staff member manages their own signature — no role gate.
+  sigUploadSection.classList.remove('hidden');
+  await loadCurrentSignature();
 
 })();

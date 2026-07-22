@@ -1,57 +1,37 @@
 <!-- Clients page — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Clients</h1>
-    <p class="page-subtitle">All active client matters</p>
-  </div>
-  <div class="flex gap-3">
-    <button class="btn btn--primary" id="btn-new-client">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      New client
-    </button>
-  </div>
+<!-- Docket-kit masthead (see .dk-* in portal.css / DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Daily Work · Clients &amp; Matters</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Every client, every <em>matter</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">The firm's full roster — who they are, what they're here for, and where their retainer stands.</p>
 </div>
 
-<!-- Search + filter bar -->
-<div class="card" style="margin-bottom: var(--space-4);">
-  <div class="flex gap-3 items-center" style="flex-wrap:wrap">
-    <div class="search-wrap" style="flex:1;min-width:200px">
-      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" class="search-input" id="client-search" placeholder="Search by name or email…">
-    </div>
-    <select id="filter-status" style="width:160px">
-      <option value="">All statuses</option>
-      <option value="active">Active</option>
-      <option value="intake">Intake</option>
-      <option value="on_hold">On hold</option>
-      <option value="closed">Closed</option>
-    </select>
-    <select id="filter-case-type" style="width:180px">
-      <option value="">All case types</option>
-    </select>
+<!-- Toolbar — search + filters + actions (handler ids preserved) -->
+<div class="dk-toolbar">
+  <div class="search-wrap">
+    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" class="search-input" id="client-search" placeholder="Search by name or email…">
   </div>
+  <select id="filter-status">
+    <option value="">All statuses</option>
+    <option value="active">Active</option>
+    <option value="intake">Intake</option>
+    <option value="on_hold">On hold</option>
+    <option value="closed">Closed</option>
+  </select>
+  <select id="filter-case-type">
+    <option value="">All case types</option>
+  </select>
+  <div class="dk-spacer"></div>
+  <button class="btn btn--primary" id="btn-new-client">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    New client
+  </button>
 </div>
 
-<!-- Clients table -->
-<div class="card" style="padding:0;overflow:hidden">
-  <div class="table-wrap">
-    <table id="clients-table" aria-label="Clients">
-      <thead id="clients-thead">
-        <tr>
-          <th data-sort="last_name" style="cursor:pointer;user-select:none;white-space:nowrap">Client <span class="sort-arrow" data-arrow="last_name"></span></th>
-          <th data-sort="case_type" style="cursor:pointer;user-select:none;white-space:nowrap">Case type <span class="sort-arrow" data-arrow="case_type"></span></th>
-          <th data-sort="case_number" style="cursor:pointer;user-select:none;white-space:nowrap">Case # <span class="sort-arrow" data-arrow="case_number"></span></th>
-          <th data-sort="status" style="cursor:pointer;user-select:none;white-space:nowrap">Status <span class="sort-arrow" data-arrow="status"></span></th>
-          <th data-sort="attorney" style="cursor:pointer;user-select:none;white-space:nowrap">Attorney <span class="sort-arrow" data-arrow="attorney"></span></th>
-          <th data-sort="next_date" style="cursor:pointer;user-select:none;white-space:nowrap">Next date <span class="sort-arrow" data-arrow="next_date"></span></th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="clients-tbody">
-        <tr><td colspan="7" class="empty-state" style="text-align:center;color:var(--color-text-muted);padding:var(--space-10)">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
+<!-- Client register (rendered by clients.js) -->
+<div id="clients-list">
+  <div class="dk-empty">Loading…</div>
 </div>
 
 <!-- Pagination -->

@@ -11,10 +11,14 @@
   let client  = null;
   let matter  = null;
   let oppParty = null;
+  let jointSponsor = null; // second opposing_parties row, party_role='joint_sponsor' (immigration, I-864)
   let children = [];
+  let otherPeople = [];   // client_contacts — guarantors / additional payers
   let financial = null;
   let keyDates          = [];
   let users             = [];
+  let clientRates       = [];    // billing_rates rows for this client (hero "Rates" strip)
+  let trustBalance      = 0;     // current trust/retainer balance (hero green pill)
   let _calPendingDateId = null;  // tracks which key_date is being added to calendar
 
   let practiceAreas    = [];
@@ -26,6 +30,14 @@
   let immigrationData  = null;       // client_immigration row
   let immigrationFamilyMembers = []; // client_immigration_family_members rows
   let enabledImmCaseTypes = new Set(); // enabled_immigration_case_types keys
+  let storageSyncEnabled  = false;   // enabled_modules row for 'storage_sync'
+  let officeEditEnabled   = false;   // enabled_modules row for 'office_edit' (Edit in Word)
+
+  // "Import from Storage" modal state (Files tab)
+  let _siCandidates = [];   // candidates from the last GET /api/storage-sync-import-client
+  let _siMatters    = [];   // matters from the same response
+  let _siPollTimer  = null; // in-flight continueJob poll timeout
+  let _siRunning    = false; // true while an import job is in flight (blocks outside-click close)
 
   let _stageList    = [];   // workflow_stages for this matter's practice area
   let _currentStage = null; // the stage object matching matter.current_stage_id
@@ -86,7 +98,13 @@
   }
 
   function isPF() { return matterCaseTypeKey() === 'parenting_facilitation'; }
-  function party2Label() { return isPF() ? 'Party 2' : 'Opposing Party'; }
+  // In immigration matters the client is the beneficiary; the second person on
+  // the matter is the petitioner (sponsor), not an adversary.
+  function isImmMatter() { return matterPracticeAreaKey() === 'immigration'; }
+  function party2Label() {
+    if (isImmMatter()) return 'Petitioner';
+    return isPF() ? 'Party 2' : 'Opposing Party';
+  }
 
   function matterPracticeAreaKey() {
     if (matter?.practice_area_id) return practiceAreaMap.get(matter.practice_area_id)?.key || null;
@@ -152,6 +170,15 @@
   // ── Load data ────────────────────────────────────────────────────────────────
 
   async function loadAll() {
+    // Loading a (new) client's matter — drop any cached trust-tab state so the
+    // Trust Ledger doesn't show the previously-viewed matter's balance/retainers.
+    // (The trust subtab caches on _trustLoaded; action handlers reset it, but a
+    // client switch must too — otherwise e.g. "Firm Admin Time" retainers linger
+    // on the next client's card.)
+    _trustLoaded    = false;
+    _trustRetainers = [];
+    _trustInvoices  = [];
+
     const [
       { data: c },
       { data: u },
@@ -159,6 +186,8 @@
       { data: ct },
       { data: enabledPa },
       { data: immEnabled },
+      { data: ssRow },
+      { data: oeRow },
     ] = await Promise.all([
       db.from('clients').select('*').eq('id', clientId).single(),
       db.from('users').select('id, first_name, last_name, roles(name)').eq('active', true).order('first_name'),
@@ -166,8 +195,12 @@
       db.from('case_types').select('*').order('sort_order'),
       db.from('enabled_practice_areas').select('practice_area_key'),
       db.from('enabled_immigration_case_types').select('sub_tab_key'),
+      db.from('enabled_modules').select('module_key').eq('module_key', 'storage_sync').maybeSingle(),
+      db.from('enabled_modules').select('module_key').eq('module_key', 'office_edit').maybeSingle(),
     ]);
     enabledImmCaseTypes = new Set((immEnabled || []).map(r => r.sub_tab_key));
+    storageSyncEnabled  = !!ssRow;
+    officeEditEnabled   = !!oeRow;
 
     client        = c;
     users         = u || [];
@@ -200,7 +233,7 @@
         { data: imm },
         { data: immFam },
       ] = await Promise.all([
-        db.from('opposing_parties').select('*').eq('matter_id', matter.id).maybeSingle(),
+        db.from('opposing_parties').select('*').eq('matter_id', matter.id).order('created_at'),
         db.from('children').select('*').eq('matter_id', matter.id).order('dob'),
         db.from('financial_info').select('*').eq('matter_id', matter.id).maybeSingle(),
         db.from('key_dates').select('*').eq('matter_id', matter.id).order('date_value'),
@@ -209,7 +242,9 @@
         db.from('client_immigration').select('*').eq('matter_id', matter.id).maybeSingle(),
         db.from('client_immigration_family_members').select('*').eq('matter_id', matter.id).order('created_at'),
       ]);
-      oppParty                 = op;
+      const opRows             = op || [];
+      oppParty                 = opRows.find(r => (r.party_role || 'primary') !== 'joint_sponsor') || null;
+      jointSponsor             = opRows.find(r => r.party_role === 'joint_sponsor') || null;
       children                 = ch || [];
       financial                = fi;
       keyDates                 = kd || [];
@@ -230,7 +265,29 @@
       }
     }
 
+    // Per-client billing rates for the hero "Rates" strip. RLS (can_read
+    // 'billing') returns nothing for staff without billing permission, and the
+    // strip stays hidden when a client has no rates set.
+    const { data: rateRows } = await db
+      .from('billing_rates').select('user_id, role, rate').eq('client_id', clientId);
+    clientRates = rateRows || [];
+
+    // Other people (guarantors / additional payers) attached to this client.
+    const { data: contactRows } = await db
+      .from('client_contacts').select('*').eq('client_id', clientId).order('created_at');
+    otherPeople = contactRows || [];
+
+    // Current trust/retainer balance for the hero green pill. Prefers the live
+    // trust-ledger balance (matter_trust_balances, gated by trust-read); falls
+    // back to the editable retainer_balance field for firms not on the ledger.
+    if (matter) {
+      const { data: bal } = await db
+        .from('matter_trust_balances').select('balance').eq('matter_id', matter.id).maybeSingle();
+      trustBalance = Number(bal?.balance) || Number(matter.retainer_balance) || 0;
+    }
+
     renderAll();
+    initClientRates(); // async, non-blocking — hides itself without billing access
   }
 
   // ── Render hero ──────────────────────────────────────────────────────────────
@@ -256,6 +313,9 @@
       }
     }
     document.getElementById('detail-meta').innerHTML = metaParts.join('<span style="color:var(--color-border-mid)">·</span>');
+
+    renderRates();
+    renderRetainer();
 
     const statusSel = document.getElementById('status-quick-select');
     if (statusSel) {
@@ -283,6 +343,44 @@
       const draftBtn = document.getElementById('btn-draft-doc');
       draftBtn.classList.remove('hidden');
       draftBtn.addEventListener('click', openDraftModal);
+    }
+
+    // ── Send Intake — email the client a pre-portal intake link (no account) ─────
+    const sendIntakeBtn = document.getElementById('btn-send-intake');
+    const sendSvg   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9 22 2z"/></svg>`;
+    const checkSvg  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+    const fmtDate   = d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    if (matter && matter.intake_submitted_at) {
+      sendIntakeBtn.classList.remove('hidden');
+      sendIntakeBtn.disabled = true;
+      sendIntakeBtn.innerHTML = `${checkSvg} Intake completed`;
+      sendIntakeBtn.title = `Intake completed ${fmtDate(matter.intake_submitted_at)}`;
+    } else if (matter && client.email) {
+      sendIntakeBtn.classList.remove('hidden');
+      const paintSent = () => {
+        sendIntakeBtn.innerHTML = `${sendSvg} Resend Intake`;
+        sendIntakeBtn.title = `Intake link sent ${fmtDate(matter.intake_sent_at)} — not yet completed. Click to send a fresh link (the old one stops working).`;
+      };
+      if (matter.intake_sent_at) paintSent();
+      sendIntakeBtn.addEventListener('click', async () => {
+        if (matter.intake_sent_at &&
+            !await Utils.confirm('Resend the intake form? A new link is created and the previous one will stop working.', { confirmLabel: 'Resend' })) return;
+        sendIntakeBtn.disabled = true;
+        const prev = sendIntakeBtn.innerHTML;
+        sendIntakeBtn.textContent = 'Sending…';
+        try {
+          const res = await callFunction('/api/send-intake', { matter_id: matter.id });
+          matter.intake_sent_at = res?.sent_at || new Date().toISOString();
+          sendIntakeBtn.disabled = false;
+          paintSent();
+          Utils.toast(`Intake form sent to ${client.email}`, 'success');
+        } catch (err) {
+          sendIntakeBtn.disabled = false;
+          sendIntakeBtn.innerHTML = prev;
+          Utils.toast(err.message, 'error');
+        }
+      });
     }
 
     const inviteBtn = document.getElementById('btn-invite-portal');
@@ -332,6 +430,171 @@
   }
 
   // ── Render client tab ────────────────────────────────────────────────────────
+
+  // Colored per-person/role rate pills in the hero. Attorneys/owners show as
+  // their initials; paralegals collapse to "PL". Each distinct label gets a
+  // stable color (hashed from the label) so a given biller keeps one signature
+  // color across every client card. Identical (label, rate) pairs de-dup, so two
+  // paralegals sharing a rate render as a single "PL" chip.
+  const RATE_PALETTE = [
+    { bg:'#eef2ff', badge:'#6366f1', text:'#4338ca' }, // indigo
+    { bg:'#f0fdfa', badge:'#0d9488', text:'#0f766e' }, // teal
+    { bg:'#fffbeb', badge:'#f59e0b', text:'#b45309' }, // amber
+    { bg:'#fff1f2', badge:'#f43f5e', text:'#be123c' }, // rose
+    { bg:'#faf5ff', badge:'#a855f7', text:'#7e22ce' }, // violet
+    { bg:'#f0f9ff', badge:'#0ea5e9', text:'#0369a1' }, // sky
+  ];
+  function rateColor(label) {
+    let h = 0;
+    for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0;
+    return RATE_PALETTE[h % RATE_PALETTE.length];
+  }
+
+  function renderRates() {
+    const box = document.getElementById('detail-rates');
+    if (!box) return;
+    if (!clientRates.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+
+    const userMap = new Map(users.map(u => [u.id, u]));
+    const seen = new Map();  // "label|amount" → { label, amt, isPara }
+    for (const r of clientRates) {
+      const amt = Number(r.rate);
+      if (!Number.isFinite(amt)) continue;
+      const u = r.user_id ? userMap.get(r.user_id) : null;
+      const roleName = u ? (u.roles?.name || '') : (r.role || '');
+      const isPara = /paralegal/i.test(roleName);
+      let label;
+      if (isPara)   label = 'PL';
+      else if (u)   label = ((u.first_name?.[0] || '') + (u.last_name?.[0] || '')).toUpperCase() || '—';
+      else          label = r.role || '—';
+      const key = `${label}|${amt}`;
+      if (!seen.has(key)) seen.set(key, { label, amt, isPara });
+    }
+    if (!seen.size) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+
+    const chips = [...seen.values()]
+      .sort((a, b) => (a.isPara - b.isPara) || (b.amt - a.amt))
+      .map(c => {
+        const col = rateColor(c.label);
+        return `<span class="rate-chip" style="background:${col.bg};color:${col.text};border-color:${col.badge}33" title="$${c.amt.toLocaleString()}/hr">`
+             + `<span class="rc-who" style="background:${col.badge}">${Utils.esc(c.label)}</span>`
+             + `<span class="rc-amt">$${c.amt.toLocaleString()}</span></span>`;
+      });
+
+    box.innerHTML = `<span class="rates-label">Rates</span>${chips.join('')}`;
+    box.classList.remove('hidden');
+  }
+
+  // ── Billing rates & admin fee editor (Financial tab) ─────────────────────────
+  // Same data + API as the old Settings ▸ Billing Rates page, scoped to this
+  // client. The section stays hidden for viewers without billing access (the
+  // API 403s and we bail quietly).
+  async function initClientRates() {
+    const section = document.getElementById('client-rates-section');
+    if (!section) return;
+
+    let boot;
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch(`/api/billing-rates?client_id=${encodeURIComponent(clientId)}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) { section.classList.add('hidden'); return; }
+      boot = await res.json();
+    } catch { return; }
+
+    const rowsEl     = document.getElementById('client-rates-rows');
+    const feeActive  = document.getElementById('client-fee-active');
+    const feeDetails = document.getElementById('client-fee-details');
+    const feeAmount  = document.getElementById('client-fee-amount');
+    const feeDay     = document.getElementById('client-fee-day');
+    const feeAccount = document.getElementById('client-fee-account');
+    const saveBtn    = document.getElementById('btn-save-client-rates');
+    const statusEl   = document.getElementById('client-rates-status');
+
+    const staff      = boot.staff || [];
+    const rateByUser = new Map((boot.rates || []).filter(r => r.user_id).map(r => [r.user_id, r.rate]));
+
+    rowsEl.innerHTML = staff.length ? staff.map(s => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-2) 0;border-bottom:1px solid var(--color-border)">
+        <div>
+          <div style="font-weight:500">${Utils.esc(`${s.first_name || ''} ${s.last_name || ''}`.trim() || '(unnamed)')}</div>
+          <div class="text-muted text-sm">${s.role ? Utils.esc(s.role) : '—'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:var(--space-2)">
+          <span class="text-muted text-sm">$</span>
+          <input type="number" class="client-rate-input" data-user="${Utils.esc(s.id)}" min="0" step="0.01"
+                 value="${rateByUser.get(s.id) != null ? rateByUser.get(s.id) : ''}" placeholder="—"
+                 style="width:110px;text-align:right">
+          <span class="text-muted text-sm">/hr</span>
+        </div>
+      </div>`).join('')
+      : '<p class="text-muted text-sm">No staff members to set rates for.</p>';
+
+    const rc = boot.recurring_charge;
+    feeActive.checked = !!(rc && rc.active);
+    feeAmount.value   = rc && rc.amount != null ? rc.amount : 100;
+    feeDay.value      = rc && rc.day_of_month  ? rc.day_of_month : 1;
+    feeAccount.value  = rc && rc.account_type === 'trust' ? 'trust' : 'operating';
+
+    function syncFee() {
+      feeDetails.style.opacity       = feeActive.checked ? '1' : '0.45';
+      feeDetails.style.pointerEvents = feeActive.checked ? 'auto' : 'none';
+    }
+    syncFee();
+
+    // Listeners wire once; re-runs of initClientRates only refresh the data.
+    if (!section.dataset.wired) {
+      section.dataset.wired = '1';
+      feeActive.addEventListener('change', syncFee);
+
+      saveBtn.addEventListener('click', async () => {
+        const rates = [...rowsEl.querySelectorAll('.client-rate-input')].map(inp => ({
+          user_id: inp.dataset.user,
+          rate:    inp.value.trim() === '' ? null : Number(inp.value),
+        }));
+        saveBtn.disabled = true;
+        statusEl.textContent = 'Saving…';
+        try {
+          await callFunction('/api/billing-rates', {
+            client_id: clientId,
+            rates,
+            recurring_charge: {
+              active:       feeActive.checked,
+              amount:       Number(feeAmount.value),
+              day_of_month: Number(feeDay.value),
+              account_type: feeAccount.value,
+            },
+          });
+          statusEl.textContent = 'Saved ✓';
+          Utils.toast('Billing rates saved.', 'success');
+          // Refresh the hero "Rates" chips to match what was just saved.
+          const { data: rateRows } = await db
+            .from('billing_rates').select('user_id, role, rate').eq('client_id', clientId);
+          clientRates = rateRows || [];
+          renderRates();
+        } catch (err) {
+          statusEl.textContent = '';
+          Utils.toast(err.message || 'Failed to save rates.', 'error');
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+    }
+
+    section.classList.remove('hidden');
+  }
+
+  // Green retainer pill — only when the balance is positive.
+  function renderRetainer() {
+    const box = document.getElementById('detail-retainer');
+    if (!box) return;
+    const bal = Number(trustBalance);
+    if (!(bal > 0)) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    const amt = bal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    box.innerHTML = `<span class="balance-chip" title="Current trust / retainer balance"><span class="bc-dot"></span>Retainer <b>$${amt}</b></span>`;
+    box.classList.remove('hidden');
+  }
 
   function renderClientInfo() {
     const c = client;
@@ -409,7 +672,11 @@
       field('Date filed',      m.date_filed, 'date'),
       field('Assigned attorney', userName(m.assigned_attorney_id)),
       field('Billing type',    m.billing_type ? Utils.titleCase(m.billing_type) : null),
-      field('Retainer balance',m.retainer_balance, 'money'),
+      field('Retainer requested', m.retainer_requested, 'money'),
+      // Live trust/retainer balance — same ledger-derived value as the hero pill
+      // (matter_trust_balances, with legacy retainer_balance fallback baked into
+      // trustBalance). null when zero so it shows "—" like the pill hiding at 0.
+      field('Retainer balance', trustBalance > 0 ? trustBalance : null, 'money'),
       field('Suit filed',      m.suit_filed, 'bool'),
       field('Been served',     m.been_served != null ? (m.been_served ? 'Yes' : 'No') : null),
       field('Prior attorney consulted', m.prior_attorney_consulted),
@@ -553,6 +820,9 @@
         ${op.is_address_restricted ? '<div class="badge badge--dv" style="margin-bottom:var(--space-4)">Address Restricted</div>' : ''}
         <div class="detail-grid">
           ${field('Name', [op.first_name, op.middle_name, op.last_name, op.former_maiden_name ? '(née '+op.former_maiden_name+')' : ''].filter(Boolean).join(' '))}
+          ${isImmMatter() ? field('Relationship to client', op.relationship_to_client) : ''}
+          ${isImmMatter() ? field('Immigration status', op.immigration_status) : ''}
+          ${isImmMatter() ? field('A-Number', op.a_number) : ''}
           ${field('Date of birth', op.dob, 'date')}
           ${field('Place of birth', op.place_of_birth)}
           ${ssnField('opposing_parties', op.id, op.ssn_last4, [op.first_name, op.last_name].filter(Boolean).join(' '))}
@@ -573,11 +843,12 @@
           ${field('Gross annual income', op.gross_annual_income, 'money')}
           ${field('Education', op.education)}
           ${field('Living with others', op.living_with_others)}
-          ${!isPF() ? field('Physically separated', op.physically_separated, 'bool') : ''}
-          ${!isPF() ? field('Financial arrangement', op.financial_arrangement ? Utils.titleCase(op.financial_arrangement) : null) : ''}
-          ${!isPF() ? field('Financial arrangement notes', op.financial_arrangement_notes) : ''}
+          ${!isPF() && !isImmMatter() ? field('Physically separated', op.physically_separated, 'bool') : ''}
+          ${!isPF() && !isImmMatter() ? field('Financial arrangement', op.financial_arrangement ? Utils.titleCase(op.financial_arrangement) : null) : ''}
+          ${!isPF() && !isImmMatter() ? field('Financial arrangement notes', op.financial_arrangement_notes) : ''}
         </div>
       </div>
+      ${isImmMatter() ? jointSponsorSection() : `
       <div class="detail-section">
         <div class="detail-section-header">
           <h2 class="detail-section-title">${isPF() ? "Party 2's Attorney" : 'Opposing Counsel'}</h2>
@@ -589,9 +860,61 @@
           ${field('Email', op.opposing_counsel_email)}
           ${field('Address', opCounselAddr || null)}
         </div>
-      </div>`;
+      </div>`}`;
 
     document.getElementById('btn-edit-opposing').addEventListener('click', () => openOpposingModal(op));
+    wireJointSponsorButtons();
+  }
+
+  // I-864 joint financial sponsor — second opposing_parties row
+  // (party_role='joint_sponsor'), immigration matters only. Optional: used
+  // when the petitioner lacks the financial means to sponsor alone.
+  function jointSponsorSection() {
+    const js = jointSponsor;
+    if (!js) {
+      return `
+      <div class="detail-section">
+        <div class="detail-section-header">
+          <h2 class="detail-section-title">Joint Sponsor</h2>
+          <button class="btn btn--secondary btn--sm" id="btn-add-joint-sponsor">Add joint sponsor</button>
+        </div>
+        <p class="text-muted text-sm">None — only needed for the I-864 when the petitioner can't meet the income requirement alone.</p>
+      </div>`;
+    }
+    const addr     = [js.address_line1, js.address_line2, js.city, js.state, js.zip].filter(Boolean).join(', ');
+    const mailAddr = [js.mailing_address_line1, js.mailing_city, js.mailing_state, js.mailing_zip].filter(Boolean).join(', ');
+    const empAddr  = [js.employer_address_line1, js.employer_city, js.employer_state, js.employer_zip].filter(Boolean).join(', ');
+    return `
+      <div class="detail-section">
+        <div class="detail-section-header">
+          <h2 class="detail-section-title">Joint Sponsor — ${Utils.esc(js.first_name)} ${Utils.esc(js.last_name || '')}</h2>
+          <button class="btn btn--secondary btn--sm" id="btn-edit-joint-sponsor">Edit</button>
+        </div>
+        <div class="detail-grid">
+          ${field('Name', [js.first_name, js.middle_name, js.last_name].filter(Boolean).join(' '))}
+          ${field('Immigration status', js.immigration_status)}
+          ${field('A-Number', js.a_number)}
+          ${field('Date of birth', js.dob, 'date')}
+          ${field('Place of birth', js.place_of_birth)}
+          ${ssnField('opposing_parties', js.id, js.ssn_last4, [js.first_name, js.last_name].filter(Boolean).join(' '))}
+          ${field('Cell', js.cell_phone, 'phone')}
+          ${field('Home', js.home_phone, 'phone')}
+          ${field('Work', js.work_phone, 'phone')}
+          ${field('Email', js.email)}
+          ${field('Address', addr || null)}
+          ${field('Mailing address', mailAddr || null)}
+          ${field('County', js.county)}
+          ${field('Employer', js.employer)}
+          ${field('Employer address', empAddr || null)}
+          ${field('Employment length', js.length_of_employment)}
+          ${field('Gross annual income', js.gross_annual_income, 'money')}
+        </div>
+      </div>`;
+  }
+
+  function wireJointSponsorButtons() {
+    document.getElementById('btn-add-joint-sponsor')?.addEventListener('click', () => openOpposingModal(null, 'joint_sponsor'));
+    document.getElementById('btn-edit-joint-sponsor')?.addEventListener('click', () => openOpposingModal(jointSponsor, 'joint_sponsor'));
   }
 
   // ── Render children tab ──────────────────────────────────────────────────────
@@ -661,6 +984,129 @@
     );
   }
 
+  // ── Other People (client_contacts: guarantors / additional payers) ────────────
+
+  function renderOtherPeople() {
+    const container = document.getElementById('other-people-container');
+    if (!container) return;
+
+    // Wire the (static) Add button once.
+    const addBtn = document.getElementById('btn-add-other-person');
+    if (addBtn && !addBtn.dataset.wired) {
+      addBtn.addEventListener('click', () => openOtherPersonModal());
+      addBtn.dataset.wired = '1';
+    }
+
+    if (!otherPeople.length) {
+      container.innerHTML = `<p class="text-muted text-sm" style="padding:var(--space-2) 0">No other people on file.</p>`;
+    } else {
+      container.innerHTML = otherPeople.map(p => {
+        const name = [p.first_name, p.last_name].filter(Boolean).join(' ');
+        return `
+          <div class="child-card">
+            <div class="child-card-header">
+              <strong>${Utils.esc(name)}</strong>
+              <div style="display:flex;gap:var(--space-2)">
+                ${p.relationship ? `<span class="badge">${Utils.esc(p.relationship)}</span>` : ''}
+                <button class="btn btn--ghost btn--sm btn-edit-person" data-id="${p.id}">Edit</button>
+                <button class="btn btn--ghost btn--sm btn-del-person" data-id="${p.id}" style="color:var(--color-danger)">Delete</button>
+              </div>
+            </div>
+            <div class="detail-grid">
+              ${field('Phone', p.phone, 'phone')}
+              ${field('Email', p.email)}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    container.querySelectorAll('.btn-edit-person').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const p = otherPeople.find(x => x.id === btn.dataset.id);
+        if (p) openOtherPersonModal(p);
+      })
+    );
+    container.querySelectorAll('.btn-del-person').forEach(btn =>
+      btn.addEventListener('click', () => deleteOtherPerson(btn.dataset.id))
+    );
+  }
+
+  function openOtherPersonModal(existing = null) {
+    const modalEl = document.getElementById('other-person-modal');
+    if (!modalEl) return;
+    const p = existing || {};
+    modalEl.innerHTML = `
+      <div class="modal" style="max-width:520px">
+        <div class="modal-header">
+          <h2 class="modal-title">${existing ? 'Edit person' : 'Add person'}</h2>
+          <button class="modal-close">×</button>
+        </div>
+        <form id="other-person-form" novalidate>
+          <div class="modal-body">
+            ${row2(inp('first_name','First name *',p.first_name||'','text','required'), inp('last_name','Last name',p.last_name||''))}
+            ${row2(inp('phone','Phone',p.phone||'','tel'), inp('email','Email',p.email||'','email'))}
+            ${inp('relationship','Relationship (e.g. Parent, Guarantor)',p.relationship||'')}
+          </div>
+          <div class="modal-footer">
+            <div id="other-person-err" class="form-error hidden" style="flex:1;margin-right:auto"></div>
+            <button type="button" class="btn btn--secondary btn--sm modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn--primary btn--sm">${existing ? 'Save' : 'Add person'}</button>
+          </div>
+        </form>
+      </div>`;
+    modalEl.classList.remove('hidden');
+    modalEl.querySelector('.modal-close').addEventListener('click', () => closeModal(modalEl));
+    modalEl.querySelector('.modal-cancel').addEventListener('click', () => closeModal(modalEl));
+    modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(modalEl); });
+
+    modalEl.querySelector('#other-person-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl = modalEl.querySelector('#other-person-err');
+      errEl.classList.add('hidden');
+      const fd    = new FormData(e.target);
+      const first = (fd.get('first_name') || '').toString().trim();
+      if (!first) { errEl.textContent = 'First name is required.'; errEl.classList.remove('hidden'); return; }
+      const saveBtn = e.target.querySelector('[type=submit]');
+      Utils.setLoading(saveBtn, true);
+      const payload = {
+        client_id:    clientId,
+        first_name:   first,
+        last_name:    (fd.get('last_name') || '').toString().trim() || null,
+        phone:        (fd.get('phone') || '').toString().trim() || null,
+        email:        (fd.get('email') || '').toString().trim() || null,
+        relationship: (fd.get('relationship') || '').toString().trim() || null,
+      };
+      try {
+        if (existing) {
+          const { error } = await db.from('client_contacts').update(payload).eq('id', existing.id);
+          if (error) throw error;
+          Object.assign(existing, payload);
+        } else {
+          const { data, error } = await db.from('client_contacts').insert(payload).select().single();
+          if (error) throw error;
+          otherPeople.push(data);
+        }
+        Utils.setLoading(saveBtn, false);
+        closeModal(modalEl);
+        renderOtherPeople();
+        Utils.toast(existing ? 'Person updated.' : 'Person added.', 'success');
+      } catch (err) {
+        Utils.setLoading(saveBtn, false);
+        errEl.textContent = err.message || 'Failed to save.';
+        errEl.classList.remove('hidden');
+      }
+    });
+  }
+
+  async function deleteOtherPerson(id) {
+    if (!await Utils.confirm('Remove this person? This cannot be undone.', { confirmLabel: 'Remove', danger: true })) return;
+    const { error } = await db.from('client_contacts').delete().eq('id', id);
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    otherPeople = otherPeople.filter(p => p.id !== id);
+    renderOtherPeople();
+    Utils.toast('Person removed.', 'success');
+  }
+
   // ── Render financial tab ─────────────────────────────────────────────────────
 
   function renderFinancial() {
@@ -668,7 +1114,9 @@
     const f = financial || {};
     const m = matter;
     setGrid('grid-financial', [
-      field('Retainer balance',        m.retainer_balance, 'money'),
+      field('Retainer requested',      m.retainer_requested, 'money'),
+      // Live trust/retainer balance — matches the hero pill (see renderCase note).
+      field('Retainer balance',        trustBalance > 0 ? trustBalance : null, 'money'),
       field('Financial affidavit',     f.financial_affidavit_status ? Utils.titleCase(f.financial_affidavit_status) : null),
       field('Client monthly income',   f.client_monthly_income, 'money'),
       field('Opposing monthly income', f.opposing_monthly_income, 'money'),
@@ -682,6 +1130,10 @@
       field('Total liabilities',       f.total_liabilities, 'money'),
       field('Frequent flyer miles',    f.frequent_flyer_miles),
       field('Weapons',                 f.weapons_description),
+      field('Client — assets in a trust', f.client_has_trust_assets, 'bool'),
+      field('Client — trust explanation', f.client_trust_assets_explain),
+      field('Opposing party — assets in a trust', f.opposing_has_trust_assets, 'bool'),
+      field('Opposing party — trust explanation', f.opposing_trust_assets_explain),
       field('Notes',                   f.notes),
     ].join(''));
   }
@@ -870,6 +1322,7 @@
     renderClientInfo();
     renderEmergencyIntake();
     renderCompliance();
+    renderOtherPeople();
     renderCase();
     renderMarriage();
     renderCircumstances();
@@ -1110,7 +1563,7 @@
           return `
           <div style="padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-md);margin-bottom:var(--space-3)">
             <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" style="width:15px;height:15px;flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" style="width:15px;height:15px;flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>
               <span style="font-weight:600;font-size:var(--text-sm)">${roleLabel}</span>
               <span class="text-muted text-sm">— ${Utils.esc(signerName)}</span>
             </div>
@@ -1473,6 +1926,7 @@
           assigned_attorney_id: fd.get('assigned_attorney_id') || null,
           billing_type:         fd.get('billing_type') || 'hourly',
           retainer_balance:     fd.get('retainer_balance') ? parseFloat(fd.get('retainer_balance')) : null,
+          retainer_requested:   fd.get('retainer_requested') ? parseFloat(fd.get('retainer_requested')) : null,
           suit_filed:           fd.get('suit_filed') === 'on',
           been_served:          fd.get('been_served') ? fd.get('been_served') === 'true' : null,
           prior_attorney_consulted: fd.get('prior_attorney_consulted')?.trim() || null,
@@ -1527,7 +1981,8 @@
       async (fd) => {
         if (!matter) return;
         const mPayload = {
-          retainer_balance: fd.get('retainer_balance') ? parseFloat(fd.get('retainer_balance')) : null,
+          retainer_balance:   fd.get('retainer_balance') ? parseFloat(fd.get('retainer_balance')) : null,
+          retainer_requested: fd.get('retainer_requested') ? parseFloat(fd.get('retainer_requested')) : null,
         };
         const fPayload = {
           financial_affidavit_status: fd.get('financial_affidavit_status') || 'not_started',
@@ -1542,6 +1997,10 @@
           total_liabilities:          fd.get('total_liabilities') ? parseFloat(fd.get('total_liabilities')) : null,
           frequent_flyer_miles:       fd.get('frequent_flyer_miles')?.trim() || null,
           weapons_description:        fd.get('weapons_description')?.trim() || null,
+          client_has_trust_assets:        fd.get('client_has_trust_assets') === '' ? null : fd.get('client_has_trust_assets') === 'true',
+          client_trust_assets_explain:    fd.get('client_trust_assets_explain')?.trim() || null,
+          opposing_has_trust_assets:      fd.get('opposing_has_trust_assets') === '' ? null : fd.get('opposing_has_trust_assets') === 'true',
+          opposing_trust_assets_explain:  fd.get('opposing_trust_assets_explain')?.trim() || null,
           notes:                      fd.get('financial_notes')?.trim() || null,
         };
         const cPayload = {
@@ -1788,6 +2247,7 @@
       ${row2(inp('court_county','Court / County',m?.court_county), inp('judge_name','Judge',m?.judge_name))}
       ${row2(inp('date_filed','Date filed',m?.date_filed,'date'), sel('assigned_attorney_id','Assigned attorney',attyOpts,m?.assigned_attorney_id))}
       ${row2(sel('billing_type','Billing type',billingOpts,m?.billing_type), inp('retainer_balance','Retainer balance ($)',m?.retainer_balance,'number','min="0" step="0.01"'))}
+      ${inp('retainer_requested','Retainer requested ($)',m?.retainer_requested,'number','min="0" step="0.01"')}
       <p class="section-divider">Suit status</p>
       ${ck('suit_filed','Suit filed',m?.suit_filed)}
       ${sel('been_served','Been served',[['true','Yes'],['false','No']],m?.been_served == null ? '' : String(m.been_served))}
@@ -1833,7 +2293,7 @@
     const m = matter;
     const c = client;
     document.getElementById('fields-financial').innerHTML = `
-      ${inp('retainer_balance','Retainer balance ($)',m?.retainer_balance,'number','min="0" step="0.01"')}
+      ${row2(inp('retainer_requested','Retainer requested ($)',m?.retainer_requested,'number','min="0" step="0.01"'), inp('retainer_balance','Retainer balance ($)',m?.retainer_balance,'number','min="0" step="0.01"'))}
       ${sel('financial_affidavit_status','Financial affidavit status',[['not_started','Not started'],['draft','Draft'],['filed','Filed']],f.financial_affidavit_status)}
       <p class="section-divider">Income</p>
       ${row2(inp('gross_annual_income','Client gross annual income ($)',c.gross_annual_income,'number','min="0" step="0.01"'), inp('client_monthly_income','Client monthly income ($)',f.client_monthly_income,'number','min="0" step="0.01"'))}
@@ -1845,6 +2305,9 @@
       ${ta('other_assets_description','Other assets',f.other_assets_description,2)}
       ${ta('weapons_description','Weapons',f.weapons_description,2)}
       ${row2(inp('total_liabilities','Total liabilities ($)',f.total_liabilities,'number','min="0" step="0.01"'), inp('frequent_flyer_miles','Frequent flyer miles',f.frequent_flyer_miles))}
+      <p class="section-divider">Trust Assets</p>
+      ${row2(sel('client_has_trust_assets','Client — assets in a trust?',[['true','Yes'],['false','No']], f.client_has_trust_assets == null ? '' : String(f.client_has_trust_assets)), inp('client_trust_assets_explain','If yes, explain',f.client_trust_assets_explain))}
+      ${row2(sel('opposing_has_trust_assets',"Opposing party — assets in a trust?",[['true','Yes'],['false','No']], f.opposing_has_trust_assets == null ? '' : String(f.opposing_has_trust_assets)), inp('opposing_trust_assets_explain','If yes, explain',f.opposing_trust_assets_explain))}
       ${ta('financial_notes','Notes',f.notes,2)}
     `;
   }
@@ -2197,14 +2660,16 @@
 
   // ── Opposing party modal ─────────────────────────────────────────────────────
 
-  function openOpposingModal(existing = null) {
+  function openOpposingModal(existing = null, role = 'primary') {
     if (!matter) { Utils.toast('No matter loaded.', 'error'); return; }
+    const isJointSponsor = role === 'joint_sponsor';
+    const roleLabel = isJointSponsor ? 'joint sponsor' : party2Label().toLowerCase();
     const modalEl = document.getElementById('opposing-modal');
     const op = existing || {};
     modalEl.innerHTML = `
       <div class="modal" style="max-width:680px">
         <div class="modal-header">
-          <h2 class="modal-title">${existing ? 'Edit' : 'Add'} ${party2Label().toLowerCase()}</h2>
+          <h2 class="modal-title">${existing ? 'Edit' : 'Add'} ${roleLabel}</h2>
           <button class="modal-close">×</button>
         </div>
         <form id="opposing-form" novalidate>
@@ -2214,6 +2679,15 @@
             ${row2(inp('middle_name','Middle name',op.middle_name||''), inp('former_maiden_name','Former/maiden',op.former_maiden_name||''))}
             ${row2(inp('dob','Date of birth',op.dob||'','date'), inp('place_of_birth','Place of birth',op.place_of_birth||''))}
             ${row2(inp('driver_license_number','DL number',op.driver_license_number||''), inp('driver_license_state','DL state',op.driver_license_state||'','text','maxlength="2"'))}
+            ${isImmMatter() ? `
+            <p class="section-divider">${isJointSponsor ? 'Sponsor details' : 'Petitioner details'}</p>
+            ${isJointSponsor
+              ? sel('immigration_status','Immigration status',[['U.S. Citizen','U.S. Citizen'],['Lawful Permanent Resident','Lawful Permanent Resident'],['Other','Other']],op.immigration_status)
+              : row2(
+                  sel('relationship_to_client','Relationship to client',[['Spouse','Spouse'],['Parent','Parent'],['Child','Child'],['Sibling','Sibling'],['Fiance(e)','Fiancé(e)'],['Other','Other']],op.relationship_to_client),
+                  sel('immigration_status','Immigration status',[['U.S. Citizen','U.S. Citizen'],['Lawful Permanent Resident','Lawful Permanent Resident'],['Other','Other']],op.immigration_status)
+                )}
+            ${inp('a_number','A-Number (if any)',op.a_number||'')}` : ''}
             <p class="section-divider">Contact</p>
             ${row2(inp('cell_phone','Cell phone',op.cell_phone||'','tel'), inp('home_phone','Home phone',op.home_phone||'','tel'))}
             ${row2(inp('work_phone','Work phone',op.work_phone||'','tel'), inp('email','Email',op.email||'','email'))}
@@ -2225,16 +2699,17 @@
             <p class="section-divider">Employment</p>
             ${row2(inp('employer','Employer',op.employer||''), inp('gross_annual_income','Gross annual income ($)',op.gross_annual_income||'','number','min="0" step="0.01"'))}
             ${row2(inp('education','Education',op.education||''), inp('living_with_others','Living with others',op.living_with_others||''))}
-            ${!isPF() ? `
+            ${!isPF() && !isImmMatter() ? `
             <p class="section-divider">Financial separation</p>
             ${sel('financially_separated','Physically separated',[['true','Yes'],['false','No']],op.physically_separated == null ? '' : String(op.physically_separated))}
             ${sel('financial_arrangement','Financial arrangement',[['joint_account','Joint account'],['separate','Separate'],['other','Other']],op.financial_arrangement)}
             ${ta('financial_arrangement_notes','Notes on arrangement',op.financial_arrangement_notes||'',2)}` : ''}
+            ${isImmMatter() ? '' : `
             <p class="section-divider">${isPF() ? "Party 2's Attorney" : 'Opposing Counsel'}</p>
             ${row2(inp('opposing_counsel_name','Attorney name',op.opposing_counsel_name||''), inp('opposing_counsel_firm','Firm',op.opposing_counsel_firm||''))}
             ${row2(inp('opposing_counsel_phone','Phone',op.opposing_counsel_phone||'','tel'), inp('opposing_counsel_email','Email',op.opposing_counsel_email||'','email'))}
             ${inp('opposing_counsel_address','Counsel address',op.opposing_counsel_address||'')}
-            ${row3(inp('opposing_counsel_city','City',op.opposing_counsel_city||''), inp('opposing_counsel_state','State',op.opposing_counsel_state||'','text','maxlength="2"'), inp('opposing_counsel_zip','ZIP',op.opposing_counsel_zip||''))}
+            ${row3(inp('opposing_counsel_city','City',op.opposing_counsel_city||''), inp('opposing_counsel_state','State',op.opposing_counsel_state||'','text','maxlength="2"'), inp('opposing_counsel_zip','ZIP',op.opposing_counsel_zip||''))}`}
           </div>
           <div class="modal-footer">
             <div id="opposing-err" class="form-error hidden" style="flex:1;margin-right:auto"></div>
@@ -2265,6 +2740,12 @@
           former_maiden_name:   fd.get('former_maiden_name')?.trim() || null,
           dob:                  fd.get('dob') || null,
           place_of_birth:       fd.get('place_of_birth')?.trim() || null,
+          ...(isImmMatter() ? {
+            ...(isJointSponsor ? {} : { relationship_to_client: fd.get('relationship_to_client') || null }),
+            immigration_status:     fd.get('immigration_status') || null,
+            a_number:               fd.get('a_number')?.trim()?.toUpperCase() || null,
+          } : {}),
+          ...(existing ? {} : { party_role: role }),
           driver_license_number: fd.get('driver_license_number')?.trim() || null,
           driver_license_state:  fd.get('driver_license_state')?.trim()?.toUpperCase() || null,
           cell_phone:           fd.get('cell_phone')?.trim() || null,
@@ -2297,18 +2778,20 @@
         };
         if (!payload.first_name) throw new Error('First name is required.');
 
+        let savedRow;
         if (existing) {
           const { error } = await db.from('opposing_parties').update(payload).eq('id', existing.id);
           if (error) throw error;
-          oppParty = { ...existing, ...payload };
+          savedRow = { ...existing, ...payload };
         } else {
           const { data, error } = await db.from('opposing_parties').insert(payload).select().single();
           if (error) throw error;
-          oppParty = data;
+          savedRow = data;
         }
+        if (isJointSponsor) jointSponsor = savedRow; else oppParty = savedRow;
         closeModal(modalEl);
         renderOpposing();
-        Utils.toast(`${party2Label()} saved.`, 'success');
+        Utils.toast(`${isJointSponsor ? 'Joint sponsor' : party2Label()} saved.`, 'success');
       } catch (err) {
         errEl.textContent = err.message || 'Save failed.';
         errEl.classList.remove('hidden');
@@ -2451,17 +2934,18 @@
     };
   }
 
-  const FORM_FILLER_STATUS_BADGE = {
-    draft:         '<span class="badge badge--inactive">Draft</span>',
-    needs_review:  '<span class="badge badge--pending">Needs Review</span>',
-    finalized:     '<span class="badge badge--active">Finalized</span>',
+  // Docket kit tags (DESIGN-SYSTEM.md) — token-driven, so light/dark is free.
+  const FORM_FILLER_STATUS_TAG = {
+    draft:        () => DK.tag('Draft', 'acc'),
+    needs_review: () => DK.tag('Needs review', 'warn'),
+    finalized:    () => DK.tag('Finalized', 'ok'),
   };
 
   async function loadFormFiller() {
     const container = document.getElementById('uscis-forms-panel-content');
     if (!container || !matter) return;
 
-    container.innerHTML = `<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--space-4) 0">Loading…</p>`;
+    container.innerHTML = `<div class="dk-empty">Loading forms…</div>`;
 
     let data;
     try {
@@ -2472,88 +2956,190 @@
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
       data = await res.json();
     } catch (err) {
-      container.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm)">Failed to load: ${Utils.esc(err.message)}</p>`;
+      container.innerHTML = `<div class="dk-empty" style="color:var(--color-danger)">Failed to load: ${Utils.esc(err.message)}</div>`;
       return;
     }
 
-    if (!data.package) {
-      container.innerHTML = `<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--space-4) 0">No USCIS form package is configured for this matter's case type yet.</p>`;
-      return;
-    }
-
+    // No early return for a missing package any more. Since migration 1605 the
+    // case type only supplies a STARTING SET — a matter with no case type, or a
+    // case type with no package, still gets a working tab it can add forms to.
     renderFormFillerPanel(container, data);
+  }
+
+  // POST/DELETE against /api/form-filler/matter-forms, then reload the tab.
+  async function matterFormsRequest(method, template_id) {
+    const session = await Auth.getSession();
+    const res = await fetch('/api/form-filler/matter-forms', {
+      method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body:    JSON.stringify({ matter_id: matter.id, template_id }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Error ${res.status}`);
+    return body;
+  }
+
+  async function resetFormFiller({ template_ids = null, label = null } = {}) {
+    const session = await Auth.getSession();
+    const res = await fetch('/api/form-filler/reset', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body:    JSON.stringify({ matter_id: matter.id, ...(template_ids ? { template_ids } : {}) }),
+    });
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+    Utils.toast(label ? `${label} reset — back to Not Generated.` : 'All forms reset — back to Not Generated.', 'success');
+    _formFillerLoaded = false;
+    await loadFormFiller();
   }
 
   function renderFormFillerPanel(container, data) {
     const rows = data.forms.map(f => {
-      const badge = f.status ? (FORM_FILLER_STATUS_BADGE[f.status] || '') : '<span class="badge badge--inactive">Not Generated</span>';
-      const completeness = (f.fields_filled != null && f.fields_total != null)
-        ? `<span style="color:var(--color-text-muted);font-size:var(--text-sm)">${f.fields_filled}/${f.fields_total} filled</span>`
-        : '';
-      const notReady = !f.template_ready
-        ? `<span style="color:var(--color-text-muted);font-size:var(--text-xs,0.75rem)">Template not yet uploaded</span>`
+      const tag = f.status
+        ? (FORM_FILLER_STATUS_TAG[f.status]?.() || '')
+        : DK.tag('Not generated', 'mut');
+
+      // Meta line: autofill coverage, then why the form can't be generated.
+      const meta = [];
+      if (f.fields_filled != null && f.fields_total != null) {
+        meta.push(`<span>${f.fields_filled}/${f.fields_total} autofilled</span>`);
+      }
+      if (!f.template_ready) {
+        meta.push(`<span class="danger">Template not yet uploaded</span>`);
+      }
+
+      const t   = Utils.esc(f.template_id);
+      const lbl = Utils.esc(f.label);
+      const act = [];
+
+      if (f.generated_form_id && f.status !== 'finalized') {
+        act.push(`<button class="dk-linkbtn ff-edit-btn" data-id="${Utils.esc(f.generated_form_id)}" data-template-id="${t}" data-label="${lbl}">Edit</button>`);
+      }
+      if (f.generated_form_id) {
+        act.push(`<button class="dk-linkbtn ff-download-btn" data-id="${Utils.esc(f.generated_form_id)}" data-final="${f.status === 'finalized' ? '1' : '0'}">Open</button>`);
+      }
+      if (f.generated_form_id && f.status !== 'finalized') {
+        act.push(`<button class="dk-linkbtn ff-finalize-btn" data-id="${Utils.esc(f.generated_form_id)}">Finalize</button>`);
+      }
+      if (f.template_ready) {
+        act.push(`<button class="dk-linkbtn ff-regen-btn" data-template-id="${t}" data-has-final="${f.status === 'finalized'}">${f.generated_form_id ? 'Regenerate' : 'Generate'}</button>`);
+      }
+
+      // Destructive actions sit after a hairline divider so they never read as
+      // part of the routine Edit/Open/Generate run.
+      const destructive = [];
+      if (f.generated_form_id) {
+        destructive.push(`<button class="dk-linkbtn d ff-reset-form-btn" data-template-id="${t}" data-label="${lbl}" data-final="${f.status === 'finalized' ? '1' : '0'}">Reset</button>`);
+      }
+      // A finalized form is part of a real filing — the API refuses to remove
+      // it, so say so here rather than letting the click fail.
+      destructive.push(f.status === 'finalized'
+        ? `<button class="dk-linkbtn" disabled title="Finalized forms can't be removed. Reset this form first if you really need to." style="opacity:.4;cursor:not-allowed">Remove</button>`
+        : `<button class="dk-linkbtn d ff-remove-form-btn" data-template-id="${t}" data-label="${lbl}" data-generated="${f.generated_form_id ? '1' : '0'}">Remove</button>`);
+
+      const divider = act.length
+        ? `<span aria-hidden="true" style="width:1px;align-self:stretch;margin:0 2px;background:var(--line)"></span>`
         : '';
 
-      const downloadBtn = f.generated_form_id
-        ? `<button class="btn btn--secondary btn--sm ff-download-btn" data-id="${Utils.esc(f.generated_form_id)}" data-final="${f.status === 'finalized' ? '1' : '0'}">Open</button>`
-        : '';
-      const regenBtn = f.template_ready
-        ? `<button class="btn btn--ghost btn--sm ff-regen-btn" data-template-id="${Utils.esc(f.template_id)}" data-has-final="${f.status === 'finalized'}">${f.generated_form_id ? 'Regenerate' : 'Generate'}</button>`
-        : '';
-      const finalizeBtn = (f.generated_form_id && f.status !== 'finalized')
-        ? `<button class="btn btn--ghost btn--sm ff-finalize-btn" data-id="${Utils.esc(f.generated_form_id)}">Finalize</button>`
-        : '';
-
-      return `<tr>
-        <td style="font-weight:500">${Utils.esc(f.label)}${notReady ? `<br>${notReady}` : ''}</td>
-        <td>${badge}</td>
-        <td>${completeness}</td>
-        <td style="text-align:right;white-space:nowrap;display:flex;gap:var(--space-2);justify-content:flex-end">${downloadBtn}${finalizeBtn}${regenBtn}</td>
-      </tr>`;
+      return `
+        <div class="dk-reg-row">
+          <div style="min-width:0">
+            <div class="dk-reg-title"><span>${lbl}</span>${tag}</div>
+            ${meta.length ? `<div class="dk-reg-meta">${meta.join('<span class="sep">·</span>')}</div>` : ''}
+          </div>
+          <div class="dk-reg-act">${act.join('')}${divider}${destructive.join('')}</div>
+        </div>`;
     }).join('');
 
     const anyGenerated = data.forms.some(f => f.generated_form_id);
     const anyFinalized = data.forms.some(f => f.status === 'finalized');
+    const canAdd       = (data.available || []).length > 0;
+
+    // The case-type package is now just the heading — the matter owns its list.
+    const heading = data.package ? Utils.esc(data.package.name) : 'USCIS Forms';
+
+    const body = data.forms.length
+      ? `<div class="dk-register">${rows}</div>`
+      : `<div class="dk-empty">No forms on this matter yet.${canAdd ? ' Use <strong>Add form</strong> to start building the package.' : ''}</div>`;
+
+    // Footer actions are package-wide and deliberately quiet: per-form generate
+    // is the primary path now, so "Generate all" is no longer a primary button.
+    const footer = data.forms.length
+      ? `<div style="display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-3)">
+           ${anyGenerated ? '<button id="ff-reset-package-btn" class="dk-linkbtn d">Reset all</button>' : ''}
+           <button id="ff-generate-package-btn" class="btn btn--secondary btn--sm">Generate all</button>
+         </div>`
+      : '';
 
     container.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4)">
-        <h3 style="font-size:var(--text-base);font-weight:600;margin:0">${Utils.esc(data.package.name)}</h3>
-        <div style="display:flex;gap:var(--space-2)">
-          ${anyGenerated ? '<button id="ff-reset-package-btn" class="btn btn--ghost btn--sm" style="color:var(--color-danger)">Reset</button>' : ''}
-          <button id="ff-generate-package-btn" class="btn btn--primary btn--sm">Generate Package</button>
+      <div class="dk-sec">
+        <div class="dk-sec-head">
+          <h2>${heading}</h2>
+          <span class="dk-sec-count">${data.forms.length} form${data.forms.length === 1 ? '' : 's'}</span>
+          <span class="dk-sec-rule"></span>
+          ${canAdd ? '<button id="ff-add-form-btn" class="dk-sec-add">+ Add form</button>' : ''}
         </div>
-      </div>
-      <table class="data-table">
-        <thead><tr><th>Form</th><th>Status</th><th>Autofill</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
+        ${body}
+        ${footer}
+      </div>`;
 
-    document.getElementById('ff-generate-package-btn').addEventListener('click', async () => {
-      await runFormFillerGenerate({ matter_id: matter.id });
+    document.getElementById('ff-generate-package-btn')?.addEventListener('click', async (e) => {
+      await runFormFillerGenerate({ matter_id: matter.id }, e.currentTarget);
+    });
+
+    document.getElementById('ff-add-form-btn')?.addEventListener('click', () => {
+      openAddFormPicker(data.available);
     });
 
     document.getElementById('ff-reset-package-btn')?.addEventListener('click', async () => {
       const warning = anyFinalized
-        ? 'Reset this package? All generated forms will be deleted — including manual edits AND finalized PDFs — and every form returns to Not Generated. Client data and template defaults are not affected.'
-        : 'Reset this package? All generated forms and any manual edits will be deleted, and every form returns to Not Generated. Client data and template defaults are not affected.';
-      if (!await Utils.confirm(warning, { confirmLabel: 'Reset package', danger: true })) return;
+        ? 'Reset every form on this matter? All generated forms will be deleted — including manual edits AND finalized PDFs — and each returns to Not Generated. The list of forms itself, client data, and template defaults are not affected.'
+        : 'Reset every form on this matter? All generated forms and any manual edits will be deleted, and each returns to Not Generated. The list of forms itself, client data, and template defaults are not affected.';
+      if (!await Utils.confirm(warning, { confirmLabel: 'Reset all', danger: true })) return;
       const btn = document.getElementById('ff-reset-package-btn');
       btn.disabled = true;
       try {
-        const session = await Auth.getSession();
-        const res = await fetch('/api/form-filler/reset', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-          body:    JSON.stringify({ matter_id: matter.id }),
-        });
-        if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
-        Utils.toast('Package reset — all forms back to Not Generated.', 'success');
-        _formFillerLoaded = false;
-        await loadFormFiller();
+        await resetFormFiller();
       } catch (err) {
-        Utils.toast(err.message || 'Failed to reset package.', 'error');
+        Utils.toast(err.message || 'Failed to reset forms.', 'error');
         btn.disabled = false;
       }
+    });
+
+    container.querySelectorAll('.ff-reset-form-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const label = btn.dataset.label;
+        const warning = btn.dataset.final === '1'
+          ? `Reset ${label}? Its finalized PDF, draft, and manual edits will be deleted and it returns to Not Generated. Other forms on this matter are not affected.`
+          : `Reset ${label}? Its generated draft and manual edits will be deleted and it returns to Not Generated. Other forms on this matter are not affected.`;
+        if (!await Utils.confirm(warning, { confirmLabel: 'Reset form', danger: true })) return;
+        btn.disabled = true;
+        try {
+          await resetFormFiller({ template_ids: [btn.dataset.templateId], label });
+        } catch (err) {
+          Utils.toast(err.message || 'Failed to reset the form.', 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.ff-remove-form-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const label = btn.dataset.label;
+        const warning = btn.dataset.generated === '1'
+          ? `Remove ${label} from this matter? Its generated draft and manual edits will be deleted too. You can add the form back later, but the filled-in work will be gone.`
+          : `Remove ${label} from this matter? You can add it back later.`;
+        if (!await Utils.confirm(warning, { confirmLabel: 'Remove form', danger: true })) return;
+        btn.disabled = true;
+        try {
+          await matterFormsRequest('DELETE', btn.dataset.templateId);
+          Utils.toast(`${label} removed from this matter.`, 'success');
+          _formFillerLoaded = false;
+          await loadFormFiller();
+        } catch (err) {
+          Utils.toast(err.message || 'Failed to remove the form.', 'error');
+          btn.disabled = false;
+        }
+      });
     });
 
     container.querySelectorAll('.ff-regen-btn').forEach(btn => {
@@ -2562,7 +3148,10 @@
           ? await Utils.confirm('This form was already finalized. Regenerate a new draft version anyway?', { confirmLabel: 'Regenerate' })
           : true;
         if (!force) return;
-        await runFormFillerGenerate({ matter_id: matter.id, template_ids: [btn.dataset.templateId], force: btn.dataset.hasFinal === 'true' });
+        await runFormFillerGenerate(
+          { matter_id: matter.id, template_ids: [btn.dataset.templateId], force: btn.dataset.hasFinal === 'true' },
+          btn,
+        );
       });
     });
 
@@ -2585,6 +3174,12 @@
           Utils.toast(err.message || 'Failed to finalize.', 'error');
           btn.disabled = false;
         }
+      });
+    });
+
+    container.querySelectorAll('.ff-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        openFormEditor(btn.dataset.templateId, btn.dataset.id, btn.dataset.label);
       });
     });
 
@@ -2614,8 +3209,95 @@
     });
   }
 
-  async function runFormFillerGenerate(body) {
-    const btn = document.getElementById('ff-generate-package-btn');
+  // "Add form" picker — every active, uploaded template not already on the
+  // matter. Filtered, because this list grows with each USCIS form added
+  // (see USCIS-FORM-PREP-PROCESS.md); it is not a short list for long.
+  function openAddFormPicker(available) {
+    let overlay = document.getElementById('ff-add-form-modal');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'ff-add-form-modal';
+      overlay.className = 'modal-overlay hidden';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      document.body.appendChild(overlay);
+    }
+
+    overlay.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title">Add a form</h2>
+          <button class="modal-close" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <input type="search" id="ff-add-filter" placeholder="Filter by form number or name…" autocomplete="off">
+          </div>
+          <div id="ff-add-results" style="max-height:340px;overflow-y:auto"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn--secondary" id="ff-add-cancel">Cancel</button>
+        </div>
+      </div>`;
+
+    const results = overlay.querySelector('#ff-add-results');
+    const filter  = overlay.querySelector('#ff-add-filter');
+
+    function close() { overlay.classList.add('hidden'); overlay.innerHTML = ''; }
+
+    function draw(term) {
+      const q = (term || '').trim().toLowerCase();
+      const matches = q
+        ? available.filter(a => a.form_key.toLowerCase().includes(q) || a.label.toLowerCase().includes(q))
+        : available;
+
+      if (!matches.length) {
+        results.innerHTML = `<div class="dk-empty">No forms match “${Utils.esc(term)}”.</div>`;
+        return;
+      }
+
+      results.innerHTML = `<div class="dk-register">${matches.map(a => `
+        <div class="dk-reg-row">
+          <div style="min-width:0"><div class="dk-reg-title"><span>${Utils.esc(a.label)}</span></div></div>
+          <div class="dk-reg-act">
+            <button class="dk-linkbtn ff-add-pick" data-template-id="${Utils.esc(a.template_id)}" data-label="${Utils.esc(a.label)}">Add</button>
+          </div>
+        </div>`).join('')}</div>`;
+
+      results.querySelectorAll('.ff-add-pick').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.textContent = 'Adding…';
+          try {
+            await matterFormsRequest('POST', btn.dataset.templateId);
+            Utils.toast(`${btn.dataset.label} added to this matter.`, 'success');
+            close();
+            _formFillerLoaded = false;
+            await loadFormFiller();
+          } catch (err) {
+            Utils.toast(err.message || 'Failed to add the form.', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Add';
+          }
+        });
+      });
+    }
+
+    draw('');
+    overlay.classList.remove('hidden');
+    filter.addEventListener('input', () => draw(filter.value));
+    overlay.querySelector('.modal-close').addEventListener('click', close);
+    overlay.querySelector('#ff-add-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    filter.focus();
+  }
+
+  // trigger: the button that was actually clicked — the per-form Generate or
+  // the footer Generate all. Falls back to the footer button so a caller that
+  // doesn't pass one still shows progress somewhere.
+  async function runFormFillerGenerate(body, trigger = null) {
+    const btn  = trigger || document.getElementById('ff-generate-package-btn');
+    const orig = btn?.textContent;
     if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
     try {
       const session = await Auth.getSession();
@@ -2639,7 +3321,329 @@
     } catch (err) {
       Utils.toast(err.message || 'Failed to generate forms.', 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Generate Package'; }
+      // The tab re-renders on success, so this only matters on the error path —
+      // restore whatever the button actually said rather than a fixed label.
+      if (btn) { btn.disabled = false; if (orig != null) btn.textContent = orig; }
+    }
+  }
+
+  // ── USCIS form editor — Prima-style in-app editing + reverse autofill ───────
+  //
+  // Renders the generated draft with pdf.js (same CDN build sig-stamp uses)
+  // with live AcroForm widgets. Edits autosave to /api/form-filler/fields as
+  // per-matter manual edits (win over autofill on every regenerate); edits to
+  // data-mapped fields can be written back to the client card / immigration
+  // record / petitioner so every other form picks them up.
+
+  let _pdfjsLoadPromise = null;
+  function loadPdfJsLib() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (_pdfjsLoadPromise) return _pdfjsLoadPromise;
+    _pdfjsLoadPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js';
+      s.onload = () => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
+        resolve(window.pdfjsLib);
+      };
+      s.onerror = () => { _pdfjsLoadPromise = null; reject(new Error('Failed to load the PDF viewer library.')); };
+      document.body.appendChild(s);
+    });
+    return _pdfjsLoadPromise;
+  }
+
+  function injectFormEditorStyles() {
+    if (document.getElementById('ffe-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'ffe-styles';
+    style.textContent = `
+      .ffe-overlay { position:fixed; inset:0; z-index:1000; background:var(--color-bg,#f4f4f5); display:flex; flex-direction:column; }
+      .ffe-topbar { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-4); background:var(--color-surface,#fff); border-bottom:1px solid var(--color-border,#e4e4e7); flex-wrap:wrap; }
+      .ffe-scroll { flex:1; overflow:auto; padding:var(--space-4); }
+      .ffe-page { position:relative; margin:0 auto var(--space-4); box-shadow:0 1px 4px rgba(0,0,0,.28); width:fit-content; background:#fff; }
+      .ffe-page canvas { display:block; }
+      .ffe-status { font-size:var(--text-sm); color:var(--color-text-muted); min-width:130px; }
+      .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; transform-origin:0 0; }
+      .annotationLayer section { position:absolute; text-align:initial; pointer-events:auto; box-sizing:border-box; transform-origin:0 0; }
+      .annotationLayer .linkAnnotation > a { position:absolute; width:100%; height:100%; }
+      .annotationLayer .textWidgetAnnotation input,
+      .annotationLayer .textWidgetAnnotation textarea,
+      .annotationLayer .choiceWidgetAnnotation select {
+        background-color: rgba(0, 84, 232, 0.10); border: 1px solid transparent; box-sizing: border-box;
+        font: calc(9px * var(--scale-factor, 1)) sans-serif; height: 100%; width: 100%;
+        margin: 0; padding: 0 2px; vertical-align: top; resize: none;
+      }
+      .annotationLayer .buttonWidgetAnnotation.checkBox input,
+      .annotationLayer .buttonWidgetAnnotation.radioButton input {
+        appearance: auto; display: block; width: 100%; height: 100%; margin: 0; accent-color: var(--color-primary, #2563eb);
+      }
+      .annotationLayer .textWidgetAnnotation input:focus,
+      .annotationLayer .textWidgetAnnotation textarea:focus,
+      .annotationLayer .choiceWidgetAnnotation select:focus { outline: 2px solid var(--color-primary,#2563eb); background-color:#fff; }
+      .annotationLayer section.ffe-dirty { outline: 2px solid var(--color-warning,#f59e0b); }
+      .annotationLayer section.ffe-saved { outline: 2px solid var(--color-success,#16a34a); }
+    `;
+    document.head.appendChild(style);
+  }
+
+  async function openFormEditor(templateId, generatedFormId, label) {
+    if (!matter) return;
+    injectFormEditorStyles();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'ffe-overlay';
+    overlay.innerHTML = `
+      <div class="ffe-topbar">
+        <strong style="font-size:var(--text-base)">${Utils.esc(label)}</strong>
+        <span class="ffe-status" id="ffe-status">Loading…</span>
+        <span style="flex:1"></span>
+        <button class="btn btn--ghost btn--sm" id="ffe-zoom-out" title="Zoom out">−</button>
+        <button class="btn btn--ghost btn--sm" id="ffe-zoom-in" title="Zoom in">+</button>
+        <button class="btn btn--secondary btn--sm hidden" id="ffe-writeback-btn"></button>
+        <button class="btn btn--primary btn--sm" id="ffe-close">Save &amp; Close</button>
+      </div>
+      <div class="ffe-scroll" id="ffe-scroll"><p style="text-align:center;color:var(--color-text-muted);padding:var(--space-10)">Loading form…</p></div>`;
+    document.body.appendChild(overlay);
+
+    const statusEl = () => overlay.querySelector('#ffe-status');
+    const setStatus = (t) => { const el = statusEl(); if (el) el.textContent = t; };
+
+    // Editor state
+    const pendingEdits = {};        // fieldName -> value, not yet POSTed
+    const wbCandidates = {};        // fieldName -> { value, writeback:{bucket,column} }
+    const sectionsByField = {};     // fieldName -> [section elements]
+    let fieldInfo = {};             // fieldName -> map row from GET fields
+    let anythingSaved = false;
+    let saveTimer = null;
+    let saving = false;
+    let scale = 1.35;
+    let pdfDoc = null;
+
+    const close = async (skipRegen = false) => {
+      if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+      while (saving) await new Promise(r => setTimeout(r, 150));
+      if (Object.keys(pendingEdits).length) await flushSaves();
+      overlay.remove();
+      if (anythingSaved && !skipRegen) {
+        // Re-burn the draft PDF so Open/Download reflects the edits.
+        await runFormFillerGenerate({ matter_id: matter.id, template_ids: [templateId] });
+      }
+    };
+    overlay.querySelector('#ffe-close').addEventListener('click', () => close());
+
+    async function apiFields(method, body) {
+      const session = await Auth.getSession();
+      const url = method === 'GET'
+        ? `/api/form-filler/fields?matter_id=${encodeURIComponent(matter.id)}&template_id=${encodeURIComponent(templateId)}`
+        : '/api/form-filler/fields';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: method === 'GET' ? undefined : JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+      return data;
+    }
+
+    async function flushSaves() {
+      if (saving) return;
+      const entries = Object.entries(pendingEdits);
+      if (!entries.length) return;
+      saving = true;
+      setStatus('Saving…');
+      const batch = entries.map(([field_name, value]) => ({ field_name, value }));
+      entries.forEach(([k]) => delete pendingEdits[k]);
+      try {
+        const result = await apiFields('POST', { matter_id: matter.id, template_id: templateId, edits: batch });
+        if (result.errors?.length) console.warn('[form-editor] save issues:', result.errors);
+        anythingSaved = true;
+        batch.forEach(e => (sectionsByField[e.field_name] || []).forEach(s => { s.classList.remove('ffe-dirty'); s.classList.add('ffe-saved'); }));
+        setStatus(Object.keys(pendingEdits).length ? 'Saving…' : 'All changes saved');
+      } catch (err) {
+        batch.forEach(e => { if (!(e.field_name in pendingEdits)) pendingEdits[e.field_name] = e.value; });
+        setStatus('Save failed — retrying on next edit');
+        Utils.toast(err.message || 'Failed to save edits.', 'error');
+      } finally {
+        saving = false;
+        if (Object.keys(pendingEdits).length) scheduleSave();
+      }
+    }
+
+    function scheduleSave() {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => { saveTimer = null; flushSaves(); }, 900);
+    }
+
+    function updateWritebackBtn() {
+      const btn = overlay.querySelector('#ffe-writeback-btn');
+      const n = Object.keys(wbCandidates).length;
+      btn.classList.toggle('hidden', n === 0);
+      btn.textContent = `Update client record (${n})`;
+    }
+
+    function recordEdit(fieldName, value, section) {
+      pendingEdits[fieldName] = value;
+      if (section) { section.classList.remove('ffe-saved'); section.classList.add('ffe-dirty'); }
+      const info = fieldInfo[fieldName];
+      if (info?.writeback) {
+        if (value !== '' && value !== (info.autofill_value ?? '')) {
+          wbCandidates[fieldName] = { value, writeback: info.writeback };
+        } else {
+          delete wbCandidates[fieldName];
+        }
+        updateWritebackBtn();
+      }
+      setStatus('Unsaved changes…');
+      scheduleSave();
+    }
+
+    overlay.querySelector('#ffe-writeback-btn').addEventListener('click', async () => {
+      const entries = Object.entries(wbCandidates);
+      if (!entries.length) return;
+      const WB_LABELS = { client: 'Client', petitioner: 'Petitioner', joint_sponsor: 'Joint Sponsor', immigration: 'Immigration' };
+      const lines = entries.map(([f, c]) =>
+        `• ${WB_LABELS[c.writeback.bucket] || c.writeback.bucket} — ${c.writeback.column.replace(/_/g, ' ')}: “${c.value}”`).join('\n');
+      const ok = await Utils.confirm(
+        `Save these values back to the record so every form uses them?\n\n${lines}`,
+        { confirmLabel: 'Update record' });
+      if (!ok) return;
+      try {
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+        const result = await apiFields('POST', {
+          matter_id: matter.id, template_id: templateId,
+          edits: entries.map(([field_name, c]) => ({ field_name, value: c.value, write_back: true })),
+        });
+        if (result.errors?.length) {
+          Utils.toast(`Some updates failed: ${result.errors[0]}`, 'error');
+          console.warn('[form-editor] write-back issues:', result.errors);
+        } else {
+          Utils.toast('Record updated — other forms will pick this up on regenerate.', 'success');
+        }
+        anythingSaved = true;
+        entries.forEach(([f]) => { delete wbCandidates[f]; delete pendingEdits[f]; });
+        updateWritebackBtn();
+      } catch (err) {
+        Utils.toast(err.message || 'Failed to update record.', 'error');
+      }
+    });
+
+    // Minimal link service — widget annotations don't navigate, but the
+    // AnnotationLayer constructor expects one for Link annotations.
+    const linkServiceStub = {
+      externalLinkEnabled: false, externalLinkTarget: 0, externalLinkRel: 'noopener',
+      getDestinationHash: () => '#', getAnchorUrl: () => '#',
+      isInPresentationMode: false, addLinkAttributes: () => {},
+      executeNamedAction: () => {}, executeSetOCGState: () => {}, goToDestination: async () => {},
+    };
+
+    async function renderAllPages() {
+      const scrollEl = overlay.querySelector('#ffe-scroll');
+      scrollEl.innerHTML = '';
+      for (let n = 1; n <= pdfDoc.numPages; n++) {
+        const page = await pdfDoc.getPage(n);
+        const viewport = page.getViewport({ scale });
+
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'ffe-page';
+        pageDiv.style.width  = `${viewport.width}px`;
+        pageDiv.style.height = `${viewport.height}px`;
+        pageDiv.style.setProperty('--scale-factor', String(scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.floor(viewport.width  * devicePixelRatio);
+        canvas.height = Math.floor(viewport.height * devicePixelRatio);
+        canvas.style.width  = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+        pageDiv.appendChild(canvas);
+        scrollEl.appendChild(pageDiv);
+
+        await page.render({
+          canvasContext: canvas.getContext('2d'),
+          viewport,
+          transform: devicePixelRatio !== 1 ? [devicePixelRatio, 0, 0, devicePixelRatio, 0, 0] : undefined,
+          // ENABLE_FORMS: widget appearances are drawn only by the HTML
+          // annotation layer — ENABLE would also paint them on the canvas,
+          // doubling every checkbox/value slightly offset from the widget.
+          annotationMode: window.pdfjsLib.AnnotationMode.ENABLE_FORMS,
+        }).promise;
+
+        const annotations = await page.getAnnotations({ intent: 'display' });
+        const layerDiv = document.createElement('div');
+        layerDiv.className = 'annotationLayer';
+        layerDiv.style.setProperty('--scale-factor', String(scale));
+        pageDiv.appendChild(layerDiv);
+
+        // pdf.js 3.x instance API (AnnotationLayer.render is no longer static)
+        const annotationLayer = new window.pdfjsLib.AnnotationLayer({
+          div: layerDiv,
+          accessibilityManager: null,
+          annotationCanvasMap: null,
+          l10n: null,
+          page,
+          viewport: viewport.clone({ dontFlip: true }),
+        });
+        await annotationLayer.render({
+          annotations,
+          linkService: linkServiceStub,
+          downloadManager: null,
+          annotationStorage: pdfDoc.annotationStorage,
+          renderForms: true,
+        });
+
+        // Wire edit capture: map DOM widgets back to AcroForm field names.
+        for (const ann of annotations) {
+          if (!ann.fieldName) continue;
+          const section = layerDiv.querySelector(`[data-annotation-id="${ann.id}"]`);
+          if (!section) continue;
+          (sectionsByField[ann.fieldName] ||= []).push(section);
+          const input = section.querySelector('input, select, textarea');
+          if (!input) continue;
+
+          if (input.matches('input[type=checkbox]')) {
+            input.addEventListener('change', () => recordEdit(ann.fieldName, input.checked ? 'Yes' : 'No', section));
+          } else if (input.matches('input[type=radio]')) {
+            input.addEventListener('change', () => {
+              if (input.checked) recordEdit(ann.fieldName, String(ann.buttonValue ?? input.value ?? ''), section);
+            });
+          } else if (input.matches('select')) {
+            input.addEventListener('change', () => recordEdit(ann.fieldName, input.value, section));
+          } else {
+            input.addEventListener('input', () => recordEdit(ann.fieldName, input.value, section));
+          }
+        }
+      }
+    }
+
+    overlay.querySelector('#ffe-zoom-in').addEventListener('click', async () => {
+      scale = Math.min(2.2, scale + 0.2); await renderAllPages();
+    });
+    overlay.querySelector('#ffe-zoom-out').addEventListener('click', async () => {
+      scale = Math.max(0.7, scale - 0.2); await renderAllPages();
+    });
+
+    try {
+      const session = await Auth.getSession();
+      const [pdfjs, fieldsData, pdfRes] = await Promise.all([
+        loadPdfJsLib(),
+        apiFields('GET'),
+        fetch(`/api/form-filler/download?id=${encodeURIComponent(generatedFormId)}`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        }),
+      ]);
+      if (!pdfRes.ok) throw new Error(((await pdfRes.json().catch(() => ({}))).error) || `Error ${pdfRes.status}`);
+      const bytes = await pdfRes.arrayBuffer();
+
+      fieldInfo = {};
+      for (const f of fieldsData.fields || []) fieldInfo[f.name] = f;
+
+      pdfDoc = await pdfjs.getDocument({ data: bytes }).promise;
+      await renderAllPages();
+      setStatus('All changes saved');
+    } catch (err) {
+      console.error('[form-editor]', err);
+      Utils.toast(err.message || 'Failed to open the form editor.', 'error');
+      await close(true);
     }
   }
 
@@ -2693,6 +3697,18 @@
   let _filesLoaded  = false;
   let _filesFolder  = 'all';
   let _filesAllDocs = [];
+  let _filesTrash    = [];        // soft-deleted docs (deleted_at NOT NULL) — the Trash view
+  let _filesFolders  = [];        // matter_folders rows (custom folders, may be empty)
+  let _filesCollapsed = new Set(); // custom-folder tree nodes collapsed in the sidebar (by full path)
+  let _filesPanelRoot = null;      // panel root el — lets the file list trigger a full panel re-render on subfolder nav
+  let _filesSidebarW  = (() => {   // folder-tree width, drag-resizable, persisted per browser
+    const w = parseInt(localStorage.getItem('files_sidebar_w'), 10);
+    return Number.isFinite(w) ? Math.min(520, Math.max(150, w)) : 215;
+  })();
+  let _filesHiddenBuiltins = new Set(); // firm_settings.hidden_builtin_folders — hidden while empty
+  let _filesSelected = new Set(); // multi-select: document ids
+  let _filesSort     = { key: 'created_at', dir: 'desc' };
+  let _filesQuery    = '';        // name filter box
 
   function wireFilesTab() {
     if (!matter) return;
@@ -2709,24 +3725,49 @@
     if (!root || !matter) return;
     root.innerHTML = `<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--space-4) 0">Loading files…</p>`;
 
-    const { data: docs, error } = await db
-      .from('documents')
-      .select('id, name, file_name, file_size, content_type, folder_path, doc_type, status, created_at, uploaded_by, deleted_at')
-      .eq('matter_id', matter.id)
-      .is('deleted_at', null)
-      .neq('status', 'pending')
-      .order('created_at', { ascending: false });
+    const [{ data: docs, error }, { data: folders }, { data: trashed }, { data: firmSettings }] = await Promise.all([
+      db.from('documents')
+        .select('id, name, file_name, file_size, content_type, folder_path, doc_type, status, created_at, uploaded_by, deleted_at, client_visible, source')
+        .eq('matter_id', matter.id)
+        .is('deleted_at', null)
+        .neq('status', 'pending')
+        .order('created_at', { ascending: false }),
+      db.from('matter_folders')
+        .select('path')
+        .eq('matter_id', matter.id)
+        .order('path'),
+      // Trash: soft-deleted docs. Staff RLS (docs_select via can_read('core'))
+      // has no deleted_at filter, so these are readable directly.
+      db.from('documents')
+        .select('id, name, file_name, file_size, content_type, folder_path, deleted_at')
+        .eq('matter_id', matter.id)
+        .not('deleted_at', 'is', null)
+        .neq('status', 'pending')
+        .order('deleted_at', { ascending: false }),
+      // Firm-level folder prefs (authenticated read RLS) — hidden built-ins.
+      db.from('firm_settings')
+        .select('hidden_builtin_folders')
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
     if (error) {
       root.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm)">Failed to load files.</p>`;
       return;
     }
 
-    _filesAllDocs = docs || [];
+    _filesAllDocs  = docs || [];
+    _filesTrash    = trashed || [];
+    _filesFolders  = (folders || []).map(r => r.path);
+    _filesHiddenBuiltins = new Set(
+      Array.isArray(firmSettings?.hidden_builtin_folders) ? firmSettings.hidden_builtin_folders : []
+    );
+    _filesSelected = new Set();
     renderFilesPanel(root);
   }
 
   function renderFilesPanel(root) {
+    _filesPanelRoot = root;
     const counts = {};
     for (const doc of _filesAllDocs) {
       const fp = doc.folder_path || 'other';
@@ -2734,7 +3775,19 @@
     }
     const total = _filesAllDocs.length;
 
-    const sidebarItems = MATTER_FOLDERS.map(f => {
+    // Built-ins render alphabetically by label, with "All Files" pinned to the top
+    // (it's a view-all, not a real folder).
+    const orderedBuiltins = [
+      ...MATTER_FOLDERS.filter(f => f.key === 'all'),
+      ...MATTER_FOLDERS.filter(f => f.key !== 'all').sort((a, b) => a.label.localeCompare(b.label)),
+    ];
+
+    // Built-ins on the firm's hidden list stay out of the sidebar while empty —
+    // they reappear as soon as a file lands in them (nothing is ever orphaned).
+    const sidebarItems = orderedBuiltins.filter(f => {
+      if (!_filesHiddenBuiltins.has(f.key)) return true;
+      return (counts[f.key] || 0) > 0 || _filesFolder === f.key;
+    }).map(f => {
       const cnt = f.key === 'all' ? total : (counts[f.key] || 0);
       const active = _filesFolder === f.key ? 'files-folder-btn--active' : '';
       return `<button class="files-folder-btn ${active}" data-folder="${Utils.esc(f.key)}">
@@ -2743,13 +3796,96 @@
       </button>`;
     }).join('');
 
+    // Custom folders: matter_folders rows (may be empty) merged with any paths
+    // still carried only by documents (e.g. legacy storage-sync pulls), rendered
+    // as a nested tree. Nesting is encoded in the slash-separated path; keys carry
+    // a "dyn:" prefix + the FULL path so they can't collide with the built-in slugs.
+    const knownKeys = new Set(MATTER_FOLDERS.map(f => f.key));
+
+    // Exact per-folder doc counts (custom folders only), then every folder path we
+    // know about — from docs and from matter_folders rows.
+    const exactCounts = {};
+    const allPaths = new Set();
+    for (const doc of _filesAllDocs) {
+      const fp = doc.folder_path || 'other';
+      if (knownKeys.has(fp)) continue;
+      exactCounts[fp] = (exactCounts[fp] || 0) + 1;
+      allPaths.add(fp);
+    }
+    for (const path of _filesFolders) {
+      if (!knownKeys.has(path.split('/')[0])) allPaths.add(path);
+    }
+    // Materialize ancestors so "Discovery/Inventories" always has a "Discovery"
+    // node above it, even when no row/doc sits directly in the parent.
+    for (const p of [...allPaths]) {
+      const segs = p.split('/');
+      for (let i = 1; i < segs.length; i++) allPaths.add(segs.slice(0, i).join('/'));
+    }
+    // Aggregate count = docs in the folder plus everything nested beneath it.
+    const nodeCount = (path) => {
+      let n = exactCounts[path] || 0;
+      const prefix = path + '/';
+      for (const fp in exactCounts) if (fp.startsWith(prefix)) n += exactCounts[fp];
+      return n;
+    };
+    // Parent → sorted children map ('' = roots).
+    const childrenOf = {};
+    for (const p of allPaths) {
+      const idx = p.lastIndexOf('/');
+      const parent = idx === -1 ? '' : p.slice(0, idx);
+      (childrenOf[parent] = childrenOf[parent] || []).push(p);
+    }
+    for (const k in childrenOf) childrenOf[k].sort((a, b) => a.localeCompare(b));
+
+    const folderIcon = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="${p}"/></svg>`;
+    const renderNode = (path, depth) => {
+      const name = path.split('/').pop();
+      const key = `dyn:${path}`;
+      const kids = childrenOf[path] || [];
+      const hasKids = kids.length > 0;
+      const collapsed = _filesCollapsed.has(path);
+      const active = _filesFolder === key ? 'files-folder-btn--active' : '';
+      const caret = hasKids
+        ? `<span class="ff-caret" data-caret="${Utils.esc(path)}" title="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '▸' : '▾'}</span>`
+        : `<span class="ff-caret"></span>`;
+      const canDelete = !hasKids && nodeCount(path) === 0;
+      const folderGlyph = folderIcon('M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z');
+      const row = `<button class="files-folder-btn ${active} ${depth > 0 ? 'is-sub' : ''}" data-folder="${Utils.esc(key)}" style="padding-left:${depth * 14 + 8}px">
+        <span class="ff-left">${caret}<span class="ff-icon">${folderGlyph}</span><span class="ff-label" title="${Utils.esc(name)}">${Utils.esc(name)}</span></span>
+        <span class="ff-right">
+          <span class="ff-act ff-act--add" data-act="addsub" data-path="${Utils.esc(path)}" title="Add subfolder">${folderIcon('M12 5v14M5 12h14')}</span>
+          <span class="ff-act" data-act="rename" data-path="${Utils.esc(path)}" title="Rename folder">${folderIcon('M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z')}</span>
+          ${canDelete ? `<span class="ff-act" data-act="delete" data-path="${Utils.esc(path)}" title="Delete folder">${folderIcon('M3 6h18M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2')}</span>` : ''}
+          <span class="folder-count">${nodeCount(path)}</span>
+        </span>
+      </button>`;
+      const childHtml = (hasKids && !collapsed) ? kids.map(k => renderNode(k, depth + 1)).join('') : '';
+      return row + childHtml;
+    };
+    const dynamicItems = (childrenOf[''] || []).map(p => renderNode(p, 0)).join('');
+    const dynamicSection = dynamicItems
+      ? `<div class="files-sidebar-title" style="margin-top:var(--space-3)">Custom Folders</div>${dynamicItems}`
+      : '';
+    const newFolderBtn = `<button class="btn btn--ghost btn--sm" id="files-new-folder-btn" style="margin-top:var(--space-3);width:100%">+ New Folder</button>`;
+
+    // Trash pseudo-folder — soft-deleted docs, restorable until the 30-day purge.
+    const trashActive = _filesFolder === 'trash' ? 'files-folder-btn--active' : '';
+    const trashBtn = `<button class="files-folder-btn ${trashActive}" data-folder="trash" style="margin-top:var(--space-3)">
+        <span>🗑 Trash</span>
+        <span class="folder-count">${_filesTrash.length}</span>
+      </button>`;
+
     root.innerHTML = `
       <div class="detail-section" style="padding:var(--space-5)">
       <div class="files-layout">
-        <nav class="files-sidebar">
+        <nav class="files-sidebar" style="width:${_filesSidebarW}px">
           <div class="files-sidebar-title">Folders</div>
           ${sidebarItems}
+          ${dynamicSection}
+          ${newFolderBtn}
+          ${trashBtn}
         </nav>
+        <div class="files-resizer" id="files-sidebar-resizer" title="Drag to resize the folder list"></div>
         <div class="files-main">
           <div class="files-drop-zone" id="files-drop-zone">
             <div class="files-upload-row">
@@ -2761,6 +3897,15 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                 Upload Folder
               </button>
+              <button class="btn btn--ghost btn--sm" id="files-new-from-template-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                New from Template
+              </button>
+              ${storageSyncEnabled ? `
+              <button class="btn btn--ghost btn--sm" id="files-import-storage-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+                Import from Storage
+              </button>` : ''}
             </div>
             <p>or drag &amp; drop files here</p>
           </div>
@@ -2774,21 +3919,486 @@
 
     renderFilesList();
     wireFilesActions(root);
+
+    // Sidebar resizer — pointer-capture drag, clamped, width persisted
+    const resizer = root.querySelector('#files-sidebar-resizer');
+    const sidebarEl = root.querySelector('.files-sidebar');
+    if (resizer && sidebarEl) {
+      resizer.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        resizer.setPointerCapture(e.pointerId);
+        resizer.classList.add('dragging');
+        const startX = e.clientX;
+        const startW = sidebarEl.getBoundingClientRect().width;
+        const onMove = (ev) => {
+          _filesSidebarW = Math.min(520, Math.max(150, Math.round(startW + ev.clientX - startX)));
+          sidebarEl.style.width = `${_filesSidebarW}px`;
+        };
+        const onUp = () => {
+          resizer.classList.remove('dragging');
+          resizer.removeEventListener('pointermove', onMove);
+          resizer.removeEventListener('pointerup', onUp);
+          try { localStorage.setItem('files_sidebar_w', String(_filesSidebarW)); } catch { /* private mode */ }
+        };
+        resizer.addEventListener('pointermove', onMove);
+        resizer.addEventListener('pointerup', onUp);
+      });
+    }
+  }
+
+  // Self-contained folder picker for the Move action. Resolves to the chosen
+  // folder_path, or null if cancelled. Targets = fixed matter folders + any synced
+  // folder paths already present on this matter's docs (minus the current folder).
+  function pickFolder(currentFolder) {
+    return new Promise((resolve) => {
+      // Same hidden-while-empty rule as the sidebar: don't offer hidden
+      // built-ins as move targets unless they already hold files.
+      const docCounts = {};
+      for (const d of _filesAllDocs) {
+        const fp = d.folder_path || 'other';
+        docCounts[fp] = (docCounts[fp] || 0) + 1;
+      }
+      const fixed = MATTER_FOLDERS.filter(f => f.key !== 'all'
+        && (!_filesHiddenBuiltins.has(f.key) || (docCounts[f.key] || 0) > 0));
+      const fixedKeys = new Set(MATTER_FOLDERS.map(f => f.key));
+      const synced = [...new Set([
+        ..._filesAllDocs.map(d => d.folder_path),
+        ..._filesFolders,
+      ].filter(fp => fp && !fixedKeys.has(fp)))].sort();
+      const opt = (val, label) => val === currentFolder ? '' : `<option value="${Utils.esc(val)}">${Utils.esc(label)}</option>`;
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:var(--space-4)';
+      overlay.innerHTML = `
+        <div class="card" style="max-width:420px;width:100%" role="dialog" aria-modal="true">
+          <h3 style="font-size:var(--text-base);font-weight:600;margin-bottom:var(--space-3)">Move file to folder</h3>
+          <select id="move-folder-select" style="width:100%;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius);font-size:var(--text-sm);font-family:inherit;box-sizing:border-box;margin-bottom:var(--space-4)">
+            <optgroup label="Folders">${fixed.map(f => opt(f.key, f.label)).join('')}</optgroup>
+            ${synced.length ? `<optgroup label="Synced folders">${synced.map(fp => opt(fp, fp)).join('')}</optgroup>` : ''}
+          </select>
+          <div style="display:flex;gap:var(--space-2);justify-content:flex-end">
+            <button class="btn btn--ghost" data-move-cancel>Cancel</button>
+            <button class="btn btn--primary" data-move-confirm>Move</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = (val) => { overlay.remove(); resolve(val); };
+      overlay.querySelector('[data-move-cancel]').addEventListener('click', () => close(null));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+      overlay.querySelector('[data-move-confirm]').addEventListener('click', () => {
+        close(overlay.querySelector('#move-folder-select').value || null);
+      });
+    });
+  }
+
+  // "New from template" — pure copy: pick a firm .docx template, drop a fresh
+  // copy into the current folder as a normal document, then open it in Word
+  // (if office_edit is on) for manual completion. No merge-fill, no wizard.
+  async function openNewFromTemplateModal() {
+    if (_filesFolder === 'trash') {
+      Utils.toast('Choose a folder first — new documents can’t go in the trash.', 'error');
+      return;
+    }
+    const targetFolder = _filesFolder === 'all' ? 'other'
+      : _filesFolder.startsWith('dyn:') ? _filesFolder.slice(4)
+      : _filesFolder;
+    const folderLabel = MATTER_FOLDERS.find(f => f.key === targetFolder)?.label || targetFolder;
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:var(--space-4)';
+    overlay.innerHTML = `
+      <div class="card" style="max-width:520px;width:100%" role="dialog" aria-modal="true">
+        <h3 style="font-size:var(--text-base);font-weight:600;margin-bottom:2px">New document from template</h3>
+        <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3)">A copy will be created in <strong>${Utils.esc(folderLabel)}</strong>${officeEditEnabled ? ' and opened in Word' : ''}.</p>
+        <div id="tmpl-body" style="max-height:56vh;overflow:auto">
+          <p style="font-size:var(--text-sm);color:var(--color-text-muted)">Loading templates…</p>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:var(--space-4)">
+          <button class="btn btn--ghost" data-close>Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    const body = overlay.querySelector('#tmpl-body');
+    const { data: templates, error } = await db
+      .from('draft_templates')
+      .select('id, name, doc_category, case_types')
+      .eq('active', true)
+      .not('template_docx_r2_key', 'is', null)
+      .order('sort_order');
+
+    if (error) {
+      body.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm)">Failed to load templates.</p>`;
+      return;
+    }
+    if (!templates || !templates.length) {
+      body.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted)">No Word templates are available yet. Upload .docx templates under <strong>Settings → Doc Templates</strong>, then they’ll appear here.</p>`;
+      return;
+    }
+
+    body.innerHTML = templates.map(t => `
+      <button class="btn btn--ghost tmpl-pick" data-template-id="${Utils.esc(t.id)}" data-template-name="${Utils.esc(t.name)}"
+        style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;padding:var(--space-2) var(--space-3);margin-bottom:6px">
+        <span style="font-weight:500">${Utils.esc(t.name)}</span>
+        <span style="font-size:var(--text-xs);color:var(--color-text-muted)">${Utils.esc(t.doc_category || 'other')}${Array.isArray(t.case_types) && t.case_types.length ? ' · ' + Utils.esc(t.case_types.join(', ')) : ''}</span>
+      </button>`).join('');
+
+    body.querySelectorAll('.tmpl-pick').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        body.querySelectorAll('.tmpl-pick').forEach(b => b.disabled = true);
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/new-document-from-template', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({
+              matter_id:   matter.id,
+              template_id: btn.dataset.templateId,
+              folder_path: targetFolder,
+              doc_type:    FOLDER_DOC_TYPE[targetFolder] || 'other',
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+          close();
+          await loadFiles();
+          if (officeEditEnabled) {
+            Utils.toast(`Created “${data.file_name}” — opening in Word…`, 'success');
+            await openDocInWord(data.document_id);
+          } else {
+            Utils.toast(`Created “${data.file_name}” in ${folderLabel}.`, 'success');
+          }
+        } catch (err) {
+          Utils.toast(err.message || 'Could not create document.', 'error');
+          body.querySelectorAll('.tmpl-pick').forEach(b => b.disabled = false);
+        }
+      });
+    });
+  }
+
+  // Open a Files document in desktop Word via the office_edit WebDAV bridge.
+  async function openDocInWord(docId) {
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch('/api/office-edit/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ document_id: docId }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+      const { word_url } = await res.json();
+      window.location.href = word_url;
+    } catch (err) {
+      Utils.toast(err.message || 'Could not open in Word.', 'error');
+    }
+  }
+
+  // Version history modal for one document: list every saved version (newest
+  // first) with download + non-destructive restore. Versions are written at the
+  // Word-save (WebDAV PUT) and storage-pull points; restore adds a new version.
+  async function openVersionsModal(docId, fileName) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:var(--space-4)';
+    overlay.innerHTML = `
+      <div class="card" style="max-width:560px;width:100%" role="dialog" aria-modal="true">
+        <h3 style="font-size:var(--text-base);font-weight:600;margin-bottom:2px">Version history</h3>
+        <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3)">${Utils.esc(fileName)}</p>
+        <div id="versions-body" style="max-height:60vh;overflow:auto">
+          <p style="font-size:var(--text-sm);color:var(--color-text-muted)">Loading…</p>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:var(--space-4)">
+          <button class="btn btn--ghost" data-close>Close</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    const SOURCE_LABELS = { portal: 'Portal', dropbox: 'Dropbox', google_drive: 'Google Drive', onedrive: 'OneDrive', idrive: 'iDrive' };
+    const formatSize = (bytes) => !bytes ? '' : bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
+    const userName = (id) => { const u = users.find(x => x.id === id); return u ? `${u.first_name}${u.last_name ? ' ' + u.last_name : ''}` : ''; };
+
+    async function renderBody() {
+      const body = overlay.querySelector('#versions-body');
+      if (!body) return;
+      const { data: versions, error } = await db
+        .from('document_versions')
+        .select('id, version_no, file_size, source, created_at, created_by')
+        .eq('document_id', docId)
+        .order('version_no', { ascending: false });
+
+      if (error) {
+        body.innerHTML = `<p style="color:var(--color-danger);font-size:var(--text-sm)">Failed to load history.</p>`;
+        return;
+      }
+      if (!versions || !versions.length) {
+        body.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-text-muted)">No saved versions yet. Versions are recorded when a file is edited in Word or synced from storage.</p>`;
+        return;
+      }
+
+      const currentNo = versions[0].version_no;
+      body.innerHTML = `
+        <table class="data-table" style="width:100%">
+          <thead><tr><th>Version</th><th>Saved</th><th>By</th><th>Size</th><th></th></tr></thead>
+          <tbody>${versions.map(v => {
+            const date = new Date(v.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+            const who = userName(v.created_by);
+            const src = SOURCE_LABELS[v.source] || v.source || '';
+            const isCurrent = v.version_no === currentNo;
+            return `<tr>
+              <td style="font-weight:500">v${v.version_no}${isCurrent ? ' <span style="font-size:var(--text-xs);color:var(--color-success,#16a34a)">· current</span>' : ''}<div style="font-size:var(--text-xs);color:var(--color-text-muted)">${Utils.esc(src)}</div></td>
+              <td style="font-size:var(--text-sm);color:var(--color-text-muted)">${date}</td>
+              <td style="font-size:var(--text-sm);color:var(--color-text-muted)">${Utils.esc(who)}</td>
+              <td style="font-size:var(--text-sm);color:var(--color-text-muted)">${formatSize(v.file_size)}</td>
+              <td style="text-align:right;white-space:nowrap">
+                <button class="btn btn--ghost btn--sm ver-dl" data-version-id="${Utils.esc(v.id)}">Download</button>
+                ${isCurrent ? '' : `<button class="btn btn--ghost btn--sm ver-restore" data-version-id="${Utils.esc(v.id)}" data-version-no="${v.version_no}">Restore</button>`}
+              </td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>`;
+
+      body.querySelectorAll('.ver-dl').forEach(b => b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/get-version-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ version_id: b.dataset.versionId }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+          const { download_url, file_name } = await res.json();
+          const a = document.createElement('a');
+          a.href = download_url; a.download = file_name || fileName; a.target = '_blank';
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        } catch (err) {
+          Utils.toast(err.message || 'Download failed.', 'error');
+        } finally {
+          b.disabled = false;
+        }
+      }));
+
+      body.querySelectorAll('.ver-restore').forEach(b => b.addEventListener('click', async () => {
+        if (!await Utils.confirm(`Restore v${b.dataset.versionNo} as the current version? This adds a new version at the top — nothing is lost.`, { confirmLabel: 'Restore' })) return;
+        b.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/restore-version', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ version_id: b.dataset.versionId }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+          Utils.toast(`Restored v${b.dataset.versionNo} as the current version.`, 'success');
+          await loadFiles();
+          await renderBody();
+        } catch (err) {
+          Utils.toast(err.message || 'Restore failed.', 'error');
+          b.disabled = false;
+        }
+      }));
+    }
+
+    await renderBody();
+  }
+
+  // Trash view: soft-deleted docs with Restore / Delete-forever, plus Empty
+  // trash. Kept separate from renderFilesList — no folders, sort, bulk-select,
+  // publish/push/move or drag here; just recovery and permanent deletion.
+  function renderTrashList(container) {
+    const iconFor = (ct) => {
+      if (!ct) return '📄';
+      if (ct === 'application/pdf') return '🗒';
+      if (ct.includes('word')) return '📝';
+      if (ct.includes('sheet') || ct.includes('excel')) return '📊';
+      if (ct.startsWith('image/')) return '🖼';
+      return '📄';
+    };
+    const formatSize = (bytes) => {
+      if (!bytes) return '';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`;
+      return `${(bytes / 1048576).toFixed(1)} MB`;
+    };
+
+    const q = _filesQuery.trim().toLowerCase();
+    const visible = q
+      ? _filesTrash.filter(d => (d.name || '').toLowerCase().includes(q) || (d.file_name || '').toLowerCase().includes(q))
+      : _filesTrash;
+
+    const rows = visible.map(doc => {
+      const delMs   = doc.deleted_at ? new Date(doc.deleted_at).getTime() : Date.now();
+      const delDate = new Date(delMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const daysLeft = Math.max(0, 30 - Math.floor((Date.now() - delMs) / 86400000));
+      const tfpRaw = doc.folder_path || 'other';
+      const tBuiltIn = MATTER_FOLDERS.find(f => f.key === tfpRaw)?.label;
+      const folderLeaf = tBuiltIn || tfpRaw.split('/').pop();
+      const folderFull = tBuiltIn || tfpRaw.replace(/\//g, ' / ');
+      const dispName = doc.name || doc.file_name;
+      const purgeNote = daysLeft <= 7
+        ? ` <span style="color:var(--color-danger)" title="Permanently deleted in ${daysLeft} day(s)">· ${daysLeft}d left</span>` : '';
+      return `<tr data-doc-id="${Utils.esc(doc.id)}">
+        <td style="font-weight:500"><div class="files-name-wrap"><span style="flex-shrink:0">${iconFor(doc.content_type)}</span><span class="fname" title="${Utils.esc(dispName)}">${Utils.esc(dispName)}</span></div></td>
+        <td class="files-td-ellip" title="${Utils.esc(folderFull)}" style="color:var(--color-text-muted);font-size:var(--text-sm)">${Utils.esc(folderLeaf)}</td>
+        <td style="color:var(--color-text-muted);font-size:var(--text-sm);white-space:nowrap">${formatSize(doc.file_size)}</td>
+        <td style="color:var(--color-text-muted);font-size:var(--text-sm);white-space:nowrap">${delDate}${purgeNote}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn btn--ghost btn--sm files-restore-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.name || doc.file_name)}" title="Restore to its folder">↩ Restore</button>
+          <button class="btn btn--ghost btn--sm files-purge-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.name || doc.file_name)}" title="Delete permanently" style="color:var(--color-danger)">Delete forever</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <input type="search" id="files-filter-input" placeholder="Filter trash by name…" value="${Utils.esc(_filesQuery)}"
+        style="width:100%;box-sizing:border-box;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius);font-size:var(--text-sm);font-family:inherit;margin-bottom:var(--space-2)">
+      <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-2)">
+        <span style="font-size:var(--text-sm);color:var(--color-text-muted)">Deleted files are removed permanently after 30 days.</span>
+        ${_filesTrash.length ? `<button class="btn btn--ghost btn--sm" id="files-empty-trash" style="color:var(--color-danger);margin-left:auto">Empty trash</button>` : ''}
+      </div>
+      <div class="files-list-card">
+        ${visible.length === 0
+          ? `<div class="files-empty">${q ? 'No files match your filter.' : 'Trash is empty.'}</div>`
+          : `<table class="data-table">
+          <thead><tr>
+            <th>File</th><th style="width:18%">Folder</th><th style="width:84px">Size</th><th style="width:150px">Deleted</th><th style="width:220px"></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`}
+      </div>`;
+
+    const filterInput = container.querySelector('#files-filter-input');
+    filterInput?.addEventListener('input', () => {
+      _filesQuery = filterInput.value;
+      renderFilesList();
+      const fresh = document.getElementById('files-filter-input');
+      if (fresh) { fresh.focus(); fresh.setSelectionRange(fresh.value.length, fresh.value.length); }
+    });
+
+    container.querySelectorAll('.files-restore-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/restore-document', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ document_id: btn.dataset.docId }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+          Utils.toast(`Restored "${btn.dataset.fileName}".`, 'success');
+          await loadFiles();
+        } catch (err) {
+          Utils.toast(err.message || 'Restore failed.', 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.files-purge-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!await Utils.confirm(`Permanently delete "${btn.dataset.fileName}"? This removes the file and all its versions for good — it cannot be undone.`, { confirmLabel: 'Delete Forever', danger: true })) return;
+        btn.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/purge-trash', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ matter_id: matter.id, document_ids: [btn.dataset.docId] }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+          Utils.toast('Permanently deleted.', 'success');
+          await loadFiles();
+        } catch (err) {
+          Utils.toast(err.message || 'Delete failed.', 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelector('#files-empty-trash')?.addEventListener('click', async () => {
+      if (!await Utils.confirm(`Empty the trash? All ${_filesTrash.length} file(s) and their versions will be permanently deleted — this cannot be undone.`, { confirmLabel: 'Empty Trash', danger: true })) return;
+      const btn = document.getElementById('files-empty-trash');
+      if (btn) btn.disabled = true;
+      try {
+        const session = await Auth.getSession();
+        const res = await fetch('/api/purge-trash', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ matter_id: matter.id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+        Utils.toast(`Trash emptied — ${data.purged || 0} file(s) removed.`, 'success');
+        await loadFiles();
+      } catch (err) {
+        Utils.toast(err.message || 'Empty trash failed.', 'error');
+        if (btn) btn.disabled = false;
+      }
+    });
   }
 
   function renderFilesList() {
     const container = document.getElementById('files-list-container');
     if (!container) return;
 
-    const visible = _filesFolder === 'all'
-      ? _filesAllDocs
-      : _filesAllDocs.filter(d => (d.folder_path || 'other') === _filesFolder);
+    if (_filesFolder === 'trash') { renderTrashList(container); return; }
 
-    if (visible.length === 0) {
-      const folderLabel = MATTER_FOLDERS.find(f => f.key === _filesFolder)?.label || _filesFolder;
-      container.innerHTML = `<div class="files-empty">No files in ${Utils.esc(folderLabel)} yet.</div>`;
-      return;
+    const isDyn  = _filesFolder.startsWith('dyn:');
+    const dynTop = isDyn ? _filesFolder.slice(4) : null;
+
+    // Immediate child subfolders of the selected custom folder. File-explorer
+    // semantics: selecting a folder shows the subfolder itself (as a navigable
+    // row) plus this folder's OWN files — not a flattened dump of everything
+    // nested inside the children.
+    let childFolders = [];
+    if (isDyn) {
+      const prefix = dynTop + '/';
+      const seen = new Set();
+      const addChild = (fp) => {
+        if (fp && fp.startsWith(prefix)) seen.add(prefix + fp.slice(prefix.length).split('/')[0]);
+      };
+      _filesAllDocs.forEach(d => addChild(d.folder_path || ''));
+      (_filesFolders || []).forEach(addChild);
+      childFolders = [...seen].sort((a, b) => a.localeCompare(b));
     }
+    // Aggregate count for a folder path = its own docs plus everything nested.
+    const aggCount = (p) => _filesAllDocs.filter(d => {
+      const fp = d.folder_path || '';
+      return fp === p || fp.startsWith(p + '/');
+    }).length;
+
+    const inFolder = _filesFolder === 'all'
+      ? _filesAllDocs
+      : isDyn
+        ? _filesAllDocs.filter(d => (d.folder_path || '') === dynTop)   // OWN files only
+        : _filesAllDocs.filter(d => (d.folder_path || 'other') === _filesFolder);
+
+    const q = _filesQuery.trim().toLowerCase();
+    const filtered = q
+      ? inFolder.filter(d => (d.name || '').toLowerCase().includes(q) || (d.file_name || '').toLowerCase().includes(q))
+      : inFolder;
+
+    const sortDir = _filesSort.dir === 'asc' ? 1 : -1;
+    const sortVal = (d) => {
+      switch (_filesSort.key) {
+        case 'name':   return (d.name || d.file_name || '').toLowerCase();
+        case 'folder': return d.folder_path || 'other';
+        case 'size':   return d.file_size || 0;
+        default:       return d.created_at || '';
+      }
+    };
+    const visible = [...filtered].sort((a, b) => {
+      const av = sortVal(a), bv = sortVal(b);
+      return av < bv ? -sortDir : av > bv ? sortDir : 0;
+    });
+
+    const folderLabel = MATTER_FOLDERS.find(f => f.key === _filesFolder)?.label
+      || (_filesFolder.startsWith('dyn:') ? _filesFolder.slice(4).replace(/\//g, ' / ') : _filesFolder);
 
     const iconFor = (ct) => {
       if (!ct) return '📄';
@@ -2808,40 +4418,268 @@
 
     const rows = visible.map(doc => {
       const date = new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      const folder = MATTER_FOLDERS.find(f => f.key === (doc.folder_path || 'other'))?.label || 'Other';
+      const fpRaw = doc.folder_path || 'other';
+      const builtIn = MATTER_FOLDERS.find(f => f.key === fpRaw)?.label;
+      const folderLeaf = builtIn || fpRaw.split('/').pop();          // last segment only — full path in tooltip
+      const folderFull = builtIn || fpRaw.replace(/\//g, ' / ');
       const size = formatSize(doc.file_size);
-      return `<tr>
+      const dispName = doc.name || doc.file_name;
+      const staffOnly = doc.client_visible === false
+        ? `<span title="Not visible to the client until published" style="flex-shrink:0;font-size:var(--text-xs);background:var(--color-warning,#f59e0b);color:#fff;border-radius:999px;padding:1px 8px">Staff only</span>`
+        : '';
+      const isWordDoc = /\.(docx|docm)$/i.test(doc.file_name || '');
+      return `<tr draggable="true" data-doc-id="${Utils.esc(doc.id)}">
+        <td style="width:28px"><input type="checkbox" class="files-row-check" data-doc-id="${Utils.esc(doc.id)}" ${_filesSelected.has(doc.id) ? 'checked' : ''}></td>
         <td style="font-weight:500">
-          <span style="margin-right:var(--space-2)">${iconFor(doc.content_type)}</span>${Utils.esc(doc.name || doc.file_name)}
+          <div class="files-name-wrap"><span style="flex-shrink:0">${iconFor(doc.content_type)}</span><span class="fname" title="${Utils.esc(dispName)}">${Utils.esc(dispName)}</span>${staffOnly}</div>
         </td>
-        ${_filesFolder === 'all' ? `<td style="color:var(--color-text-muted);font-size:var(--text-sm)">${Utils.esc(folder)}</td>` : ''}
-        <td style="color:var(--color-text-muted);font-size:var(--text-sm)">${size}</td>
-        <td style="color:var(--color-text-muted);font-size:var(--text-sm)">${date}</td>
+        ${_filesFolder === 'all' ? `<td class="files-td-ellip" title="${Utils.esc(folderFull)}" style="color:var(--color-text-muted);font-size:var(--text-sm)">${Utils.esc(folderLeaf)}</td>` : ''}
+        <td style="color:var(--color-text-muted);font-size:var(--text-sm);white-space:nowrap">${size}</td>
+        <td style="color:var(--color-text-muted);font-size:var(--text-sm);white-space:nowrap">${date}</td>
         <td style="text-align:right;white-space:nowrap">
-          <button class="btn btn--ghost btn--sm files-download-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.file_name)}" title="Download">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          ${doc.client_visible === false ? `
+          <button class="btn btn--ghost btn--sm files-publish-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.name || doc.file_name)}" title="Publish to client">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>` : ''}
+          ${officeEditEnabled && isWordDoc ? `
+          <button class="btn btn--ghost btn--sm files-word-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.file_name)}" title="Edit in Word">
+            <img src="/assets/icons/word.svg" alt="" style="width:14px;height:14px;vertical-align:middle">
+          </button>` : ''}
+          <button class="btn btn--ghost btn--sm files-history-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.name || doc.file_name)}" title="Version history">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
           </button>
-          <button class="btn btn--ghost btn--sm files-delete-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.name || doc.file_name)}" title="Delete" style="color:var(--color-danger)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          <button class="btn btn--ghost btn--sm files-download-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.file_name)}" title="Download">
+            <img src="/assets/icons/download.svg" alt="" style="width:14px;height:14px;vertical-align:middle">
+          </button>
+          <button class="btn btn--ghost btn--sm files-rename-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.file_name)}" data-name="${Utils.esc(doc.name || doc.file_name)}" title="Rename">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          </button>
+          ${storageSyncEnabled ? `
+          <button class="btn btn--ghost btn--sm files-push-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.name || doc.file_name)}" title="Push to storage">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+          </button>` : ''}
+          <button class="btn btn--ghost btn--sm files-move-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.name || doc.file_name)}" data-folder="${Utils.esc(doc.folder_path || 'other')}" title="Move to another folder">
+            <img src="/assets/icons/move-folder.svg" alt="" style="width:14px;height:14px;vertical-align:middle">
+          </button>
+          <button class="btn btn--ghost btn--sm files-delete-btn" data-doc-id="${Utils.esc(doc.id)}" data-file-name="${Utils.esc(doc.name || doc.file_name)}" title="Delete">
+            <img src="/assets/icons/delete.svg" alt="" style="width:14px;height:14px;vertical-align:middle">
           </button>
         </td>
       </tr>`;
     }).join('');
 
     const showFolderCol = _filesFolder === 'all';
+    const sortArrow = (key) => _filesSort.key === key ? (_filesSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    const sortTh = (key, label, w) => `<th class="files-sort-th" data-sort="${key}" style="cursor:pointer;user-select:none${w ? `;width:${w}` : ''}">${label}${sortArrow(key)}</th>`;
+    // Fixed table layout: reserve just enough for the action buttons actually enabled
+    const actionsW = 200 + (storageSyncEnabled ? 30 : 0) + (officeEditEnabled ? 30 : 0);
+    const allChecked = visible.length > 0 && visible.every(d => _filesSelected.has(d.id));
+
+    const bulkBar = _filesSelected.size ? `
+      <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;padding:var(--space-2) var(--space-3);background:var(--color-bg-subtle,#f3f4f6);border:1px solid var(--color-border);border-radius:var(--radius);margin-bottom:var(--space-2)">
+        <span style="font-size:var(--text-sm);font-weight:600">${_filesSelected.size} selected</span>
+        <button class="btn btn--ghost btn--sm" id="files-bulk-move">Move</button>
+        ${storageSyncEnabled ? '<button class="btn btn--ghost btn--sm" id="files-bulk-push">Push to storage</button>' : ''}
+        <button class="btn btn--ghost btn--sm" id="files-bulk-publish">Publish to client</button>
+        <button class="btn btn--ghost btn--sm" id="files-bulk-delete" style="color:var(--color-danger)">Delete</button>
+        <button class="btn btn--ghost btn--sm" id="files-bulk-clear" style="margin-left:auto">Clear selection</button>
+      </div>` : '';
+
+    const subfolderRows = childFolders.map(path => {
+      const nm = path.split('/').pop();
+      return `<button class="files-subfolder-row" data-subfolder="dyn:${Utils.esc(path)}" title="Open ${Utils.esc(nm)}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span class="sf-name">${Utils.esc(nm)}</span>
+        <span class="folder-count">${aggCount(path)}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;flex-shrink:0;opacity:.5"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>`;
+    }).join('');
+    const subfoldersBlock = subfolderRows ? `<div class="files-subfolders">${subfolderRows}</div>` : '';
+
     container.innerHTML = `
+      <input type="search" id="files-filter-input" placeholder="Filter files by name…" value="${Utils.esc(_filesQuery)}"
+        style="width:100%;box-sizing:border-box;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius);font-size:var(--text-sm);font-family:inherit;margin-bottom:var(--space-2)">
+      ${bulkBar}
       <div class="files-list-card">
-        <table class="data-table">
+        ${subfoldersBlock}
+        ${visible.length === 0
+          ? `<div class="files-empty">${q ? 'No files match your filter.'
+              : childFolders.length ? 'No files directly in this folder — open a subfolder above.'
+              : `No files in ${Utils.esc(folderLabel)} yet.`}</div>`
+          : `<table class="data-table">
           <thead><tr>
-            <th>File</th>
-            ${showFolderCol ? '<th>Folder</th>' : ''}
-            <th>Size</th>
-            <th>Date</th>
-            <th></th>
+            <th style="width:28px"><input type="checkbox" id="files-check-all" ${allChecked ? 'checked' : ''}></th>
+            ${sortTh('name', 'File')}
+            ${showFolderCol ? sortTh('folder', 'Folder', '18%') : ''}
+            ${sortTh('size', 'Size', '84px')}
+            ${sortTh('date', 'Date', '120px')}
+            <th style="width:${actionsW}px"></th>
           </tr></thead>
           <tbody>${rows}</tbody>
-        </table>
+        </table>`}
       </div>`;
+
+    // Subfolder rows — navigate into the child folder, expanding its ancestors
+    // in the sidebar so the selection stays visible in the tree.
+    container.querySelectorAll('.files-subfolder-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const key = row.dataset.subfolder;
+        _filesFolder = key;
+        const segs = key.slice(4).split('/');
+        for (let i = 1; i < segs.length; i++) _filesCollapsed.delete(segs.slice(0, i).join('/'));
+        if (_filesPanelRoot) renderFilesPanel(_filesPanelRoot); else renderFilesList();
+      });
+    });
+
+    // ── Toolbar wiring (filter / selection / sort / drag) ─────────────────────
+    const filterInput = container.querySelector('#files-filter-input');
+    filterInput?.addEventListener('input', () => {
+      _filesQuery = filterInput.value;
+      renderFilesList();
+      const fresh = document.getElementById('files-filter-input');
+      if (fresh) { fresh.focus(); fresh.setSelectionRange(fresh.value.length, fresh.value.length); }
+    });
+
+    container.querySelector('#files-check-all')?.addEventListener('change', (e) => {
+      for (const d of visible) e.target.checked ? _filesSelected.add(d.id) : _filesSelected.delete(d.id);
+      renderFilesList();
+    });
+    container.querySelectorAll('.files-row-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        cb.checked ? _filesSelected.add(cb.dataset.docId) : _filesSelected.delete(cb.dataset.docId);
+        renderFilesList();
+      });
+    });
+
+    container.querySelectorAll('.files-sort-th').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.sort;
+        _filesSort = _filesSort.key === key
+          ? { key, dir: _filesSort.dir === 'asc' ? 'desc' : 'asc' }
+          : { key, dir: key === 'date' || key === 'size' ? 'desc' : 'asc' };
+        renderFilesList();
+      });
+    });
+
+    // Drag rows onto sidebar folders to move. Dragging a selected row carries
+    // the whole selection.
+    container.querySelectorAll('tbody tr[data-doc-id]').forEach(tr => {
+      tr.addEventListener('dragstart', (e) => {
+        const id = tr.dataset.docId;
+        const ids = _filesSelected.has(id) ? [..._filesSelected] : [id];
+        e.dataTransfer.setData('text/plain', JSON.stringify(ids));
+        e.dataTransfer.effectAllowed = 'move';
+      });
+    });
+
+    // ── Bulk actions ──────────────────────────────────────────────────────────
+    container.querySelector('#files-bulk-clear')?.addEventListener('click', () => {
+      _filesSelected = new Set();
+      renderFilesList();
+    });
+    container.querySelector('#files-bulk-move')?.addEventListener('click', async () => {
+      const target = await pickFolder('');
+      if (target) await moveDocs([..._filesSelected], target);
+    });
+    container.querySelector('#files-bulk-push')?.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      await pushDocs([..._filesSelected]);
+      e.target.disabled = false;
+    });
+    container.querySelector('#files-bulk-publish')?.addEventListener('click', async () => {
+      if (!await Utils.confirm(`Publish ${_filesSelected.size} file(s) to the client? They will see them in their portal.`, { confirmLabel: 'Publish' })) return;
+      const { error } = await db.from('documents')
+        .update({ client_visible: true })
+        .in('id', [..._filesSelected]);
+      if (error) { Utils.toast(error.message, 'error'); return; }
+      Utils.toast('Published to client.', 'success');
+      await loadFiles();
+    });
+    container.querySelector('#files-bulk-delete')?.addEventListener('click', async () => {
+      if (!await Utils.confirm(`Move ${_filesSelected.size} file(s) to the trash? You can restore them for 30 days.`, { confirmLabel: 'Delete Files', danger: true })) return;
+      const session = await Auth.getSession();
+      let failed = 0;
+      for (const id of [..._filesSelected]) {
+        const res = await fetch('/api/delete-document', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ document_id: id }),
+        }).catch(() => null);
+        if (!res || !res.ok) failed++;
+      }
+      Utils.toast(failed ? `Moved to trash with ${failed} failure(s).` : 'Moved to trash.', failed ? 'error' : 'success');
+      await loadFiles();
+    });
+
+    container.querySelectorAll('.files-rename-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const current = btn.dataset.name;
+        const value = await Utils.prompt('Rename file', { defaultValue: current, confirmLabel: 'Rename' });
+        if (!value || value === current) return;
+        // Keep the real extension — Word/preview/type detection all key off it.
+        const ext = (btn.dataset.fileName.match(/\.[^.]+$/) || [''])[0];
+        const newFileName = ext && !value.toLowerCase().endsWith(ext.toLowerCase()) ? value + ext : value;
+        const { error } = await db.from('documents')
+          .update({ name: value, file_name: newFileName })
+          .eq('id', btn.dataset.docId);
+        if (error) { Utils.toast(error.message, 'error'); return; }
+        Utils.toast('File renamed.', 'success');
+        await loadFiles();
+      });
+    });
+
+    container.querySelectorAll('.files-push-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        await pushDocs([btn.dataset.docId]);
+        btn.disabled = false;
+      });
+    });
+
+    container.querySelectorAll('.files-publish-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!await Utils.confirm(`Publish "${btn.dataset.fileName}" to the client? They will see it in their portal.`, { confirmLabel: 'Publish' })) return;
+        btn.disabled = true;
+        try {
+          const { error } = await db.from('documents')
+            .update({ client_visible: true })
+            .eq('id', btn.dataset.docId);
+          if (error) throw new Error(error.message);
+          Utils.toast('Published to client.', 'success');
+          await loadFiles();
+        } catch (err) {
+          Utils.toast(err.message || 'Publish failed.', 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.files-word-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/office-edit/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ document_id: btn.dataset.docId }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+          const { word_url } = await res.json();
+          Utils.toast('Opening in Word — saving there sends the file back to the portal.', 'success');
+          // Trigger the ms-word: URI — opens the doc in native Word via WebDAV
+          window.location.href = word_url;
+        } catch (err) {
+          Utils.toast(err.message || 'Could not open in Word.', 'error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.files-history-btn').forEach(btn => {
+      btn.addEventListener('click', () => openVersionsModal(btn.dataset.docId, btn.dataset.fileName));
+    });
 
     container.querySelectorAll('.files-download-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -2870,9 +4708,32 @@
       });
     });
 
+    container.querySelectorAll('.files-move-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const current = btn.dataset.folder || 'other';
+        const target = await pickFolder(current);
+        if (!target || target === current) return;
+        btn.disabled = true;
+        try {
+          const session = await Auth.getSession();
+          const res = await fetch('/api/move-document', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ document_id: btn.dataset.docId, folder_path: target }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+          Utils.toast('File moved.', 'success');
+          await loadFiles();
+        } catch (err) {
+          Utils.toast(err.message || 'Move failed.', 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
     container.querySelectorAll('.files-delete-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!await Utils.confirm(`Delete "${btn.dataset.fileName}"? This cannot be undone.`, { confirmLabel: 'Delete File', danger: true })) return;
+        if (!await Utils.confirm(`Move "${btn.dataset.fileName}" to the trash? You can restore it for 30 days.`, { confirmLabel: 'Delete File', danger: true })) return;
         btn.disabled = true;
         try {
           const session = await Auth.getSession();
@@ -2882,12 +4743,10 @@
             body: JSON.stringify({ document_id: btn.dataset.docId }),
           });
           if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
-          Utils.toast('File deleted.', 'success');
-          _filesAllDocs = _filesAllDocs.filter(d => d.id !== btn.dataset.docId);
-          renderFilesList();
-          // refresh sidebar counts
-          const root = document.getElementById('files-panel-root');
-          if (root) renderFilesPanel(root);
+          Utils.toast('Moved to trash.', 'success');
+          // Full reload so the file leaves its folder AND lands in the Trash
+          // count in one pass.
+          await loadFiles();
         } catch (err) {
           Utils.toast(err.message || 'Delete failed.', 'error');
           btn.disabled = false;
@@ -2896,15 +4755,129 @@
     });
   }
 
+  // Move a set of documents to a folder (metadata-only; R2 keys unchanged).
+  async function moveDocs(ids, folderPath) {
+    const session = await Auth.getSession();
+    let failed = 0;
+    for (const id of ids) {
+      const res = await fetch('/api/move-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ document_id: id, folder_path: folderPath }),
+      }).catch(() => null);
+      if (!res || !res.ok) failed++;
+    }
+    Utils.toast(failed ? `Moved with ${failed} failure(s).` : `Moved ${ids.length} file(s).`, failed ? 'error' : 'success');
+    await loadFiles();
+  }
+
+  // Push documents to the firm's configured storage provider(s) on demand.
+  async function pushDocs(ids) {
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch('/api/storage-push-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ document_ids: ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+      const failures = (data.results || []).filter(r => !r.ok);
+      if (failures.length) {
+        Utils.toast(`Pushed ${data.pushed}/${data.total}. Failed: ${failures.map(f => f.file_name || f.document_id).join(', ')}`, 'error', 7000);
+      } else {
+        Utils.toast(`Pushed ${data.pushed} file(s) to storage.`, 'success');
+      }
+    } catch (err) {
+      Utils.toast(err.message || 'Push failed.', 'error');
+    }
+  }
+
+  // Folder create/rename/delete via the Worker (rename cascades across docs).
+  async function folderAction(payload, okMsg) {
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch('/api/matter-folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ matter_id: matter.id, ...payload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+      Utils.toast(okMsg, 'success');
+      await loadFiles();
+    } catch (err) {
+      Utils.toast(err.message || 'Folder action failed.', 'error');
+    }
+  }
+
   function wireFilesActions(root) {
-    // Folder nav
+    // Folder nav — plus rename/delete affordances and drag-drop move targets
     root.querySelectorAll('.files-folder-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        // Caret toggles the subtree open/closed — pure UI state, re-render the panel.
+        const caret = e.target.closest('.ff-caret');
+        if (caret && caret.dataset.caret) {
+          e.stopPropagation();
+          const p = caret.dataset.caret;
+          if (_filesCollapsed.has(p)) _filesCollapsed.delete(p); else _filesCollapsed.add(p);
+          renderFilesPanel(root);
+          return;
+        }
+        const act = e.target.closest('.ff-act');
+        if (act) {
+          e.stopPropagation();
+          const path = act.dataset.path;              // full path of the folder
+          const leaf = path.split('/').pop();
+          const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+          if (act.dataset.act === 'addsub') {
+            Utils.prompt(`New subfolder inside "${leaf}"`, { confirmLabel: 'Create', placeholder: 'e.g. Motions' }).then(value => {
+              const v = (value || '').trim();
+              if (v) folderAction({ action: 'create', path: `${path}/${v}` }, 'Subfolder created.');
+            });
+          } else if (act.dataset.act === 'rename') {
+            Utils.prompt(`Rename folder "${leaf}"`, { defaultValue: leaf, confirmLabel: 'Rename' }).then(value => {
+              const v = (value || '').trim();
+              if (v && v !== leaf) {
+                const newPath = parent ? `${parent}/${v}` : v;
+                folderAction({ action: 'rename', old_path: path, new_path: newPath }, 'Folder renamed.');
+              }
+            });
+          } else {
+            Utils.confirm(`Delete folder "${leaf}"? It must be empty.`, { confirmLabel: 'Delete Folder', danger: true }).then(ok => {
+              if (ok) folderAction({ action: 'delete', path }, 'Folder deleted.');
+            });
+          }
+          return;
+        }
         _filesFolder = btn.dataset.folder;
         root.querySelectorAll('.files-folder-btn').forEach(b => b.classList.remove('files-folder-btn--active'));
         btn.classList.add('files-folder-btn--active');
         renderFilesList();
       });
+
+      // Drop target: move dragged file(s) into this folder ('all' and 'trash'
+      // are not real folders, so they can't receive dropped files).
+      const targetKey = btn.dataset.folder;
+      if (targetKey !== 'all' && targetKey !== 'trash') {
+        btn.addEventListener('dragover', (e) => { e.preventDefault(); btn.classList.add('drag-over'); });
+        btn.addEventListener('dragleave', () => btn.classList.remove('drag-over'));
+        btn.addEventListener('drop', (e) => {
+          e.preventDefault();
+          btn.classList.remove('drag-over');
+          let ids;
+          try { ids = JSON.parse(e.dataTransfer.getData('text/plain')); } catch { return; }
+          if (!Array.isArray(ids) || !ids.length) return;
+          const folderPath = targetKey.startsWith('dyn:') ? targetKey.slice(4) : targetKey;
+          moveDocs(ids, folderPath);
+        });
+      }
+    });
+
+    // New folder
+    root.querySelector('#files-new-folder-btn')?.addEventListener('click', async () => {
+      const value = await Utils.prompt('New folder name (use "parent/child" to nest)', { confirmLabel: 'Create', placeholder: 'e.g. Discovery' });
+      if (value) await folderAction({ action: 'create', path: value }, 'Folder created.');
     });
 
     // Upload buttons → hidden file inputs
@@ -2912,6 +4885,8 @@
     const folderInput = document.getElementById('files-input-folder');
     document.getElementById('files-upload-btn')?.addEventListener('click', () => multiInput?.click());
     document.getElementById('files-folder-upload-btn')?.addEventListener('click', () => folderInput?.click());
+    document.getElementById('files-new-from-template-btn')?.addEventListener('click', openNewFromTemplateModal);
+    document.getElementById('files-import-storage-btn')?.addEventListener('click', openStorageImportModal);
 
     multiInput?.addEventListener('change', e => {
       if (e.target.files?.length) handleFileUpload(Array.from(e.target.files));
@@ -2940,7 +4915,11 @@
     const queue  = document.getElementById('files-upload-queue');
     if (!queue || !matter) return;
 
-    const targetFolder = _filesFolder === 'all' ? 'other' : _filesFolder;
+    // A selected "Synced Folders" entry carries the dyn: sidebar-key prefix —
+    // store the real folder name, never the key.
+    const targetFolder = _filesFolder === 'all' ? 'other'
+      : _filesFolder.startsWith('dyn:') ? _filesFolder.slice(4)
+      : _filesFolder;
     const session = await Auth.getSession();
 
     // Build initial queue UI
@@ -3047,6 +5026,203 @@
       const q = document.getElementById('files-upload-queue');
       if (q) q.innerHTML = '';
     }, 4000);
+  }
+
+  // ── Import from Storage modal (on-demand per-client Dropbox/Drive backfill) ──
+
+  const SI_PROVIDER_LABELS = {
+    dropbox: 'Dropbox', google_drive: 'Google Drive', onedrive: 'OneDrive', idrive: 'iDrive',
+  };
+  const SI_VIA_LABELS = {
+    alias: 'linked folder', exact: 'exact match', fuzzy: 'fuzzy match',
+  };
+
+  function siMatterLabel(m) {
+    const type = Utils.titleCase(m.case_type || 'Matter');
+    return m.case_number ? `${type} — ${m.case_number}` : type;
+  }
+
+  async function openStorageImportModal() {
+    const btn = document.getElementById('files-import-storage-btn');
+    if (btn) Utils.setLoading(btn, true);
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch(`/api/storage-sync-import-client?client_id=${encodeURIComponent(clientId)}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+
+      _siMatters    = data.matters || [];
+      _siCandidates = data.candidates || [];
+
+      if (!_siCandidates.length) {
+        Utils.toast('No matching Dropbox/Drive folder found for this client.', 'info');
+        return;
+      }
+      renderStorageImportForm();
+    } catch (err) {
+      Utils.toast(err.message || 'Failed to check storage folders.', 'error');
+    } finally {
+      if (btn) Utils.setLoading(btn, false);
+    }
+  }
+
+  function renderStorageImportForm() {
+    const overlay = document.getElementById('storage-import-modal');
+    if (!overlay) return;
+
+    const candidateItems = _siCandidates.map((c, i) => `
+      <label style="display:flex;align-items:flex-start;gap:var(--space-2);padding:var(--space-2) 0;cursor:pointer">
+        <input type="radio" name="si-candidate" value="${i}" ${i === 0 ? 'checked' : ''} style="margin-top:3px">
+        <span>${Utils.esc(SI_PROVIDER_LABELS[c.provider] || c.provider)} — <strong>${Utils.esc(c.folder_name)}</strong>
+          <span class="text-muted text-sm">(${SI_VIA_LABELS[c.via] || c.via})</span></span>
+      </label>`).join('');
+
+    const matterOpts = _siMatters.map(m =>
+      `<option value="${Utils.esc(m.id)}">${Utils.esc(siMatterLabel(m))}</option>`).join('');
+
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:520px">
+        <div class="modal-header">
+          <h2 class="modal-title">Import from Storage</h2>
+          <button class="modal-close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="field" style="margin-bottom:var(--space-4)">
+            <label>Matching folder${_siCandidates.length > 1 ? 's' : ''}</label>
+            ${candidateItems}
+          </div>
+          <div class="field">
+            <label>Import into matter <span class="required">*</span></label>
+            <select id="si-matter-select">
+              <option value="">Select a matter…</option>
+              ${matterOpts}
+            </select>
+          </div>
+          <div id="si-err" class="form-error hidden" style="margin-top:var(--space-3)"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn--secondary btn--sm" id="si-cancel">Cancel</button>
+          <button type="button" class="btn btn--primary btn--sm" id="si-confirm">Import</button>
+        </div>
+      </div>`;
+    overlay.classList.remove('hidden');
+
+    overlay.querySelector('.modal-close').addEventListener('click', () => closeStorageImportModal());
+    overlay.querySelector('#si-cancel').addEventListener('click', () => closeStorageImportModal());
+    overlay.addEventListener('click', e => { if (e.target === overlay && !_siRunning) closeStorageImportModal(); });
+
+    overlay.querySelector('#si-confirm').addEventListener('click', () => {
+      const errEl     = overlay.querySelector('#si-err');
+      const candIdx   = overlay.querySelector('input[name="si-candidate"]:checked')?.value;
+      const matterId  = overlay.querySelector('#si-matter-select').value;
+      if (candIdx == null) { errEl.textContent = 'Please select a folder.'; errEl.classList.remove('hidden'); return; }
+      if (!matterId)       { errEl.textContent = 'Please select a matter.'; errEl.classList.remove('hidden'); return; }
+      errEl.classList.add('hidden');
+      startStorageImportJob(_siCandidates[Number(candIdx)], matterId);
+    });
+  }
+
+  async function startStorageImportJob(candidate, matterId) {
+    const overlay     = document.getElementById('storage-import-modal');
+    const errEl       = overlay.querySelector('#si-err');
+    const confirmBtn  = overlay.querySelector('#si-confirm');
+    _siRunning = true;
+    Utils.setLoading(confirmBtn, true);
+    try {
+      const result = await callFunction('/api/storage-sync-import-client', {
+        client_id:    clientId,
+        matter_id:    matterId,
+        provider:     candidate.provider,
+        folder_name:  candidate.folder_name,
+        folder_lower: candidate.folder_lower,
+      });
+      _siRunning = result.status === 'running';
+      renderStorageImportProgress(result);
+      if (_siRunning) scheduleStorageImportPoll(result.job_id);
+    } catch (err) {
+      _siRunning = false;
+      errEl.textContent = err.message || 'Import failed.';
+      errEl.classList.remove('hidden');
+      Utils.setLoading(confirmBtn, false);
+    }
+  }
+
+  function scheduleStorageImportPoll(jobId) {
+    clearTimeout(_siPollTimer);
+    _siPollTimer = setTimeout(async () => {
+      try {
+        const result = await callFunction('/api/storage-sync-import-client', { job_id: jobId });
+        _siRunning = result.status === 'running';
+        renderStorageImportProgress(result);
+        if (_siRunning) scheduleStorageImportPoll(jobId);
+      } catch (err) {
+        _siRunning = false;
+        renderStorageImportError(err.message || 'Import failed while continuing — please retry from the Files tab.');
+      }
+    }, 1500);
+  }
+
+  function renderStorageImportProgress(result) {
+    const overlay = document.getElementById('storage-import-modal');
+    const modalEl = overlay?.querySelector('.modal');
+    if (!modalEl) return; // modal was closed client-side; job keeps running server-side regardless
+    const running = result.status === 'running';
+
+    modalEl.innerHTML = `
+      <div class="modal-header">
+        <h2 class="modal-title">Import from Storage</h2>
+        ${running ? '' : '<button class="modal-close">×</button>'}
+      </div>
+      <div class="modal-body">
+        <p style="font-size:var(--text-sm);margin-bottom:var(--space-3)">
+          ${running ? 'Importing files…' : 'Import complete.'}
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-3);text-align:center;margin-bottom:var(--space-3)">
+          <div><div style="font-size:var(--text-lg);font-weight:600">${result.imported_count}</div><div class="text-muted text-xs">Imported</div></div>
+          <div><div style="font-size:var(--text-lg);font-weight:600">${result.skipped_count}</div><div class="text-muted text-xs">Skipped</div></div>
+          <div><div style="font-size:var(--text-lg);font-weight:600">${result.error_count}</div><div class="text-muted text-xs">Errors</div></div>
+        </div>
+        ${running ? `<p class="text-muted text-sm">${result.remaining} file${result.remaining === 1 ? '' : 's'} remaining…</p>` : ''}
+      </div>
+      <div class="modal-footer">
+        ${running
+          ? '<button type="button" class="btn btn--secondary btn--sm" disabled>Importing…</button>'
+          : '<button type="button" class="btn btn--primary btn--sm" id="si-done">Done</button>'}
+      </div>`;
+
+    if (!running) {
+      modalEl.querySelector('#si-done').addEventListener('click', () => closeStorageImportModal({ refresh: true }));
+      modalEl.querySelector('.modal-close')?.addEventListener('click', () => closeStorageImportModal({ refresh: true }));
+    }
+  }
+
+  function renderStorageImportError(message) {
+    const overlay = document.getElementById('storage-import-modal');
+    const modalEl = overlay?.querySelector('.modal');
+    if (!modalEl) return;
+    modalEl.innerHTML = `
+      <div class="modal-header">
+        <h2 class="modal-title">Import from Storage</h2>
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-error">${Utils.esc(message)}</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn--secondary btn--sm" id="si-close-err">Close</button>
+      </div>`;
+    modalEl.querySelector('.modal-close').addEventListener('click', () => closeStorageImportModal({ refresh: true }));
+    modalEl.querySelector('#si-close-err').addEventListener('click', () => closeStorageImportModal({ refresh: true }));
+  }
+
+  function closeStorageImportModal(opts = {}) {
+    clearTimeout(_siPollTimer);
+    _siPollTimer = null;
+    _siRunning   = false;
+    closeModal(document.getElementById('storage-import-modal'));
+    if (opts.refresh) loadFiles();
   }
 
   // ── Stage tracker ────────────────────────────────────────────────────────────
@@ -3366,8 +5542,9 @@
         if (entityType === 'clients') {
           client.ssn_last4 = result.last4;
           renderClientInfo();
-        } else if (entityType === 'opposing_parties' && oppParty) {
-          oppParty.ssn_last4 = result.last4;
+        } else if (entityType === 'opposing_parties') {
+          if (oppParty?.id === entityId) oppParty.ssn_last4 = result.last4;
+          if (jointSponsor?.id === entityId) jointSponsor.ssn_last4 = result.last4;
           renderOpposing();
         } else if (entityType === 'children') {
           const ch = children.find(c => c.id === entityId);
@@ -3418,10 +5595,10 @@
   const IMM_CASE_PANELS = {
     family_based: {
       title: 'Family-Based Petition',
+      // Petitioner identity moved to the structured Petitioner record on the
+      // Case tab (opposing_parties, migration 1602) — form-fillable, unlike
+      // the old free-text case_data keys.
       fields: [
-        { key: 'petitioner_name',         label: 'Petitioner Name' },
-        { key: 'petitioner_relationship', label: 'Petitioner Relationship' },
-        { key: 'petitioner_a_number',     label: 'Petitioner A-Number' },
         { key: 'visa_category',           label: 'Visa Category (IR-1, F-2A…)' },
         { key: 'priority_date',           label: 'Priority Date',     fmt: 'date' },
         { key: 'i130_receipt',            label: 'I-130 Receipt #' },
@@ -3513,10 +5690,10 @@
     const hasFamilyLaw   = practiceAreas.some(p => p.key === 'family_law');
     const hasImmigration = practiceAreas.some(p => p.key === 'immigration');
 
-    // Family-law party sections inside the Case tab
-    ['opposing-container', 'children-container'].forEach(id => {
-      document.getElementById(id)?.classList.toggle('hidden', !hasFamilyLaw);
-    });
+    // Party sections inside the Case tab: opposing party for family-law firms,
+    // relabeled "Petitioner" for immigration matters; children stay family-law.
+    document.getElementById('opposing-container')?.classList.toggle('hidden', !(hasFamilyLaw || isImmMatter()));
+    document.getElementById('children-container')?.classList.toggle('hidden', !hasFamilyLaw);
 
     // Financial → Overview sub-tab is family-law only; others land on Trust
     const ovBtn   = document.querySelector('.subtab[data-group="fin"][data-subtab="fin-overview"]');
@@ -3568,6 +5745,7 @@
     }
     setGrid('grid-imm-general', [
       field('A-Number',                  d.a_number),
+      field('USCIS Online Account #',    d.uscis_account_number),
       field('Immigration Status',        d.immigration_status),
       field('Country of Birth',          d.country_of_birth),
       field('Country of Citizenship',    d.country_of_citizenship),
@@ -3644,6 +5822,7 @@
     document.getElementById('fields-imm-general').innerHTML = `
       <div class="detail-grid" style="margin-bottom:var(--space-4)">
         <div class="field"><label>A-Number</label><input type="text" name="a_number" value="${Utils.esc(d.a_number||'')}"></div>
+        <div class="field"><label>USCIS Online Account #</label><input type="text" name="uscis_account_number" value="${Utils.esc(d.uscis_account_number||'')}"></div>
         <div class="field"><label>Immigration Status</label>
           <select name="immigration_status">
             ${['','Undocumented','LPR','US Citizen','DACA Recipient','TPS','Asylum Pending','Asylum Granted','H-1B','L-1','O-1','F-1','B-1/B-2','J-1','TN','Detained','Other'].map(s =>
@@ -3715,6 +5894,7 @@
         const toBool = v => v === 'true' ? true : v === 'false' ? false : null;
         const payload = {
           a_number:                    fd.get('a_number')?.trim()               || null,
+          uscis_account_number:        fd.get('uscis_account_number')?.trim()   || null,
           immigration_status:          fd.get('immigration_status')?.trim()     || null,
           country_of_birth:            fd.get('country_of_birth')?.trim()       || null,
           country_of_citizenship:      fd.get('country_of_citizenship')?.trim() || null,
@@ -3931,6 +6111,7 @@
   let _trustCanWrite     = false;
   let _trustMilestones   = [];
   let _trustJurisdiction = 'TX';
+  let _trustRetainers    = [];
   let _pendingReversal   = null; // { milestoneId, invoiceId, amount, desc }
 
   function wireTrustTab() {
@@ -3948,6 +6129,31 @@
     document.getElementById('trust-invoice-close')?.addEventListener('click', closeInvoiceModal);
     document.getElementById('trust-invoice-cancel')?.addEventListener('click', closeInvoiceModal);
     document.getElementById('trust-invoice-form')?.addEventListener('submit', saveInvoice);
+
+    document.getElementById('btn-trust-request-retainer')?.addEventListener('click', openRetainerModal);
+    document.getElementById('retainer-close')?.addEventListener('click', closeRetainerModal);
+    document.getElementById('retainer-cancel')?.addEventListener('click', closeRetainerModal);
+    document.getElementById('retainer-form')?.addEventListener('submit', submitRetainer);
+
+    document.getElementById('btn-trust-add-expense')?.addEventListener('click', openExpenseModal);
+    document.getElementById('expense-close')?.addEventListener('click', closeExpenseModal);
+    document.getElementById('expense-cancel')?.addEventListener('click', closeExpenseModal);
+    document.getElementById('expense-form')?.addEventListener('submit', submitExpense);
+
+    // Copy a pending retainer's payment link. Single GLOBAL delegate: the router
+    // re-runs this page script (and wireTrustTab) on every navigation, so a plain
+    // document.addEventListener would stack a new listener each visit. Remove the
+    // prior one first so exactly one (fresh) handler is ever attached.
+    if (document.__trustCopyClick) document.removeEventListener('click', document.__trustCopyClick);
+    document.__trustCopyClick = async e => {
+      const copyBtn = e.target.closest('[data-retainer-copy]');
+      if (!copyBtn) return;
+      try {
+        await navigator.clipboard.writeText(copyBtn.dataset.retainerCopy);
+        Utils.toast('Payment link copied', 'success');
+      } catch { Utils.toast('Could not copy link', 'error'); }
+    };
+    document.addEventListener('click', document.__trustCopyClick);
 
     document.getElementById('ti-type')?.addEventListener('change', e => {
       showFlatFeeUI(e.target.value);
@@ -3969,8 +6175,12 @@
       }
     });
 
-    // Delegate mark-sent / void / earn-milestone / reverse-milestone / remove-milestone clicks
-    document.addEventListener('click', async e => {
+    // Delegate mark-sent / void / earn-milestone / reverse-milestone / remove-milestone
+    // clicks. Single GLOBAL delegate (see note above): stacking these was the cause
+    // of the "Void fires, then you must cancel the dialog ~5 times" bug — each client
+    // card visit had added another document listener, so one Void click fired N times.
+    if (document.__trustActionClick) document.removeEventListener('click', document.__trustActionClick);
+    document.__trustActionClick = async e => {
       const ms   = e.target.closest('[data-inv-mark-sent]');
       const vo   = e.target.closest('[data-inv-void]');
       const earn = e.target.closest('[data-milestone-earn]');
@@ -3981,7 +6191,8 @@
       if (earn) await markMilestoneEarned(earn.dataset.milestoneEarn, earn.dataset.milestoneInvoice);
       if (rev)  openReverseModal(rev.dataset.milestoneReverse, rev.dataset.milestoneInvoice, parseFloat(rev.dataset.milestoneAmount), rev.dataset.milestoneDesc);
       if (rmMs) { rmMs.closest('.ti-milestone-row')?.remove(); updateMilestoneTotals(); }
-    });
+    };
+    document.addEventListener('click', document.__trustActionClick);
 
     document.getElementById('tmr-close')?.addEventListener('click',   closeReverseModal);
     document.getElementById('tmr-cancel')?.addEventListener('click',  closeReverseModal);
@@ -4018,7 +6229,7 @@
     try {
       _trustProfile = _trustProfile || await Auth.getProfile();
 
-      const [balRes, entriesRes, invoicesRes, accountsRes, milestonesRes] = await Promise.all([
+      const [balRes, entriesRes, invoicesRes, accountsRes, milestonesRes, retainersRes] = await Promise.all([
         db.from('matter_trust_balances')
           .select('balance, entry_count, last_transaction_at')
           .eq('matter_id', matter.id)
@@ -4029,7 +6240,7 @@
           .order('created_at', { ascending: false })
           .limit(20),
         db.from('invoices')
-          .select('id, invoice_number, amount, status, description, sent_at, invoice_type, flat_fee_route')
+          .select('id, invoice_number, amount, status, description, sent_at, invoice_type, flat_fee_route, invoice_line_items(id, description, hours, rate, amount, item_type, sort_order)')
           .eq('matter_id', matter.id)
           .order('created_at', { ascending: false })
           .limit(10),
@@ -4041,11 +6252,17 @@
           .select('id, invoice_id, description, amount, sort_order, earned_at, earned_by, trust_entry_id, reversed_at, reversed_by, reversal_reason, reversal_entry_id')
           .eq('matter_id', matter.id)
           .order('sort_order'),
+        db.from('retainer_requests')
+          .select('id, created_at, amount, description, status, payment_link, paid_at')
+          .eq('matter_id', matter.id)
+          .order('created_at', { ascending: false })
+          .limit(10),
       ]);
 
-      _trustAccounts = accountsRes.data || [];
-      _trustInvoices = invoicesRes.data || [];
-      _trustCanWrite = ['Owner', 'Attorney', 'Partner Attorney'].includes(_trustProfile?.role?.name || '');
+      _trustAccounts  = accountsRes.data || [];
+      _trustInvoices  = invoicesRes.data || [];
+      _trustRetainers = retainersRes.data || [];
+      _trustCanWrite  = ['Owner', 'Attorney', 'Partner Attorney'].includes(_trustProfile?.role?.name || '');
 
       if (_trustAccounts.length > 0 && _trustAccounts[0].jurisdiction) {
         _trustJurisdiction = _trustAccounts[0].jurisdiction;
@@ -4062,6 +6279,11 @@
       if (btn && hasAcct) btn.style.display = '';
       const invBtn = document.getElementById('btn-trust-new-invoice');
       if (invBtn && hasAcct && _trustCanWrite) invBtn.style.display = '';
+      const retBtn = document.getElementById('btn-trust-request-retainer');
+      if (retBtn && hasAcct && _trustCanWrite) retBtn.style.display = '';
+      // Expenses aren't trust entries — any billing-write staff can log one, no trust account needed
+      const expBtn = document.getElementById('btn-trust-add-expense');
+      if (expBtn) expBtn.style.display = '';
 
       renderTrustTab(container, balRes.data, entriesRes.data || [], _trustInvoices, milestonesById);
     } catch (err) {
@@ -4089,7 +6311,7 @@
       <div style="background:var(--color-bg-subtle,#f8f9fa);border-radius:8px;padding:var(--space-4) var(--space-5);margin-bottom:var(--space-5);display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
         <div>
           <div class="text-muted text-sm" style="margin-bottom:2px">Current Balance</div>
-          <div style="font-size:1.4rem;font-weight:700;color:${balColor}">${fmtC(bal)}</div>
+          <div style="font-family:var(--font-serif);font-size:1.5rem;font-weight:600;letter-spacing:-.01em;color:${balColor}">${fmtC(bal)}</div>
         </div>
         ${balance?.entry_count ? `<div><div class="text-muted text-sm" style="margin-bottom:2px">Transactions</div><div style="font-weight:600">${balance.entry_count}</div></div>` : ''}
         ${balance?.last_transaction_at ? `<div><div class="text-muted text-sm" style="margin-bottom:2px">Last Activity</div><div style="font-size:var(--font-size-sm);font-weight:500">${Utils.formatDate(balance.last_transaction_at)}</div></div>` : ''}
@@ -4200,6 +6422,20 @@
           ? `<span style="display:inline-block;font-size:10px;padding:1px 5px;border-radius:4px;background:var(--color-bg-subtle,#e8f4fd);color:var(--color-info,#0ea5e9);margin-left:4px">${TYPE_BADGE[inv.invoice_type] || inv.invoice_type}</span>`
           : '';
 
+        // Line-item detail (time entries / expenses / flat-fee lines) so viewing
+        // an invoice here shows what it's made of, not just the total.
+        const lineItems = (inv.invoice_line_items || []).slice()
+          .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        const liHtml = lineItems.length ? `
+          <div style="margin-top:var(--space-2);padding:var(--space-2) var(--space-3);background:var(--color-bg-subtle,#f8f9fa);border-radius:6px">
+            ${lineItems.map(li => `
+              <div style="display:flex;align-items:center;gap:var(--space-2);padding:2px 0;font-size:var(--font-size-sm)">
+                <span style="flex:1;min-width:0;color:var(--color-text)">${Utils.esc(li.description)}</span>
+                <span class="text-muted" style="font-size:11px;white-space:nowrap">${li.item_type === 'time' && li.hours != null ? `${li.hours}h${li.rate != null ? ' · ' + fmtC(li.rate) + '/h' : ''}` : ''}</span>
+                <span style="font-weight:600;min-width:64px;text-align:right;white-space:nowrap">${Number(li.amount) === 0 ? '<span class="text-muted" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">No charge</span>' : fmtC(li.amount)}</span>
+              </div>`).join('')}
+          </div>` : '';
+
         return `<div style="padding:var(--space-3) 0;border-bottom:1px solid var(--color-border)">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)">
             <div style="min-width:0;flex:1">
@@ -4212,18 +6448,210 @@
               <span style="font-weight:600;font-size:var(--font-size-sm);min-width:68px;text-align:right">${fmtC(inv.amount)}</span>
             </div>
           </div>
+          ${liHtml}
           ${msHtml}
         </div>`;
       }).join('');
     }
 
+    // Retainer requests (trust-routed payment links)
+    const RET_STATUS = {
+      pending:   { label: 'Awaiting payment', color: 'var(--color-warning,#b45309)' },
+      paid:      { label: 'Paid',             color: 'var(--color-success)' },
+      cancelled: { label: 'Cancelled',        color: 'var(--color-text-muted)' },
+      expired:   { label: 'Expired',          color: 'var(--color-text-muted)' },
+    };
+    let retainerHtml = '';
+    if (_trustRetainers.length > 0) {
+      const rows = _trustRetainers.map(r => {
+        const st   = RET_STATUS[r.status] || { label: r.status, color: 'var(--color-text)' };
+        const link = r.status === 'pending' && r.payment_link
+          ? `<button class="btn btn--sm btn--ghost" data-retainer-copy="${Utils.esc(r.payment_link)}" style="font-size:11px;padding:3px 8px">Copy link</button>`
+          : '';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3) 0;border-bottom:1px solid var(--color-border)">
+          <div style="min-width:0;flex:1">
+            <span style="font-weight:600;font-size:var(--font-size-sm)">${r.amount == null ? 'Client enters amount' : fmtC(r.amount)}</span>
+            <span class="text-muted text-sm" style="margin-left:var(--space-2)">${Utils.esc(Utils.truncate(r.description || 'Retainer', 40))}</span>
+            <div class="text-muted" style="font-size:11px;margin-top:1px">Requested ${Utils.formatDate(r.created_at)}${r.paid_at ? ` · Paid ${Utils.formatDate(r.paid_at)}` : ''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--space-2);flex-shrink:0">
+            ${link}
+            <span style="font-size:var(--font-size-sm);font-weight:500;color:${st.color}">${st.label}</span>
+          </div>
+        </div>`;
+      }).join('');
+      retainerHtml = `
+        <div style="margin-bottom:var(--space-5)">
+          <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:var(--space-3);color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.05em">Retainer Requests</div>
+          ${rows}
+        </div>`;
+    }
+
     container.innerHTML = `
       ${balHtml}
+      ${retainerHtml}
       ${ledgerHtml}
       <div>
         <div style="font-weight:600;font-size:var(--font-size-sm);margin-bottom:var(--space-3);color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.05em">Invoices</div>
         ${invHtml}
       </div>`;
+  }
+
+  function openExpenseModal() {
+    const modal = document.getElementById('expense-modal');
+    if (!modal) return;
+    document.getElementById('expense-form').reset();
+    document.getElementById('expense-date').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('expense-error').classList.add('hidden');
+    modal.classList.remove('hidden');
+  }
+
+  function closeExpenseModal() {
+    document.getElementById('expense-modal')?.classList.add('hidden');
+  }
+
+  async function submitExpense(e) {
+    e.preventDefault();
+    const errEl = document.getElementById('expense-error');
+    errEl.classList.add('hidden');
+
+    const amount = parseFloat(document.getElementById('expense-amount').value);
+    const desc   = document.getElementById('expense-desc').value.trim();
+    if (!desc || !Number.isFinite(amount) || amount <= 0) {
+      errEl.textContent = 'Enter a description and an amount greater than zero.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    const saveBtn = document.getElementById('expense-save');
+    Utils.setLoading(saveBtn, true);
+    try {
+      const profile = await Auth.getProfile();
+      const { error } = await db.from('expenses').insert({
+        matter_id:    matter.id,
+        client_id:    client?.id || null,
+        expense_date: document.getElementById('expense-date').value || undefined,
+        category:     document.getElementById('expense-category').value,
+        description:  desc,
+        amount:       amount,
+        created_by:   profile?.id || null,
+      });
+      if (error) throw new Error(error.message);
+      Utils.setLoading(saveBtn, false);
+      closeExpenseModal();
+      Utils.toast('Expense saved — it will appear as unbilled on this matter’s next invoice.', 'success');
+    } catch (err) {
+      Utils.setLoading(saveBtn, false);
+      errEl.textContent = err.message || 'Failed to save expense.';
+      errEl.classList.remove('hidden');
+    }
+  }
+
+  function openRetainerModal() {
+    const modal = document.getElementById('retainer-modal');
+    if (!modal) return;
+    document.getElementById('retainer-form').reset();
+    document.getElementById('retainer-error').classList.add('hidden');
+
+    // Open-amount toggle: when on, the client enters the amount at checkout, so
+    // the amount field is disabled and optional.
+    const openCb = document.getElementById('retainer-open-amount');
+    const amtEl  = document.getElementById('retainer-amount');
+    const syncOpen = () => {
+      const open = !!openCb?.checked;
+      if (!amtEl) return;
+      amtEl.disabled = open;
+      amtEl.required = !open;
+      amtEl.style.opacity = open ? '0.5' : '';
+      if (open) amtEl.value = '';
+    };
+    if (openCb && !openCb.dataset.wired) {
+      openCb.addEventListener('change', syncOpen);
+      openCb.dataset.wired = '1';
+    }
+    syncOpen();
+
+    // Recipient picker: the client (default) plus any "Other People" who have an
+    // email on file (e.g. a guarantor paying on the client's behalf).
+    const recSel = document.getElementById('retainer-recipient');
+    if (recSel) {
+      const opts = [];
+      if (client?.email) {
+        opts.push(`<option value="client">${Utils.esc(Utils.fullName(client))} (client) — ${Utils.esc(client.email)}</option>`);
+      }
+      otherPeople.filter(p => p.email).forEach(p => {
+        const nm = [p.first_name, p.last_name].filter(Boolean).join(' ');
+        opts.push(`<option value="contact:${p.id}">${Utils.esc(nm)}${p.relationship ? ` (${Utils.esc(p.relationship)})` : ''} — ${Utils.esc(p.email)}</option>`);
+      });
+      recSel.innerHTML = opts.join('');
+    }
+
+    const note = document.getElementById('retainer-client-note');
+    if (note) {
+      const hasRecipient = !!(client?.email) || otherPeople.some(p => p.email);
+      note.innerHTML = hasRecipient
+        ? `The payment link will be emailed to the recipient selected above.`
+        : `<span style="color:var(--color-danger)">No email on file for this client or any other person — add one before requesting a retainer.</span>`;
+    }
+    modal.classList.remove('hidden');
+  }
+
+  function closeRetainerModal() {
+    document.getElementById('retainer-modal')?.classList.add('hidden');
+  }
+
+  async function submitRetainer(e) {
+    e.preventDefault();
+    const errEl = document.getElementById('retainer-error');
+    errEl.classList.add('hidden');
+
+    const openAmount = document.getElementById('retainer-open-amount')?.checked || false;
+    const amount = parseFloat(document.getElementById('retainer-amount').value);
+    const desc   = document.getElementById('retainer-desc').value.trim();
+    if (!openAmount && (!Number.isFinite(amount) || amount <= 0)) {
+      errEl.textContent = 'Enter a retainer amount greater than zero, or let the client enter it.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    // Recipient: the client by default, or one of the "Other People" contacts.
+    const recVal = document.getElementById('retainer-recipient')?.value || 'client';
+    let recipient = null;
+    if (recVal.startsWith('contact:')) {
+      const p = otherPeople.find(x => x.id === recVal.slice('contact:'.length));
+      if (p) recipient = {
+        recipient_email: p.email,
+        recipient_name:  [p.first_name, p.last_name].filter(Boolean).join(' '),
+      };
+    }
+
+    const saveBtn = document.getElementById('retainer-save');
+    Utils.setLoading(saveBtn, true);
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch('/api/request-retainer', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body:    JSON.stringify({
+          matter_id:   matter.id,
+          description: desc || undefined,
+          ...(openAmount ? { open_amount: true } : { amount }),
+          ...(recipient || {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to send retainer request');
+
+      Utils.setLoading(saveBtn, false);
+      closeRetainerModal();
+      Utils.toast('Retainer payment link sent to client', 'success');
+      _trustLoaded = false;
+      await loadTrust();
+    } catch (err) {
+      Utils.setLoading(saveBtn, false);
+      errEl.textContent = err.message || 'Failed to send retainer request';
+      errEl.classList.remove('hidden');
+    }
   }
 
   function openTrustEntryModal() {
@@ -4646,13 +7074,17 @@
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
 
-  // SSN button events — wired once at init so re-renders don't duplicate listeners
-  document.addEventListener('click', e => {
+  // SSN button events. Single GLOBAL delegate: the router re-runs this script on
+  // every navigation, so remove any prior handler first (else SSN edit/reveal
+  // would fire once per past visit — same class of bug as the trust-tab void).
+  if (document.__detailSsnClick) document.removeEventListener('click', document.__detailSsnClick);
+  document.__detailSsnClick = e => {
     const editBtn   = e.target.closest('.btn-edit-ssn');
     const revealBtn = e.target.closest('.btn-reveal-ssn');
     if (editBtn)   openSsnModal(editBtn.dataset.entityType, editBtn.dataset.entityId, editBtn.dataset.entityLabel);
     if (revealBtn) doRevealSsn(revealBtn.dataset.entityType, revealBtn.dataset.entityId, revealBtn.dataset.displayId);
-  });
+  };
+  document.addEventListener('click', document.__detailSsnClick);
 
   await loadAll();
 

@@ -1,24 +1,24 @@
-<div class="page-header">
-  <h1 class="page-title">Case Workflows</h1>
-  <p class="page-subtitle">Define pipeline stages per practice area. Attorneys advance matters through these stages manually — visible to clients in the portal.</p>
+<!-- Settings: Workflows — loaded dynamically into #page-content by menu.js -->
+<!-- Docket-kit masthead (see DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · Workflows</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Your <em>workflows</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Set the pipeline stages for each practice area — attorneys move matters through them by hand, and clients see the current stage in their portal.</p>
 </div>
 
-<div id="workflows-root"></div>
+<div id="workflows-root">
+  <div class="card" style="padding:var(--space-6);text-align:center;color:var(--color-text-muted);margin-top:var(--space-4)">Loading…</div>
+</div>
 
 <style>
-.wf-pa-tabs { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:var(--space-5); overflow-x:auto; }
+/* Practice-area selector tabs (page-local — the kit has no tab component) */
+.wf-pa-tabs { display:flex; gap:0; border-bottom:2px solid var(--color-border); margin-bottom:var(--space-5); overflow-x:auto; }
 .wf-pa-tab  { padding:var(--space-2) var(--space-4); border:none; background:transparent; font-family:var(--font-sans); font-size:var(--text-sm); font-weight:500; color:var(--color-text-muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px; white-space:nowrap; transition:color var(--transition-fast),border-color var(--transition-fast); }
 .wf-pa-tab:hover { color:var(--color-text); }
 .wf-pa-tab--active { color:var(--color-primary); border-bottom-color:var(--color-primary); }
 
-.stage-list { display:flex; flex-direction:column; gap:var(--space-2); margin-bottom:var(--space-4); }
-.stage-row  { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3) var(--space-4); background:var(--color-surface); border:1px solid #e2e8f0; border-radius:var(--radius-md); }
-.stage-row-drag { cursor:grab; color:var(--color-text-muted); flex-shrink:0; }
-.stage-row-dot  { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
-.stage-row-name { flex:1; font-size:var(--text-sm); font-weight:500; }
-.stage-row-terminal { font-size:var(--text-xs); color:var(--color-text-muted); }
-.stage-row-actions { display:flex; gap:var(--space-1); flex-shrink:0; }
-
+/* Stage color dot shown inline in a register-row title */
+.stage-row-dot  { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 .stage-dot-gray   { background:#94a3b8; }
 .stage-dot-blue   { background:#3b82f6; }
 .stage-dot-yellow { background:#f59e0b; }
@@ -26,8 +26,8 @@
 .stage-dot-green  { background:#22c55e; }
 .stage-dot-red    { background:#ef4444; }
 
-.add-stage-form { display:flex; gap:var(--space-3); align-items:flex-end; flex-wrap:wrap; padding:var(--space-4); background:#f8fafc; border:1px dashed #cbd5e1; border-radius:var(--radius-md); }
-.add-stage-form label { font-size:var(--text-xs); font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--color-text-muted); display:block; margin-bottom:4px; }
+/* Add-stage form (page-local — swatch picker isn't in the kit) */
+#add-stage-form { display:flex; gap:var(--space-3); align-items:flex-end; flex-wrap:wrap; padding:var(--space-4); background:var(--color-bg-subtle,#f9fafb); border:1px solid var(--color-border); border-radius:var(--radius-md); margin-top:var(--space-4); }
 .color-swatch-row { display:flex; gap:6px; }
 .color-swatch { width:22px; height:22px; border-radius:50%; border:2px solid transparent; cursor:pointer; transition:transform .1s; }
 .color-swatch:hover { transform:scale(1.15); }

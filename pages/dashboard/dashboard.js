@@ -28,7 +28,7 @@
 
       const [
         overdueRes, missingRes, unreadRes, pendingRes,
-        clientRes, openTaskRes, docsWeekRes, msgsWeekRes,
+        clientRes, openTaskRes, docsWeekRes, msgsWeekRes, apptRes,
       ] = await Promise.all([
 
         // Overdue tasks
@@ -78,6 +78,12 @@
 
         // Messages this week
         db.from('messages').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
+
+        // Upcoming appointments (scheduling module; errors if not installed → chip hidden)
+        db.from('appointments')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'booked')
+          .gte('starts_at', now),
       ]);
 
       renderGrid(
@@ -92,6 +98,7 @@
         openTasks: openTaskRes.count ?? 0,
         docsWeek:  docsWeekRes.count ?? 0,
         msgsWeek:  msgsWeekRes.count ?? 0,
+        appts:     apptRes.error ? null : (apptRes.count ?? 0),
       });
     } finally {
       btn.disabled = false;
@@ -105,113 +112,107 @@
 
     const WIDGETS = [
       {
-        accent: 'var(--color-danger)',
-        icon:   iconPath('<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'),
-        title:  'Overdue Tasks',
-        route:  'tasks',
-        items:  overdue,
-        empty:  'No overdue tasks',
-        row:    t => `
-          <div class="dash-item">
-            <div class="dash-item-main">
-              <span class="dash-item-name">${esc(clientName(t.client))}</span>
-              <span class="dash-item-sub">${esc(t.title)}</span>
-            </div>
-            <span class="dash-badge dash-badge--danger">${overdueLabel(t.due_date)}</span>
-          </div>`,
+        title: 'Overdue Tasks',
+        route: 'tasks',
+        hue:   'var(--color-danger)', tint: 'var(--color-danger-bg)',
+        items: overdue,
+        empty: 'No overdue tasks',
+        row:   t => regRow(
+          clientName(t.client), esc(t.title),
+          `<span class="dk-tag crit">${overdueLabel(t.due_date)}</span>`,
+        ),
       },
       {
-        accent: 'var(--color-warning)',
-        icon:   iconPath('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'),
-        title:  'Missing Documents',
-        route:  'uploads',
-        items:  missing,
-        empty:  'All documents received',
-        row:    d => `
-          <div class="dash-item">
-            <div class="dash-item-main">
-              <span class="dash-item-name">${esc(clientName(d.matter?.client))}</span>
-              <span class="dash-item-sub">${esc(d.name)}</span>
-            </div>
-          </div>`,
+        title: 'Missing Documents',
+        route: 'uploads',
+        hue:   'var(--color-warning)', tint: 'var(--color-warning-bg)',
+        items: missing,
+        empty: 'All documents received',
+        row:   d => regRow(
+          clientName(d.matter?.client), esc(d.name),
+          `<span class="dk-tag warn">Missing</span>`,
+        ),
       },
       {
-        accent: 'var(--color-primary)',
-        icon:   iconPath('<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>'),
-        title:  'Unread Messages',
-        route:  'messaging',
-        items:  unread,
-        empty:  'No unread messages',
-        row:    m => `
-          <div class="dash-item">
-            <div class="dash-item-main">
-              <span class="dash-item-name">${esc(clientName(m.conversation?.client))}</span>
-              <span class="dash-item-sub">${esc(truncate(m.body, 55))}</span>
-            </div>
-            <span class="dash-time">${relTime(m.created_at)}</span>
-          </div>`,
+        title: 'Unread Messages',
+        route: 'messaging',
+        hue:   'var(--daily)', tint: 'var(--daily-tint)',
+        items: unread,
+        empty: 'No unread messages',
+        row:   m => regRow(
+          clientName(m.conversation?.client), esc(truncate(m.body, 55)),
+          `<span class="dk-reg-meta" style="margin-top:0;white-space:nowrap;color:var(--ink-faint)">${relTime(m.created_at)}</span>`,
+        ),
       },
       {
-        accent: '#7c3aed',
-        icon:   iconPath('<path d="m12 19 7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/>'),
-        title:  'Pending Signatures',
-        route:  'esign',
-        items:  pending,
-        empty:  'No pending signatures',
-        row:    s => `
-          <div class="dash-item">
-            <div class="dash-item-main">
-              <span class="dash-item-name">${esc(clientName(s.matter?.client))}</span>
-              <span class="dash-item-sub">${sigLabel(s.status)}</span>
-            </div>
-          </div>`,
+        title: 'Pending Signatures',
+        route: 'esign',
+        hue:   'var(--horizon)', tint: 'var(--horizon-tint)',
+        items: pending,
+        empty: 'No pending signatures',
+        row:   s => regRow(
+          clientName(s.matter?.client), esc(sigLabel(s.status)),
+          `<span class="dk-tag acc">Pending</span>`,
+        ),
       },
     ];
 
     grid.innerHTML = WIDGETS.map(w => card(w)).join('');
 
-    // Wire header clicks + view-all buttons to route
+    // Wire view-all buttons to route
     grid.querySelectorAll('[data-nav]').forEach(el => {
       el.addEventListener('click', () => { window.location.hash = el.dataset.nav; });
     });
   }
 
-  function card({ accent, icon, title, route, items, empty, row }) {
-    const count    = items.length;
-    const hasItems = count > 0;
-    const body     = hasItems
-      ? items.map(row).join('') +
-        `<button class="dash-view-all" data-nav="${route}">View all →</button>`
-      : `<div class="dash-empty">
-           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="color:var(--color-success);flex-shrink:0" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-           <span>${empty}</span>
-         </div>`;
-
+  // One register record: serif client name + supporting line + a right-side status.
+  function regRow(title, sub, right) {
     return `
-      <div class="dash-card" style="--card-accent:${accent}">
-        <div class="dash-card-header" data-nav="${route}" title="Go to ${title}">
-          <span class="dash-card-icon">${icon}</span>
-          <span class="dash-card-title">${title}</span>
-          ${hasItems ? `<span class="dash-card-count" style="background:${accent}">${count === 5 ? '5+' : count}</span>` : ''}
+      <div class="dk-reg-row">
+        <div style="min-width:0">
+          <div class="dk-reg-title"><span>${esc(title)}</span></div>
+          <div class="dk-reg-meta"><span>${sub}</span></div>
         </div>
-        <div class="dash-card-body">${body}</div>
+        <div class="dk-reg-act">${right}</div>
       </div>`;
   }
 
-  // ── Stats row ────────────────────────────────────────────────────────────────
+  function card({ title, route, items, empty, row, hue, tint }) {
+    const count    = items.length;
+    const hasItems = count > 0;
 
-  function renderStats({ clients, openTasks, docsWeek, msgsWeek }) {
-    document.getElementById('dash-stats-row').innerHTML = [
-      { value: clients,   label: 'Active Clients',    sub: 'total in system' },
-      { value: openTasks, label: 'Open Tasks',         sub: 'pending or in progress' },
-      { value: docsWeek,  label: 'Docs This Week',     sub: 'uploaded last 7 days' },
-      { value: msgsWeek,  label: 'Messages This Week', sub: 'sent & received' },
-    ].map(s => `
-      <div class="dash-stat">
-        <span class="dash-stat-value">${s.value}</span>
-        <span class="dash-stat-label">${s.label}</span>
-        <span class="dash-stat-sub">${s.sub}</span>
-      </div>`).join('');
+    const head = `
+      <div class="dk-sec-head">
+        <h2>${title}</h2>
+        <span class="dk-sec-rule"></span>
+        ${hasItems ? `<span class="dk-sec-count">${count === 5 ? '5+' : count}</span>
+          <button class="dk-sec-add" type="button" data-nav="${route}">View all →</button>` : ''}
+      </div>`;
+
+    const body = hasItems
+      ? `<div class="dk-register">${items.map(row).join('')}</div>`
+      : `<div class="dk-register"><div class="dk-empty" style="display:flex;align-items:center;gap:8px;color:var(--ink-soft)">
+           <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" width="15" height="15" style="flex:none" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+           <span>${empty}</span>
+         </div></div>`;
+
+    return `<section class="dash-widget" style="--hue:${hue};--hue-tint:${tint}">${head}${body}</section>`;
+  }
+
+  // ── At a glance — desk-chip strip ────────────────────────────────────────────
+
+  function renderStats({ clients, openTasks, docsWeek, msgsWeek, appts }) {
+    const chips = [
+      { n: clients,   label: 'Active Clients',      hue: 'daily'   },
+      { n: openTasks, label: 'Open Tasks',          hue: 'money'   },
+      { n: docsWeek,  label: 'Docs This Week',      hue: 'docs'    },
+      { n: msgsWeek,  label: 'Messages This Week',  hue: 'horizon' },
+    ];
+    if (appts !== null && appts !== undefined) chips.push({ n: appts, label: 'Upcoming Appointments', hue: 'intake' });
+    document.getElementById('dash-stats-row').innerHTML =
+      `<div class="dk-deskbar">` +
+      chips.map(c => `<span class="dk-chip static"><span class="n" style="background:var(--${c.hue}-tint);color:var(--${c.hue})">${c.n}</span> ${esc(c.label)}</span>`).join('') +
+      `</div>`;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -248,10 +249,6 @@
   function esc(str) {
     return String(str || '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  function iconPath(path) {
-    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">${path}</svg>`;
   }
 
 })();

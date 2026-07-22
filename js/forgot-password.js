@@ -25,12 +25,16 @@
     resetBtn.textContent = 'Sending…';
 
     try {
-      await Auth.sendPasswordReset(email);
+      var captchaToken = (window.IurisTurnstile && window.IurisTurnstile.enabled())
+        ? window.IurisTurnstile.token('turnstile-reset') : undefined;
+      await Auth.sendPasswordReset(email, captchaToken);
       resetMsg.textContent = 'Reset link sent — check your inbox.';
       resetMsg.hidden = false;
       resetBtn.hidden = true;
       resetEmail.disabled = true;
     } catch (err) {
+      // Turnstile tokens are single-use — reset so a retry gets a fresh one.
+      if (window.IurisTurnstile) window.IurisTurnstile.reset('turnstile-reset');
       resetErr.textContent = err.message;
       resetErr.hidden = false;
     } finally {

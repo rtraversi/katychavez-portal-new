@@ -67,43 +67,56 @@ export async function onRequest({ request, env }) {
     return `<li style="margin-bottom:6px">${d.name}${due}</li>`;
   }).join('');
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from:    env.PORTAL_FROM_EMAIL || `portal@${env.RESEND_DOMAIN || 'notifications.example.com'}`,
-      to:      [client.email],
-      subject: `Action required: documents needed for your matter — ${firmName}`,
-      html: `
-        <p>Hi ${client.first_name},</p>
-        <p>We still need the following documents to move forward with your matter:</p>
-        <ul style="margin:16px 0;padding-left:20px;line-height:1.6">${docList}</ul>
-        <p>You can upload them directly through your secure client portal, or bring them to our office.</p>
-        <p>
-          <a href="${portalUrl}/portal"
-             style="background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">
-            Go to your portal
-          </a>
-        </p>
-        <p style="color:#888;font-size:12px;margin-top:24px;">
-          ${firmName}<br>
-          If you have questions, please contact our office directly.
-        </p>
-      `,
-    }),
-  });
+  const subject = `Action required: documents needed for your matter — ${firmName}`;
+
+  let res;
+  try {
+    res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from:    env.PORTAL_FROM_EMAIL || `portal@${env.RESEND_DOMAIN || 'notifications.example.com'}`,
+        to:      [client.email],
+        subject,
+        html: `
+          <p>Hi ${client.first_name},</p>
+          <p>We still need the following documents to move forward with your matter:</p>
+          <ul style="margin:16px 0;padding-left:20px;line-height:1.6">${docList}</ul>
+          <p>You can upload them directly through your secure client portal, or bring them to our office.</p>
+          <p>
+            <a href="${portalUrl}/portal"
+               style="background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">
+              Go to your portal
+            </a>
+          </p>
+          <p style="color:#888;font-size:12px;margin-top:24px;">
+            ${firmName}<br>
+            If you have questions, please contact our office directly.
+          </p>
+        `,
+      }),
+    });
+  } catch (err) {
+    // A malformed RESEND_API_KEY (e.g. stray whitespace/newline making the
+    // Authorization header invalid) or a network failure throws here. Return a
+    // clear error instead of an opaque 500 — same graceful posture as the
+    // automatic-reminder / notification paths.
+    console.error('[send-doc-reminder] resend request threw:', err.message);
+    admin.from('email_log').insert({ type: 'doc_reminder', to_email: client.email, subject, status: 'failed', error: String(err.message).slice(0, 500) }).catch(() => {});
+    return json(502, { error: 'Could not send the reminder — the email service is not configured correctly (check RESEND_API_KEY).' });
+  }
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
     console.error('[send-doc-reminder] resend HTTP error:', res.status, errBody);
-    admin.from('email_log').insert({ type: 'doc_reminder', to_email: client.email, subject: `Action required: documents needed for your matter — ${firmName}`, status: 'failed', error: errBody.slice(0, 500) }).catch(() => {});
+    admin.from('email_log').insert({ type: 'doc_reminder', to_email: client.email, subject, status: 'failed', error: errBody.slice(0, 500) }).catch(() => {});
     return json(502, { error: 'Failed to send reminder email. Check Resend configuration.' });
   }
 
-  admin.from('email_log').insert({ type: 'doc_reminder', to_email: client.email, subject: `Action required: documents needed for your matter — ${firmName}`, status: 'sent' }).catch(() => {});
+  admin.from('email_log').insert({ type: 'doc_reminder', to_email: client.email, subject, status: 'sent' }).catch(() => {});
   console.log('[send-doc-reminder] sent to:', client.email, 'docs:', pendingDocs.length);
 
   // Mark reminded

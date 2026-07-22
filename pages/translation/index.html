@@ -1,77 +1,97 @@
 <!-- Translation — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Document Translation</h1>
-    <p class="page-subtitle">Spanish-to-English certified translation with DOCX &amp; PDF export</p>
-  </div>
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Documents &amp; Drafting · Translation</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Certified English <em>translations</em>, filing-ready.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">
+    Drop a foreign-language record and get a clean English translation — source language detected
+    automatically, with an optional signed certification block and DOCX or PDF export.
+  </p>
 </div>
 
-<!-- Upload card -->
-<div class="card" style="margin-bottom:var(--space-4)">
-  <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-4)">
-    Upload a Spanish-language civil document (PDF, JPG, or PNG) to generate a certified English translation.
-    Supported document types include birth certificates, marriage certificates, divorce decrees, and other civil records.
+<!-- Upload + options -->
+<div class="dk-sec">
+  <div class="dk-sec-head"><h2>New translation</h2><span class="dk-sec-rule"></span></div>
+
+  <p style="font-size:var(--text-sm);color:var(--ink-soft);margin:0 0 var(--space-4);max-width:70ch;line-height:1.55">
+    Upload a document in any language (PDF, JPG, or PNG). Supported types include birth certificates,
+    marriage certificates, divorce decrees, court orders, and other civil or legal records.
   </p>
 
   <div id="tr-drop-zone"
-    style="border:2px dashed var(--color-border);border-radius:var(--radius);padding:var(--space-8) var(--space-4);
-           text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:var(--space-4)"
+    style="border:2px dashed var(--line-strong);border-radius:var(--r-card);padding:var(--space-8) var(--space-4);
+           text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:var(--space-5);
+           background:var(--paper-deep)"
     tabindex="0" role="button" aria-label="Drop a document here to translate">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-      style="width:40px;height:40px;margin:0 auto var(--space-3);color:var(--color-text-muted)" aria-hidden="true">
+      style="width:40px;height:40px;margin:0 auto var(--space-3);color:var(--ink-faint)" aria-hidden="true">
       <circle cx="12" cy="12" r="10"/>
       <line x1="2" y1="12" x2="22" y2="12"/>
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
     </svg>
-    <p style="font-weight:600;margin-bottom:var(--space-1)">Drop a document here</p>
-    <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3)">
+    <p style="font-family:var(--font-serif);font-size:16px;font-weight:600;color:var(--ink);margin-bottom:var(--space-1)">Drop a document here</p>
+    <p style="font-size:var(--text-sm);color:var(--ink-soft);margin-bottom:var(--space-3)">
       PDF, JPG, or PNG
     </p>
     <button type="button" class="btn btn--secondary" id="tr-choose-file-btn">Choose File</button>
     <input id="tr-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" style="display:none">
   </div>
 
-  <div style="margin-bottom:var(--space-4)">
-    <label style="display:block;font-size:var(--text-sm);font-weight:500;margin-bottom:var(--space-2)">
-      Translator Name
+  <!-- Translator name — feeds the certification block; hidden when cert is off -->
+  <div id="tr-translator-wrap" style="margin-bottom:var(--space-5)">
+    <label style="display:block;font-size:var(--text-sm);font-weight:600;color:var(--ink);margin-bottom:var(--space-2)">
+      Translator name
     </label>
     <input id="tr-translator-name" type="text" placeholder="Leave blank for signature line"
-      style="width:100%;max-width:400px;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);
-             border-radius:var(--radius);font-size:var(--text-sm);font-family:inherit;box-sizing:border-box">
+      style="width:100%;max-width:400px;padding:var(--space-2) var(--space-3);border:1px solid var(--line);
+             border-radius:var(--radius);font-size:var(--text-sm);font-family:inherit;box-sizing:border-box;
+             background:var(--surface);color:var(--ink)">
+    <p style="font-size:var(--text-xs,0.75rem);color:var(--ink-faint);margin:var(--space-2) 0 0">
+      Appears on the signed translator certification block (required for USCIS filings).
+    </p>
   </div>
 
-  <div style="margin-bottom:var(--space-4)">
-    <p style="font-size:var(--text-sm);font-weight:500;margin-bottom:var(--space-2)">Download Format</p>
-    <label style="display:inline-flex;align-items:center;gap:var(--space-2);margin-right:var(--space-4);cursor:pointer;font-size:var(--text-sm)">
-      <input type="radio" name="trFormat" value="docx" checked> DOCX
+  <div class="dk-toolbar">
+    <label style="display:inline-flex;align-items:center;gap:var(--space-2);cursor:pointer;font-size:var(--text-sm);font-weight:600;color:var(--ink)">
+      <input type="checkbox" id="tr-include-cert" checked>
+      Include certification of translation
     </label>
-    <label style="display:inline-flex;align-items:center;gap:var(--space-2);cursor:pointer;font-size:var(--text-sm)">
-      <input type="radio" name="trFormat" value="pdf"> PDF
-    </label>
-  </div>
 
-  <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
+    <span style="display:inline-flex;align-items:center;gap:var(--space-3)">
+      <span style="font-size:var(--text-sm);font-weight:600;color:var(--ink-soft)">Format</span>
+      <label style="display:inline-flex;align-items:center;gap:var(--space-2);cursor:pointer;font-size:var(--text-sm);color:var(--ink)">
+        <input type="radio" name="trFormat" value="docx" checked> DOCX
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:var(--space-2);cursor:pointer;font-size:var(--text-sm);color:var(--ink)">
+        <input type="radio" name="trFormat" value="pdf"> PDF
+      </label>
+    </span>
+
+    <span class="dk-spacer"></span>
+
+    <span id="tr-filename" style="font-size:var(--text-sm);color:var(--ink-soft)"></span>
     <button id="tr-submit-btn" class="btn btn--primary" disabled>Translate Document</button>
-    <span id="tr-filename" style="font-size:var(--text-sm);color:var(--color-text-muted)"></span>
   </div>
 </div>
 
 <!-- Results area (hidden until complete) -->
-<div id="tr-results-wrap" style="display:none;margin-bottom:var(--space-4)">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
-    <h2 style="font-size:var(--text-base);font-weight:600;margin:0">Translation Preview</h2>
-    <button id="tr-clear-btn" class="btn btn--ghost" style="font-size:var(--text-sm)">Clear</button>
+<div id="tr-results-wrap" class="dk-sec" style="display:none">
+  <div class="dk-sec-head">
+    <h2>Translation preview</h2>
+    <span class="dk-sec-rule"></span>
+    <button id="tr-clear-btn" class="dk-linkbtn" type="button">Clear</button>
   </div>
-  <div class="card" style="margin-bottom:var(--space-3)">
-    <div id="tr-results-content" style="font-size:var(--text-sm);line-height:1.7;white-space:pre-wrap;font-family:inherit"></div>
+  <div style="background:var(--surface);border:1px solid var(--line);border-top:2px solid var(--ink);
+              border-radius:0 0 var(--r-card) var(--r-card);box-shadow:var(--card-shadow);
+              padding:var(--space-5) var(--space-5);margin-bottom:var(--space-4)">
+    <div id="tr-results-content" style="font-size:var(--text-sm);line-height:1.7;white-space:pre-wrap;font-family:inherit;color:var(--ink)"></div>
   </div>
   <button id="tr-download-btn" class="btn btn--primary" style="display:none">Download DOCX</button>
 </div>
 
 <!-- History section -->
-<div class="card">
-  <h2 style="font-size:var(--text-base);font-weight:600;margin-bottom:var(--space-4)">Recent Translations</h2>
+<div class="dk-sec">
+  <div class="dk-sec-head"><h2>Recent translations</h2><span class="dk-sec-rule"></span></div>
   <div id="tr-history-list">
-    <p style="font-size:var(--text-sm);color:var(--color-text-muted)">Loading…</p>
+    <div class="dk-empty">Loading…</div>
   </div>
 </div>

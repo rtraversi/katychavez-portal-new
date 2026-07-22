@@ -8,6 +8,8 @@
   let allClients    = [];
   let users         = [];
   let unreadMap     = {};   // client_id → unread message count
+  let trustBalMap   = new Map();  // matter_id → live trust-ledger balance
+  let pendingRetainerMap = new Map();  // matter_id → total pending retainer requested
   let searchQuery   = '';
   let filterStatus  = '';
   let filterType    = '';
@@ -24,7 +26,7 @@
   let caseTypeMap     = new Map();  // id → case_type row
   let caseTypePaKey   = new Map();  // case_type key → practice_area key (for badge colors)
 
-  const tbody      = document.getElementById('clients-tbody');
+  const listEl     = document.getElementById('clients-list');
   const searchEl   = document.getElementById('client-search');
   const statusEl   = document.getElementById('filter-status');
   const caseTypeEl = document.getElementById('filter-case-type');
@@ -91,13 +93,13 @@
   }
 
   async function loadClients() {
-    tbody.innerHTML = `<tr><td colspan="7" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">Loading…</td></tr>`;
+    listEl.innerHTML = `<div class="dk-empty">Loading…</div>`;
 
     let query = db
       .from('clients')
       .select(`
         id, first_name, last_name, email, phone, active, is_dv_confidential,
-        matters ( id, case_type, case_type_id, case_number, status, assigned_attorney_id,
+        matters ( id, case_type, case_type_id, case_number, status, assigned_attorney_id, retainer_balance,
           key_dates ( date_type, date_value )
         )
       `, { count: 'exact' })
@@ -114,59 +116,126 @@
     if (error) { Utils.handleError(error, 'clients load'); return; }
 
     allClients = data || [];
+    await Promise.all([loadTrustBalances(allClients), loadPendingRetainers(allClients)]);
     if (!SERVER_SORT_COLS.has(sortBy)) sortClientsInPlace(allClients);
-    renderTable(allClients, count);
-    updateSortArrows();
+    renderRegister(allClients, count);
     renderPagination(count);
+  }
+
+  // Live trust-ledger balances for the visible page. RLS returns nothing for
+  // firms without the trust module (or staff without trust read), in which case
+  // the legacy matters.retainer_balance field is the fallback (same precedence
+  // as the client-detail hero pill).
+  async function loadTrustBalances(clients) {
+    trustBalMap = new Map();
+    const matterIds = clients.flatMap(c => (c.matters || []).map(m => m.id));
+    if (!matterIds.length) return;
+    const { data } = await db
+      .from('matter_trust_balances').select('matter_id, balance').in('matter_id', matterIds);
+    (data || []).forEach(r => trustBalMap.set(r.matter_id, Number(r.balance) || 0));
+  }
+
+  // Pending retainer requests for the visible page — a payment link was sent
+  // but hasn't been paid. Same RLS posture as the trust balances: staff without
+  // trust_accounting read get an empty result and the pill simply never shows.
+  async function loadPendingRetainers(clients) {
+    pendingRetainerMap = new Map();
+    const matterIds = clients.flatMap(c => (c.matters || []).map(m => m.id));
+    if (!matterIds.length) return;
+    const { data } = await db
+      .from('retainer_requests')
+      .select('matter_id, amount')
+      .eq('status', 'pending')
+      .in('matter_id', matterIds);
+    (data || []).forEach(r => {
+      const prev = pendingRetainerMap.get(r.matter_id) || 0;
+      pendingRetainerMap.set(r.matter_id, prev + (Number(r.amount) || 0));
+    });
+  }
+
+  // Total retainer/trust held for a client across their matters.
+  function retainerTotal(c) {
+    return (c.matters || []).reduce((sum, m) => {
+      const bal = trustBalMap.has(m.id) ? trustBalMap.get(m.id) : (Number(m.retainer_balance) || 0);
+      return sum + (bal > 0 ? bal : 0);
+    }, 0);
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  function renderTable(clients, total) {
+  // Matter status → DK.tag kind (intake/active read as live, closed/on-hold quiet)
+  const STATUS_KIND = { active: 'ok', intake: 'acc', on_hold: 'warn', closed: 'mut' };
+
+  function renderRegister(clients, total) {
     if (!clients.length) {
-      tbody.innerHTML = `
-        <tr><td colspan="7">
-          <div class="empty-state">
-            <p class="empty-state-title">No clients found</p>
-            <p>Add your first client to get started.</p>
-            <button class="btn btn--primary" onclick="document.getElementById('btn-new-client').click()">New client</button>
-          </div>
-        </td></tr>`;
+      listEl.innerHTML = `<div class="dk-empty">No clients found. <button class="dk-linkbtn" onclick="document.getElementById('btn-new-client').click()">Add your first client →</button></div>`;
       return;
     }
 
-    tbody.innerHTML = clients.map(c => {
-      const matter     = (c.matters || [])[0];
+    listEl.innerHTML = `<div class="dk-register">` + clients.map(c => {
+      const matter      = (c.matters || [])[0];
       const nextHearing = nextHearingDate(matter?.key_dates || []);
-      const attorney   = matter?.assigned_attorney_id
+      const attorney    = matter?.assigned_attorney_id
         ? users.find(u => u.id === matter.assigned_attorney_id) : null;
+      const name        = `${Utils.esc(c.last_name)}, ${Utils.esc(c.first_name)}`;
 
-      return `<tr data-id="${c.id}" style="cursor:pointer">
-        <td>
-          <div style="display:flex;align-items:center;gap:var(--space-3)">
-            <div style="width:32px;height:32px;border-radius:50%;background:${attorney?.color || 'var(--color-primary)'};color:#fff;display:grid;place-items:center;font-size:var(--text-xs);font-weight:600;flex-shrink:0">
-              ${Utils.initials(c)}
-            </div>
-            <div>
-              <div style="font-weight:500;display:flex;align-items:center;gap:var(--space-2)">${Utils.esc(c.last_name)}, ${Utils.esc(c.first_name)}${c.is_dv_confidential ? ' <span class="badge badge--dv" title="DV confidential">DV</span>' : ''}${unreadMap[c.id] ? `<span class="badge badge--msg-unread" title="${unreadMap[c.id]} unread message${unreadMap[c.id] > 1 ? 's' : ''}">💬 ${unreadMap[c.id]}</span>` : ''}</div>
-              <div class="text-muted text-sm">${Utils.esc(c.email || '')}</div>
-            </div>
-          </div>
-        </td>
-        <td>${matter ? caseTypeBadge(caseTypeMap.get(matter.case_type_id)?.key || matter.case_type) : '<span class="text-muted">—</span>'}</td>
-        <td>${Utils.esc(matter?.case_number || '—')}</td>
-        <td>${matter ? `<span class="badge badge--${matter.status}">${Utils.titleCase(matter.status)}</span>` : '<span class="text-muted">—</span>'}</td>
-        <td>${attorney
-          ? `<span style="display:inline-flex;align-items:center;gap:5px">${attorney.color ? `<span style="width:10px;height:10px;border-radius:50%;background:${Utils.esc(attorney.color)};flex-shrink:0;display:inline-block"></span>` : ''}<span>${Utils.esc(Utils.fullName(attorney))}</span></span>`
-          : '<span class="text-muted">—</span>'}</td>
-        <td>${nextHearing ? `<span style="color:${isOverdue(nextHearing)?'var(--color-danger)':'inherit'}">${Utils.formatDate(nextHearing)}</span>` : '<span class="text-muted">—</span>'}</td>
-        <td>
-          <button class="btn btn--ghost btn--sm btn-edit-client" data-id="${c.id}" title="Edit client">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          </button>
-        </td>
-      </tr>`;
-    }).join('');
+      // Status / signal tags on the serif title line
+      const tags = [
+        matter ? DK.tag(Utils.titleCase(matter.status), STATUS_KIND[matter.status] || 'mut') : '',
+        retainerTag(c),
+        retainerRequestedTag(c),
+        c.is_dv_confidential ? DK.tag('DV confidential', 'crit') : '',
+        unreadMap[c.id] ? DK.tag(`💬 ${unreadMap[c.id]}`, 'acc') : '',
+      ].filter(Boolean).join('');
+
+      // Meta line: case type · matter # · attorney · next date · email
+      const caseTypeName = matter
+        ? (caseTypeMap.get(matter.case_type_id)?.name
+           || (matter.case_type ? Utils.titleCase(matter.case_type.replace(/_/g, ' ')) : ''))
+        : '';
+      const meta = [
+        caseTypeName ? `<span>${Utils.esc(caseTypeName)}</span>` : '',
+        matter?.case_number ? `<span>#${Utils.esc(matter.case_number)}</span>` : '',
+        attorney
+          ? `<span>${attorney.color ? `<span style="width:9px;height:9px;border-radius:50%;background:${Utils.esc(attorney.color)};flex:none;display:inline-block;margin-right:5px"></span>` : ''}${Utils.esc(Utils.fullName(attorney))}</span>`
+          : '',
+        nextHearing ? `<span class="${isOverdue(nextHearing) ? 'danger' : ''}">${isOverdue(nextHearing) ? '⚠ ' : ''}${Utils.formatDate(nextHearing)}</span>` : '',
+        c.email ? `<span>${Utils.esc(c.email)}</span>` : '',
+      ].filter(Boolean).join('<span class="sep">·</span>');
+
+      return `<div class="dk-reg-row client-row" data-id="${c.id}" style="grid-template-columns:auto minmax(0,1fr) auto;cursor:pointer">
+        ${DK.avatar(`${c.first_name || ''} ${c.last_name || ''}`, c.id, 34)}
+        <div style="min-width:0">
+          <div class="dk-reg-title"><span>${name}</span>${tags}</div>
+          ${meta ? `<div class="dk-reg-meta">${meta}</div>` : ''}
+        </div>
+        <button class="dk-linkbtn btn-edit-client" data-id="${c.id}" title="Edit client" style="align-self:center">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+      </div>`;
+    }).join('') + `</div>`;
+  }
+
+  // Retainer-on-hand signal — green DK.tag when funds are held (was the check column)
+  function retainerTag(c) {
+    const total = retainerTotal(c);
+    if (total <= 0) return '';
+    const amount = '$' + total.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    return DK.tag(`✓ ${amount} on hand`, 'ok');
+  }
+
+  // Retainer-requested signal — a link is out but unpaid. Open-amount requests
+  // (1529) have no amount until paid, so those fall back to the plain label.
+  function retainerRequestedTag(c) {
+    let total = 0, any = false;
+    (c.matters || []).forEach(m => {
+      if (pendingRetainerMap.has(m.id)) { any = true; total += pendingRetainerMap.get(m.id); }
+    });
+    if (!any) return '';
+    const label = total > 0
+      ? `⏳ $${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} requested`
+      : '⏳ Retainer requested';
+    return DK.tag(label, 'warn');
   }
 
   function nextHearingDate(dates) {
@@ -176,21 +245,6 @@
       .sort((a, b) => a.date_value.localeCompare(b.date_value))[0]?.date_value;
   }
   function isOverdue(dateStr) { return dateStr < new Date().toISOString().slice(0, 10); }
-
-  const SVG_SORT_INACTIVE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:3px;opacity:0.35"><polyline points="18 9 12 4 6 9"/><polyline points="6 15 12 20 18 15"/></svg>`;
-  const SVG_SORT_ASC  = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:3px"><polyline points="18 15 12 9 6 15"/></svg>`;
-  const SVG_SORT_DESC = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:3px"><polyline points="6 9 12 15 18 9"/></svg>`;
-
-  function updateSortArrows() {
-    document.querySelectorAll('.sort-arrow').forEach(el => {
-      const col = el.dataset.arrow;
-      if (col === sortBy) {
-        el.innerHTML = sortDir === 'asc' ? SVG_SORT_ASC : SVG_SORT_DESC;
-      } else {
-        el.innerHTML = SVG_SORT_INACTIVE;
-      }
-    });
-  }
 
   function sortClientsInPlace(clients) {
     clients.sort((a, b) => {
@@ -210,6 +264,9 @@
         v1 = u1 ? Utils.fullName(u1) : ''; v2 = u2 ? Utils.fullName(u2) : '';
       } else if (sortBy === 'next_date') {
         v1 = nextHearingDate(m1?.key_dates) || '9999'; v2 = nextHearingDate(m2?.key_dates) || '9999';
+      } else if (sortBy === 'retainer') {
+        const cmp = retainerTotal(a) - retainerTotal(b);
+        return sortDir === 'asc' ? cmp : -cmp;
       } else {
         return 0;
       }
@@ -226,24 +283,6 @@
       <button class="btn btn--secondary btn--sm" ${current === 1 ? 'disabled' : ''} onclick="ClientsPage.goPage(${current - 2})">← Prev</button>
       <span>Page ${current} of ${pages}</span>
       <button class="btn btn--secondary btn--sm" ${current === pages ? 'disabled' : ''} onclick="ClientsPage.goPage(${current})">Next →</button>`;
-  }
-
-  // Badge colors keyed by practice area
-  const PA_BADGE_COLORS = {
-    family_law:      ['#ede9fe','#5b21b6'],
-    immigration:     ['#dbeafe','#1e40af'],
-    personal_injury: ['#ffedd5','#c2410c'],
-    criminal:        ['#fee2e2','#b91c1c'],
-  };
-
-  function caseTypeBadge(caseTypeKey) {
-    if (!caseTypeKey) return '<span class="text-muted">—</span>';
-    // Look up display name from loaded case types; fall back to title-casing the key
-    const ctRow = caseTypesData.find(c => c.key === caseTypeKey);
-    const label  = ctRow?.name || Utils.titleCase(caseTypeKey.replace(/_/g, ' '));
-    const paKey  = caseTypePaKey.get(caseTypeKey) || '';
-    const [bg, color] = PA_BADGE_COLORS[paKey] || ['#f1f5f9','#475569'];
-    return `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:var(--text-xs);font-weight:500;line-height:1.6;background:${bg};color:${color};white-space:nowrap">${Utils.esc(label)}</span>`;
   }
 
   // ── Modal ────────────────────────────────────────────────────────────────────
@@ -605,8 +644,10 @@
           const { error: mErr } = await db.from('matters').update(matterPayload).eq('id', matterId);
           if (mErr) throw mErr;
         } else {
-          const { error: mErr } = await db.from('matters').insert({ ...matterPayload, client_id: clientId });
+          const { data: newMatter, error: mErr } = await db
+            .from('matters').insert({ ...matterPayload, client_id: clientId }).select('id').single();
           if (mErr) throw mErr;
+          await seedMatterFolders(newMatter?.id);
         }
       } else {
         // Insert client, then matter
@@ -615,9 +656,10 @@
         if (cErr) throw cErr;
         savedClientId = newClient.id;
 
-        const { error: mErr } = await db
-          .from('matters').insert({ ...matterPayload, client_id: savedClientId });
+        const { data: newMatter, error: mErr } = await db
+          .from('matters').insert({ ...matterPayload, client_id: savedClientId }).select('id').single();
         if (mErr) throw mErr;
+        await seedMatterFolders(newMatter?.id);
       }
 
       closeModal();
@@ -628,6 +670,23 @@
       errEl.classList.remove('hidden');
       Utils.setLoading(saveBtn, false);
     }
+  }
+
+  // Seed the firm's default folder template onto a fresh matter. Best-effort:
+  // a failure here must never block client/matter creation.
+  async function seedMatterFolders(matterId) {
+    if (!matterId) return;
+    try {
+      const session = await Auth.getSession();
+      await fetch('/api/matter-folders', {
+        method:  'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({ action: 'seed', matter_id: matterId }),
+      });
+    } catch (_) { /* folders can be added by hand; don't fail the save */ }
   }
 
   async function handleDelete(clientId) {
@@ -653,20 +712,6 @@
 
   document.getElementById('btn-new-client').addEventListener('click', () => openModal());
 
-  document.getElementById('clients-thead').addEventListener('click', e => {
-    const th = e.target.closest('th[data-sort]');
-    if (!th) return;
-    const col = th.dataset.sort;
-    if (col === sortBy) {
-      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-    } else {
-      sortBy  = col;
-      sortDir = 'asc';
-    }
-    offset = 0;
-    loadClients();
-  });
-
   document.getElementById('client-search').addEventListener('input', Utils.debounce(e => {
     searchQuery = e.target.value;
     offset = 0;
@@ -685,7 +730,7 @@
     loadClients();
   });
 
-  tbody.addEventListener('click', e => {
+  listEl.addEventListener('click', e => {
     const editBtn = e.target.closest('.btn-edit-client');
     if (editBtn) {
       e.stopPropagation();
@@ -693,7 +738,7 @@
       window.location.hash = '#clients/detail';
       return;
     }
-    const row = e.target.closest('tr[data-id]');
+    const row = e.target.closest('.client-row[data-id]');
     if (row) {
       window._clientDetailId = row.dataset.id;
       window.location.hash = '#clients/detail';

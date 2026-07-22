@@ -24,14 +24,15 @@ export async function onRequest(context) {
     return json(503, { error: 'Authentication service unavailable. Please try again.' });
   }
 
-  let callerRole;
+  let callerRole, callerUserId;
   try {
     const { data } = await admin
       .from('users')
-      .select('roles(name)')
+      .select('id, roles(name)')
       .eq('auth_id', caller.id)
       .single();
-    callerRole = data?.roles?.name;
+    callerRole   = data?.roles?.name;
+    callerUserId = data?.id;
   } catch (err) {
     console.error('[invite-user] caller profile error:', err.message);
     return json(503, { error: 'Service unavailable. Please try again.' });
@@ -45,7 +46,7 @@ export async function onRequest(context) {
   try { body = await request.json(); }
   catch { return json(400, { error: 'Invalid JSON' }); }
 
-  const { email, first_name, last_name, role_id, invited_by } = body;
+  const { email, first_name, last_name, role_id } = body;
   if (!email || !role_id) return json(400, { error: 'email and role_id are required' });
 
   let role;
@@ -56,6 +57,13 @@ export async function onRequest(context) {
   } catch (err) {
     console.error('[invite-user] role lookup error:', err.message);
     return json(503, { error: 'Service unavailable. Please try again.' });
+  }
+
+  // Privilege-escalation guard: only an Owner may create another Owner. A Staff
+  // Admin must not be able to mint an account more privileged than itself by
+  // passing role_id = Owner in the body.
+  if (role.name === 'Owner' && callerRole !== 'Owner') {
+    return json(403, { error: 'Only an Owner can invite another Owner.' });
   }
 
   let invited;
@@ -77,7 +85,7 @@ export async function onRequest(context) {
       first_name: first_name || email.split('@')[0],
       last_name:  last_name  || '',
       role_id,
-      invited_by,
+      invited_by: callerUserId,
       invited_at: new Date().toISOString(),
     }).eq('auth_id', invited.user.id);
   } catch (err) {

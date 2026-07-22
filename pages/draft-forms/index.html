@@ -1,23 +1,24 @@
 <!-- USCIS Forms — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">USCIS Forms</h1>
-    <p class="page-subtitle">Autofilled USCIS immigration form packages</p>
-  </div>
+<!-- Docket-kit masthead (see .dk-* in portal.css / DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Documents &amp; Drafting · USCIS Forms</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Autofilled <em>USCIS packages</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Immigration form packages are generated from a client's matter — this page manages the firm-wide standing answers that print on every draft.</p>
 </div>
 
-<div class="card">
-  <p style="font-size:var(--text-sm);color:var(--color-text-muted);line-height:1.6">
+<section class="dk-sec">
+  <div class="dk-sec-head"><h2>Generate a package</h2><span class="dk-sec-rule"></span></div>
+  <p style="font-size:14px;color:var(--ink-soft);line-height:1.6;margin:0 0 18px;max-width:72ch">
     USCIS form packages are generated from a client's matter. Open a matter with an immigration case type
     (e.g. DACA Renewal) and use the <strong>USCIS Forms</strong> tab on that matter's detail page to generate,
     review, and finalize its form package.
   </p>
-  <a href="#clients" class="btn btn--primary" style="margin-top:var(--space-3)">Go to Clients &amp; Matters</a>
-</div>
+  <a href="#clients" class="btn btn--primary">Go to Clients &amp; Matters</a>
+</section>
 
-<div class="card" style="margin-top:var(--space-4)">
-  <h2 style="font-size:var(--text-lg);margin-bottom:var(--space-1)">Template Defaults</h2>
-  <p style="font-size:var(--text-sm);color:var(--color-text-muted);line-height:1.6;margin-bottom:var(--space-3)">
+<section class="dk-sec">
+  <div class="dk-sec-head"><h2>Template Defaults</h2><span class="dk-sec-rule"></span></div>
+  <p style="font-size:14px;color:var(--ink-soft);line-height:1.6;margin:0 0 18px;max-width:72ch">
     Set the standing answers your firm wants on every generated form (for example, the I-821D Part 4
     questions that are always "No"). <strong>Download</strong> a template, check boxes and fill anything
     that never changes in your PDF viewer, save it, then <strong>upload</strong> it back — those answers
@@ -25,6 +26,6 @@
     and are ignored if edited here. Re-uploading replaces the previous defaults.
   </p>
   <div id="ff-template-defaults-list">
-    <p style="font-size:var(--text-sm);color:var(--color-text-muted)">Loading templates…</p>
+    <div class="dk-empty">Loading templates…</div>
   </div>
-</div>
+</section>

@@ -183,6 +183,86 @@ export function ssnDecrypt(stored, env) {
   return Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8');
 }
 
+// ── Upload capability token (HMAC) ─────────────────────────────────────────
+// Turns the upload-proxy URL into a short-lived signed capability instead of
+// relying on the raw document UUID (which is not secret). Minted by
+// get-upload-url and verified by upload-proxy. Format: base64url(payload).base64url(sig)
+// where payload = { d: docId, e: expiryMs }. No new per-client secret required —
+// the key is derived from an existing secret and both endpoints resolve it identically.
+
+function uploadTokenKeyMaterial(env) {
+  return env.UPLOAD_TOKEN_SECRET || env.WEBDAV_TOKEN_SECRET || env.SUPABASE_SERVICE_KEY || '';
+}
+
+const b64url = {
+  enc: (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
+  dec: (str) => Uint8Array.from(atob(str.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
+};
+
+async function uploadTokenKey(env, usage) {
+  return crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(uploadTokenKeyMaterial(env)),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    [usage]
+  );
+}
+
+export async function signUploadToken(docId, env, ttlSeconds = 900) {
+  const payloadB64 = b64url.enc(new TextEncoder().encode(JSON.stringify({ d: docId, e: Date.now() + ttlSeconds * 1000 })));
+  const key = await uploadTokenKey(env, 'sign');
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadB64));
+  return `${payloadB64}.${b64url.enc(new Uint8Array(sig))}`;
+}
+
+export async function verifyUploadToken(token, docId, env) {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const [payloadB64, sigB64] = parts;
+  try {
+    const key = await uploadTokenKey(env, 'verify');
+    const ok = await crypto.subtle.verify('HMAC', key, b64url.dec(sigB64), new TextEncoder().encode(payloadB64));
+    if (!ok) return false;
+    const payload = JSON.parse(new TextDecoder().decode(b64url.dec(payloadB64)));
+    if (payload.d !== docId) return false;
+    if (typeof payload.e !== 'number' || payload.e < Date.now()) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ── Turnstile verification (public endpoints) ─────────────────────────────
+// Gracefully no-ops when TURNSTILE_SECRET_KEY is not configured (dev /
+// pre-domain setup) — same pattern as the Resend key. Fails CLOSED when a
+// secret IS set but verification errors or the token is bad.
+
+export async function verifyTurnstile(env, token, ip, logTag = 'turnstile') {
+  const secret = env.TURNSTILE_SECRET_KEY;
+  if (!secret) {
+    console.log(`[${logTag}] TURNSTILE_SECRET_KEY not set — skipping captcha check`);
+    return true;
+  }
+  if (!token) return false;
+  try {
+    const form = new URLSearchParams();
+    form.append('secret', secret);
+    form.append('response', token);
+    if (ip) form.append('remoteip', ip);
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      body: form,
+    });
+    const data = await res.json();
+    return !!data.success;
+  } catch (err) {
+    console.error(`[${logTag}] turnstile verify error:`, err.message);
+    return false;
+  }
+}
+
 // ── Standard response helper ──────────────────────────────────────────────
 
 export function json(status, body) {

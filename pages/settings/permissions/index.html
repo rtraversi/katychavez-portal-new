@@ -1,19 +1,18 @@
 <!-- Settings › Permissions — role × module access matrix -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Permissions</h1>
-    <p class="page-subtitle">Control which roles can access each module</p>
-  </div>
-  <div class="flex gap-3">
-    <a href="#settings/users" class="btn btn--secondary">← Back to users</a>
-    <button class="btn btn--primary" id="btn-save-permissions">Save changes</button>
-  </div>
+<!-- Docket-kit masthead (see DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · Permissions</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Roles &amp; <em>permissions</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Set the access level each role has for every module across the portal — Owners always keep full access.</p>
 </div>
 
-<div class="card" style="padding:0;overflow:hidden">
-  <div class="table-wrap" id="permissions-wrap">
-    <div style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">Loading…</div>
-  </div>
+<div class="flex gap-3" style="justify-content:flex-end;margin-bottom:var(--space-4)">
+  <a href="#settings/users" class="btn btn--secondary">← Back to users</a>
+  <button class="btn btn--primary" id="btn-save-permissions">Save changes</button>
+</div>
+
+<div id="permissions-wrap">
+  <div style="padding:var(--space-10);text-align:center;color:var(--color-text-muted);margin-top:var(--space-4)">Loading…</div>
 </div>
 
 <p class="text-muted text-sm mt-4" style="max-width:540px">

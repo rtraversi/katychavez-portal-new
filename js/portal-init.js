@@ -207,6 +207,12 @@
     var myProfileBtn = document.getElementById('tum-my-profile');
     if (myProfileBtn) myProfileBtn.addEventListener('click', function () { closeMenu(); openMyProfileModal(); });
 
+    var helpBtn = document.getElementById('tum-help');
+    if (helpBtn) helpBtn.addEventListener('click', function () {
+      closeMenu();
+      if (window.HelpDrawer) window.HelpDrawer.open();
+    });
+
     // Close menu when navigating via a link inside it
     menu.querySelectorAll('a').forEach(function (a) {
       a.addEventListener('click', closeMenu);

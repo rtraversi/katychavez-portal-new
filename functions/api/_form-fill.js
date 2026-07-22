@@ -12,14 +12,24 @@
 //       "type": "text" | "checkbox" | "dropdown",
 //       "source": "client.<col>" | "matter.<col>" | "immigration.<col>" |
 //                 "immigration.family.<n>.<col>" | "firm.<col>" | "attorney.<col>" |
+//                 "petitioner.<col>" | "joint_sponsor.<col>" |
 //                 "literal:<value>" | "blank",
 //       "transform"?: "state_abbrev" | "yes_no" | "date_mmddyyyy" | "date_slash"
 //     },
 //     ...
 //   }
 //
-// fill context shape: { client, matter, immigration, familyMembers, firm, attorney }
+// fill context shape: { client, matter, immigration, familyMembers, firm,
+//                       attorney, petitioner, joint_sponsor }
+//
+// "petitioner" is the matter's primary opposing_parties row (migration 1602):
+// in immigration matters the client is the beneficiary and this record is the
+// sponsoring petitioner (I-130 Part 2, I-864 sponsor block, etc.).
+// "joint_sponsor" is the optional party_role='joint_sponsor' row (migration
+// 1604) — the I-864 joint financial sponsor when the petitioner can't meet
+// the income requirement alone.
 
+import { PDFTextField, PDFCheckBox, PDFDropdown, PDFRadioGroup } from 'pdf-lib';
 import { ssnDecrypt } from './_helpers.js';
 
 const STATE_ABBREV = {
@@ -46,7 +56,7 @@ function unitType(value) {
   return null;
 }
 
-function applyTransform(value, transform) {
+export function applyTransform(value, transform) {
   if (value == null || value === '') return value;
   switch (transform) {
     case 'state_abbrev': {
@@ -101,7 +111,7 @@ function applyTransform(value, transform) {
 
 // Resolves a dotted-path source ("prefix.path") against the fill context.
 // Supports one level of array indexing for "immigration.family.<n>.<col>".
-function resolvePath(source, context, env) {
+export function resolvePath(source, context, env) {
   if (source === 'blank') return { skip: true };
   if (source.startsWith('literal:')) return { value: source.slice('literal:'.length) };
 
@@ -119,8 +129,8 @@ function resolvePath(source, context, env) {
     return { value: member[col] };
   }
 
-  if (prefix === 'client' && rest === 'ssn_full') {
-    const encrypted = context.client?.ssn_encrypted;
+  if ((prefix === 'client' || prefix === 'petitioner' || prefix === 'joint_sponsor') && rest === 'ssn_full') {
+    const encrypted = context[prefix]?.ssn_encrypted;
     if (!encrypted) return { skip: true };
     try {
       return { value: ssnDecrypt(encrypted, env) };
@@ -130,8 +140,8 @@ function resolvePath(source, context, env) {
     }
   }
 
-  if (prefix === 'attorney' && rest === 'full_name') {
-    const a = context.attorney;
+  if ((prefix === 'attorney' || prefix === 'petitioner' || prefix === 'joint_sponsor') && rest === 'full_name') {
+    const a = context[prefix];
     if (!a) return { skip: true };
     const name = `${a.first_name || ''} ${a.last_name || ''}`.trim();
     return { value: name || null };
@@ -200,4 +210,48 @@ export function applyFieldMap(pdfForm, fieldMap, context, env) {
   if (warnings.length) console.warn('[_form-fill] field warnings:', warnings);
 
   return { filledCount, totalCount, warnings };
+}
+
+// Applies per-matter manual edits (form_field_edits rows, migration 1603)
+// AFTER applyFieldMap, so they win over both autofill and firm_overrides.
+// Values are strings as they should appear; checkboxes take 'Yes'/'No'; an
+// empty string deliberately blanks a field autofill may have populated.
+// Field type is detected from the live PDF field (edits can target fields
+// the map never mentions), so unknown/renamed names just warn and skip.
+export function applyManualEdits(pdfForm, edits) {
+  let appliedCount = 0;
+  const warnings = [];
+
+  for (const [fieldName, raw] of Object.entries(edits || {})) {
+    try {
+      const field = pdfForm.getField(fieldName);
+      const value = raw == null ? '' : String(raw);
+
+      if (field instanceof PDFTextField) {
+        const maxLen = field.getMaxLength();
+        if (maxLen !== undefined && value.length > maxLen) {
+          field.setMaxLength(value.length);
+          warnings.push(`${fieldName}: raised maxLength ${maxLen} -> ${value.length}`);
+        }
+        field.setText(value);
+      } else if (field instanceof PDFCheckBox) {
+        const truthy = value === 'Yes' || value === 'yes' || value === 'true';
+        if (truthy) field.check(); else field.uncheck();
+      } else if (field instanceof PDFDropdown) {
+        if (value === '') field.clear(); else field.select(value);
+      } else if (field instanceof PDFRadioGroup) {
+        if (value === '') field.clear(); else field.select(value);
+      } else {
+        warnings.push(`${fieldName}: unsupported field class for manual edit`);
+        continue;
+      }
+      appliedCount++;
+    } catch (err) {
+      warnings.push(`${fieldName}: ${err.message}`);
+    }
+  }
+
+  if (warnings.length) console.warn('[_form-fill] manual edit warnings:', warnings);
+
+  return { appliedCount, warnings };
 }

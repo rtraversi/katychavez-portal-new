@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>Katy Chavez Law — Portal Login</title>
+  <title>IurisIQ — Portal Login</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -17,9 +17,33 @@
     <div class="login-card">
 
       <header class="login-header">
-        <img src="assets/katychavez-logo-small.jpg" class="login-logo" alt="Katy Chavez Law">
+        <img src="assets/iurisiq-logo.png" class="login-logo" alt="IurisIQ">
         <p class="login-subtitle">Client &amp; Staff Portal</p>
       </header>
+
+      <!-- Demo mode: 3 auto-login role cards (shown only when config.demoMode === true) -->
+      <div id="demo-login" class="demo-login" hidden>
+        <p class="demo-tagline">Explore the portal as any role — no sign-up needed.</p>
+        <div class="demo-roles">
+          <button class="demo-role-btn" data-email="demo-owner@iurisiq.com" data-label="Managing Partner">
+            <span class="demo-role-icon">👔</span>
+            <span class="demo-role-name">Owner</span>
+            <span class="demo-role-desc">Sarah Chen</span>
+          </button>
+          <button class="demo-role-btn" data-email="demo-attorney@iurisiq.com" data-label="Associate Attorney">
+            <span class="demo-role-icon">⚖️</span>
+            <span class="demo-role-name">Attorney</span>
+            <span class="demo-role-desc">Marcus Johnson</span>
+          </button>
+          <button class="demo-role-btn" data-email="demo-client@iurisiq.com" data-label="Client">
+            <span class="demo-role-icon">👤</span>
+            <span class="demo-role-name">Client</span>
+            <span class="demo-role-desc">Ana Rodriguez</span>
+          </button>
+        </div>
+        <p class="demo-reset-note">⟳ Demo data resets nightly at 2am CT</p>
+        <div class="demo-divider"><span>or sign in manually</span></div>
+      </div>
 
       <form id="login-form" class="login-form" method="post" novalidate>
         <div class="field">
@@ -36,6 +60,9 @@
         </div>
 
         <div id="login-error" class="form-error" role="alert" hidden></div>
+
+        <!-- Turnstile CAPTCHA — renders only when TURNSTILE_SITE_KEY is configured -->
+        <div id="turnstile-login" class="cf-turnstile-slot"></div>
 
         <button type="submit" id="login-btn" class="btn btn--primary btn--full">
           Sign in
@@ -82,11 +109,91 @@
     <span>Powered by IurisIQ</span>
   </div>
 
+  <!-- CF Web Analytics — injected only in demo mode (token set in config.js) -->
+  <script id="cf-beacon-script"></script>
+
+  <style>
+    .demo-login { margin-bottom: 24px; }
+    .demo-tagline {
+      font-size: .82rem; color: var(--color-text-muted, #6b7280);
+      text-align: center; margin-bottom: 14px;
+    }
+    .demo-roles {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 14px;
+    }
+    .demo-role-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      padding: 14px 8px; border: 1.5px solid var(--color-border, #e5e7eb);
+      border-radius: 10px; background: var(--color-surface, #fff);
+      cursor: pointer; transition: border-color .15s, box-shadow .15s;
+      font-family: inherit;
+    }
+    .demo-role-btn:hover { border-color: var(--color-primary, #3b5bdb); box-shadow: 0 2px 8px rgba(59,91,219,.12); }
+    .demo-role-icon { font-size: 1.5rem; }
+    .demo-role-name { font-size: .8rem; font-weight: 600; color: var(--color-text, #111827); }
+    .demo-role-desc { font-size: .7rem; color: var(--color-text-muted, #6b7280); }
+    .demo-reset-note { font-size: .72rem; color: var(--color-text-muted, #6b7280); text-align: center; margin-bottom: 14px; }
+    .demo-divider {
+      display: flex; align-items: center; gap: 10px;
+      font-size: .72rem; color: var(--color-text-muted, #9ca3af); margin-bottom: 4px;
+    }
+    .demo-divider::before, .demo-divider::after {
+      content:''; flex:1; height:1px; background: var(--color-border, #e5e7eb);
+    }
+  </style>
+
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js" integrity="sha384-nD3dwv4+ZqdYnmZKe/249ImlV04om7xTCcsoSeQYI+RO+XlKPoqAWaJR1M5SJH9p" crossorigin="anonymous"></script>
   <script src="js/config.js"></script>
   <script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/turnstile-init.js"></script>
   <script src="js/login.js"></script>
+  <script>
+    // Demo mode: show role cards, wire up auto-login, inject CF beacon
+    (function() {
+      const cfg = window.IURISIQ_CONFIG || {};
+      if (!cfg.demoMode) return;
+
+      // Show demo panel
+      const panel = document.getElementById('demo-login');
+      if (panel) panel.hidden = false;
+
+      // CF Web Analytics beacon (token supplied via config)
+      if (cfg.cfBeaconToken) {
+        const s = document.getElementById('cf-beacon-script');
+        if (s) {
+          s.setAttribute('defer', '');
+          s.setAttribute('src', 'https://static.cloudflareinsights.com/beacon.min.js');
+          s.setAttribute('data-cf-beacon', JSON.stringify({ token: cfg.cfBeaconToken }));
+        }
+      }
+
+      // Log page_load event
+      const sessionId = sessionStorage.getItem('demo_sid') || crypto.randomUUID();
+      sessionStorage.setItem('demo_sid', sessionId);
+      fetch('/api/demo-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, event_type: 'page_load' }),
+      }).catch(() => {});
+
+      // Wire role buttons to fill + submit the login form
+      document.querySelectorAll('.demo-role-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const email = this.dataset.email;
+          const emailInput = document.getElementById('email');
+          const passInput  = document.getElementById('password');
+          const form       = document.getElementById('login-form');
+          if (!emailInput || !passInput || !form) return;
+          emailInput.value = email;
+          passInput.value  = 'Demo2024!';
+          // Store role so portal can log the login event after auth
+          sessionStorage.setItem('demo_login_role', this.querySelector('.demo-role-name').textContent.toLowerCase());
+          form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

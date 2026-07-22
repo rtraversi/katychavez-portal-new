@@ -1,0 +1,55 @@
+<!-- Settings: Billing Rates — loaded dynamically into #page-content by menu.js -->
+<!-- Docket-kit masthead (see DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · Billing rates</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Your billing <em>rates</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Set each client's hourly rates from their signed agreement — these drive the amounts on unbilled time and invoices.</p>
+</div>
+
+<div class="dk-sec">
+  <div class="dk-sec-head"><h2>Client</h2><span class="dk-sec-rule"></span></div>
+  <div class="field field-stack" style="max-width:420px">
+    <label class="field-label" for="rate-client-search">Choose a client to view or edit their rates</label>
+    <!-- Searchable picker (see .dk-combo in portal.css) — same pattern as New Invoice -->
+    <div class="dk-combo" id="rate-client-combo">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="search-input" id="rate-client-search"
+          placeholder="Search clients by name…" autocomplete="off"
+          role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="rate-client-list">
+      </div>
+      <div class="dk-combo-list" id="rate-client-list" role="listbox" hidden></div>
+      <!-- Holds the chosen client id; keeps the existing #rate-client contract -->
+      <input type="hidden" id="rate-client">
+    </div>
+  </div>
+</div>
+
+<!-- Rates editor (hidden until a client is chosen) -->
+<div id="rate-editor" class="hidden">
+
+  <div class="dk-sec">
+    <div class="dk-sec-head"><h2>Hourly rates</h2><span class="dk-sec-rule"></span></div>
+    <p class="dk-sub" style="margin-top:0">Enter the rate this client is billed for each staff member. Leave blank if that person doesn't bill this client.</p>
+    <div class="dk-register" id="rate-rows"></div>
+  </div>
+
+  <!--
+    The "Monthly administrative fee" section was removed in the 2026-07 pare-back
+    (CONSOLIDATION-ANALYSIS.md §1-B). The portal had TWO mechanisms for one
+    monthly fee: this recurring_charges cron and the admin_fee expense category
+    (migration 1527), and firms were using the expense category by hand. The
+    expense category is now the single path.
+
+    The cron and /api/billing-rates recurring_charge handling are intentionally
+    left in place: any firm that already configured a fee keeps getting it (the
+    API only touches recurring_charges when the field is present, so omitting it
+    here is a no-op). Restore this block if automated recurring billing is ever
+    wanted again — nothing behind it was deleted.
+  -->
+
+  <div style="display:flex;gap:var(--space-3);align-items:center;margin-top:var(--space-4)">
+    <button id="btn-save-rates" class="btn btn--primary">Save rates</button>
+    <span id="rate-save-status" class="dk-sub" style="margin:0"></span>
+  </div>
+</div>

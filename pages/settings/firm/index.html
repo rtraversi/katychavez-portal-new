@@ -1,70 +1,108 @@
 <!-- Settings > Firm Profile — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Firm Profile</h1>
-    <p class="page-subtitle">Your firm's identity — autofilled onto every generated form and document</p>
+<!-- Docket-kit masthead (see DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · Firm profile</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Your firm's <em>profile</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">The firm's identity details — autofilled onto every form and document the portal generates.</p>
+</div>
+
+<div class="dk-sec">
+  <div class="dk-sec-head"><h2>Firm details</h2><span class="dk-sec-rule"></span></div>
+  <div class="card">
+    <form id="firm-profile-form">
+      <div class="field field-stack">
+        <label class="field-label" for="fp-firm-name">Firm name</label>
+        <input class="field-input" id="fp-firm-name" name="firm_name" type="text" maxlength="120" placeholder="e.g. Chavez Immigration Law, PLLC">
+      </div>
+      <div class="field field-stack">
+        <label class="field-label" for="fp-address1">Address line 1</label>
+        <input class="field-input" id="fp-address1" name="address_line1" type="text" maxlength="120" placeholder="Street number and name">
+      </div>
+      <div class="field field-stack">
+        <label class="field-label" for="fp-address2">Address line 2</label>
+        <input class="field-input" id="fp-address2" name="address_line2" type="text" maxlength="60" placeholder="Suite 400 (Apt/Ste/Flr + number — forms split this automatically)">
+      </div>
+      <div class="dk-fieldrow" style="grid-template-columns:2fr 1fr 1fr">
+        <div class="field field-stack">
+          <label class="field-label" for="fp-city">City</label>
+          <input class="field-input" id="fp-city" name="city" type="text" maxlength="60">
+        </div>
+        <div class="field field-stack">
+          <label class="field-label" for="fp-state">State</label>
+          <input class="field-input" id="fp-state" name="state" type="text" maxlength="20" placeholder="TX">
+        </div>
+        <div class="field field-stack">
+          <label class="field-label" for="fp-zip">ZIP</label>
+          <input class="field-input" id="fp-zip" name="zip" type="text" maxlength="10">
+        </div>
+      </div>
+      <div class="dk-fieldrow" style="grid-template-columns:1fr 1fr">
+        <div class="field field-stack">
+          <label class="field-label" for="fp-phone">Phone</label>
+          <input class="field-input" id="fp-phone" name="phone" type="tel" maxlength="20" placeholder="Digits only, e.g. 5125551234">
+        </div>
+        <div class="field field-stack">
+          <label class="field-label" for="fp-fax">Fax</label>
+          <input class="field-input" id="fp-fax" name="fax" type="tel" maxlength="20">
+        </div>
+      </div>
+      <div class="field field-stack">
+        <label class="field-label" for="fp-email">Email</label>
+        <input class="field-input" id="fp-email" name="email" type="email" maxlength="120">
+      </div>
+      <div class="field field-stack">
+        <label class="field-label" for="fp-website">Website</label>
+        <input class="field-input" id="fp-website" name="website" type="url" maxlength="120" placeholder="https://…">
+      </div>
+
+      <p id="fp-error" class="hidden" style="color:var(--color-danger);font-size:var(--text-sm)"></p>
+      <div style="display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-4)">
+        <button type="submit" class="btn btn--primary" id="fp-save">Save Firm Profile</button>
+      </div>
+    </form>
   </div>
 </div>
 
-<div class="card" style="max-width:640px">
-  <form id="firm-profile-form">
-    <div class="field field-stack">
-      <label class="field-label" for="fp-firm-name">Firm name</label>
-      <input class="field-input" id="fp-firm-name" name="firm_name" type="text" maxlength="120" placeholder="e.g. Chavez Immigration Law, PLLC">
-    </div>
-    <div class="field field-stack">
-      <label class="field-label" for="fp-address1">Address line 1</label>
-      <input class="field-input" id="fp-address1" name="address_line1" type="text" maxlength="120" placeholder="Street number and name">
-    </div>
-    <div class="field field-stack">
-      <label class="field-label" for="fp-address2">Address line 2</label>
-      <input class="field-input" id="fp-address2" name="address_line2" type="text" maxlength="60" placeholder="Suite 400 (Apt/Ste/Flr + number — forms split this automatically)">
-    </div>
-    <div class="field-row" style="display:flex;gap:var(--space-3)">
-      <div class="field field-stack" style="flex:2">
-        <label class="field-label" for="fp-city">City</label>
-        <input class="field-input" id="fp-city" name="city" type="text" maxlength="60">
+<div class="dk-sec">
+  <div class="dk-sec-head"><h2>Matter folders</h2><span class="dk-sec-rule"></span></div>
+  <div class="card">
+    <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-4);line-height:1.6">
+      How the Files tab is organized for every matter. Changes apply to new matters;
+      existing matters keep their folders.
+    </p>
+    <form id="firm-folders-form">
+      <div class="field field-stack">
+        <label class="field-label" for="ff-default-folders">Default folders for new matters</label>
+        <textarea class="field-input" id="ff-default-folders" rows="5"
+          placeholder="One folder per line, e.g.&#10;Collaborative Documents&#10;Drafts&#10;Discovery/Requests"
+          style="resize:vertical;font-family:inherit"></textarea>
+        <p style="font-size:var(--text-xs,0.75rem);color:var(--color-text-muted);margin-top:var(--space-1)">
+          One folder per line — use <code>/</code> for subfolders (max 4 levels). These are created
+          automatically on every new matter, alongside the built-in folders below.
+        </p>
       </div>
-      <div class="field field-stack" style="flex:1">
-        <label class="field-label" for="fp-state">State</label>
-        <input class="field-input" id="fp-state" name="state" type="text" maxlength="20" placeholder="TX">
+      <div class="field field-stack">
+        <span class="field-label">Built-in folders</span>
+        <div id="ff-builtin-list" style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-1) var(--space-3)"></div>
+        <p style="font-size:var(--text-xs,0.75rem);color:var(--color-text-muted);margin-top:var(--space-1)">
+          Folders switched off are hidden on the Files tab while empty (they reappear if files land in them).
+        </p>
       </div>
-      <div class="field field-stack" style="flex:1">
-        <label class="field-label" for="fp-zip">ZIP</label>
-        <input class="field-input" id="fp-zip" name="zip" type="text" maxlength="10">
+      <p id="ff-error" class="hidden" style="color:var(--color-danger);font-size:var(--text-sm)"></p>
+      <div style="display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-4)">
+        <button type="submit" class="btn btn--primary" id="ff-save">Save Matter Folders</button>
       </div>
-    </div>
-    <div class="field-row" style="display:flex;gap:var(--space-3)">
-      <div class="field field-stack" style="flex:1">
-        <label class="field-label" for="fp-phone">Phone</label>
-        <input class="field-input" id="fp-phone" name="phone" type="tel" maxlength="20" placeholder="Digits only, e.g. 5125551234">
-      </div>
-      <div class="field field-stack" style="flex:1">
-        <label class="field-label" for="fp-fax">Fax</label>
-        <input class="field-input" id="fp-fax" name="fax" type="tel" maxlength="20">
-      </div>
-    </div>
-    <div class="field field-stack">
-      <label class="field-label" for="fp-email">Email</label>
-      <input class="field-input" id="fp-email" name="email" type="email" maxlength="120">
-    </div>
-    <div class="field field-stack">
-      <label class="field-label" for="fp-website">Website</label>
-      <input class="field-input" id="fp-website" name="website" type="url" maxlength="120" placeholder="https://…">
-    </div>
-
-    <p id="fp-error" class="hidden" style="color:var(--color-danger);font-size:var(--text-sm)"></p>
-    <div style="display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-4)">
-      <button type="submit" class="btn btn--primary" id="fp-save">Save Firm Profile</button>
-    </div>
-  </form>
+    </form>
+  </div>
 </div>
 
-<div class="card" style="max-width:640px;margin-top:var(--space-4)">
-  <p style="font-size:var(--text-sm);color:var(--color-text-muted);line-height:1.6">
-    <strong>Attorney info is separate:</strong> bar number, licensing authority, USCIS account number, and
-    direct phone are per-attorney — each form pulls them from the matter's assigned attorney. Admins edit
-    them in <a href="#settings/users">Settings → Users</a>; attorneys can edit their own from the
-    <strong>My Profile</strong> item in the top-right user menu.
-  </p>
+<div class="dk-sec">
+  <div class="card">
+    <p style="font-size:var(--text-sm);color:var(--color-text-muted);line-height:1.6">
+      <strong>Attorney info is separate:</strong> bar number, licensing authority, USCIS account number, and
+      direct phone are per-attorney — each form pulls them from the matter's assigned attorney. Admins edit
+      them in <a href="#settings/users">Settings → Users</a>; attorneys can edit their own from the
+      <strong>My Profile</strong> item in the top-right user menu.
+    </p>
+  </div>
 </div>

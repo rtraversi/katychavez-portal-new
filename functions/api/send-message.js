@@ -6,6 +6,7 @@
 // Body: { client_id, body }
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
+import { validate, SendMessageSchema } from './_schemas.js';
 
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -16,9 +17,9 @@ export async function onRequest({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'Invalid JSON' }); }
 
-  const { client_id, body: msgBody } = body;
-  if (!client_id)           return json(400, { error: 'client_id is required.' });
-  if (!msgBody?.trim())     return json(400, { error: 'Message body is required.' });
+  const v = validate(SendMessageSchema, body);
+  if (v.error) return v.error;
+  const { client_id, body: msgBody } = v.data;
 
   const admin = makeAdminClient(env);
 

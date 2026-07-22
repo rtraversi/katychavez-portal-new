@@ -6,4 +6,11 @@ window.APP_CONFIG = {
   r2PublicUrl: "",
   appName: "IurisIQ Portal",
   firmName: "Katy Chavez, Atty",
+  demoMode: false,
+  cfBeaconToken: "",
+  turnstileSiteKey: "0x4AAAAAAD5_18ybr8_Swbpp",
+  mfaRequiredRoles: [],
+  deployVersion: 1784677035559,
 };
+// Alias used by demo login page and event logger
+window.IURISIQ_CONFIG = window.APP_CONFIG;

@@ -39,7 +39,6 @@
   const roleName = profile?.role?.name || '';
   canWrite = ['Owner', 'Attorney', 'Partner Attorney'].includes(roleName);
   document.getElementById('btn-add-template').style.display   = canWrite ? '' : 'none';
-  document.getElementById('btn-add-recommended').style.display = canWrite ? '' : 'none';
   document.getElementById('btn-browse-library').style.display  = canWrite ? '' : 'none';
 
   // ── Load reference data ───────────────────────────────────────────────────────
@@ -158,76 +157,46 @@
     }
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="5" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">No templates found.</td></tr>`;
+      const hint = canWrite ? ' Click <strong>Add document</strong> to choose from the library.' : '';
+      tbody.innerHTML = `<div class="dk-empty" style="margin-top:var(--space-4)">No documents added for this view yet.${hint}</div>`;
       return;
     }
 
-    tbody.innerHTML = filtered.map(t => `
-      <tr data-id="${t.id}">
-        <td style="font-weight:500">${Utils.esc(t.doc_name)}</td>
-        <td>${Utils.esc(formatCaseTypes(t.case_types))}</td>
-        <td>${Utils.esc(CATEGORY_LABELS[t.doc_category] || t.doc_category || '—')}</td>
-        <td>
-          <span class="badge badge--${t.is_required_by_default ? 'active' : 'normal'}">
-            ${t.is_required_by_default ? 'Required' : 'Optional'}
-          </span>
-        </td>
-        <td>
+    const rows = filtered.map(t => {
+      const reqTag  = t.is_required_by_default ? DK.tag('Required', 'ok') : DK.tag('Optional', 'mut');
+      const category = CATEGORY_LABELS[t.doc_category] || t.doc_category || '—';
+      return `<div class="dk-reg-row" data-id="${t.id}">
+        <div>
+          <div class="dk-reg-title">${Utils.esc(t.doc_name)} ${reqTag}</div>
+          <div class="dk-reg-meta">
+            <span>${Utils.esc(formatCaseTypes(t.case_types))}</span>
+            <span class="sep">·</span>
+            <span>${Utils.esc(category)}</span>
+          </div>
+        </div>
+        <div class="dk-reg-act">
           ${canWrite ? `
-            <div style="display:flex;gap:var(--space-2)">
-              <button class="btn btn--ghost btn--sm dt-edit-btn" data-id="${t.id}" title="Edit">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              </button>
-              <button class="btn btn--ghost btn--sm dt-delete-btn" data-id="${t.id}" title="Delete" style="color:var(--color-danger)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-              </button>
-            </div>` : ''}
-        </td>
-      </tr>`).join('');
-  }
+            <button class="dk-linkbtn dt-edit-btn" data-id="${t.id}" type="button" title="Edit">Edit</button>
+            <button class="dk-linkbtn d dt-delete-btn" data-id="${t.id}" type="button" title="Delete">Delete</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
 
-  // ── Add Recommended Templates ─────────────────────────────────────────────────
-
-  async function handleAddRecommended() {
-    const toImport = library.filter(item =>
-      item.is_recommended &&
-      (item.practice_area_key === null || enabledPaKeys.has(item.practice_area_key)) &&
-      !importedLibraryIds.has(item.id)
-    );
-
-    if (toImport.length === 0) {
-      Utils.toast('All recommended templates are already added.', 'info');
-      return;
-    }
-
-    const confirmed = await Utils.confirm(
-      `This will add ${toImport.length} recommended template${toImport.length !== 1 ? 's' : ''} for your enabled practice areas. You can remove any you don't need afterward.`,
-      { confirmLabel: 'Add templates' }
-    );
-    if (!confirmed) return;
-
-    const btn = document.getElementById('btn-add-recommended');
-    Utils.setLoading(btn, true);
-
-    const session = await Auth.getSession();
-    const res = await fetch('/api/save-doc-template', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body:    JSON.stringify({ action: 'bulk_import', items: toImport }),
-    });
-    const data = await res.json();
-    Utils.setLoading(btn, false);
-
-    if (!res.ok) { Utils.toast(data.error || 'Import failed.', 'error'); return; }
-    Utils.toast(`${data.imported} template${data.imported !== 1 ? 's' : ''} added.`, 'success');
-    await load();
+    tbody.innerHTML = `<div class="dk-register">${rows}</div>`;
   }
 
   // ── Library Picker Modal ──────────────────────────────────────────────────────
+  // Opens pre-filtered to whatever case-type view the user is currently on, so
+  // "Add document" adds into the case type they're looking at.
 
   function openLibraryPicker() {
-    let libActivePa = 'all';
-    let libActiveCt = null;
+    let libActivePa = activePa;
+    let libActiveCt = activeCt;
+
+    // Per-row Required/Optional toggle — click flips the state at add-time.
+    const REQ_ON  = 'font-size:var(--text-xs);font-weight:600;white-space:nowrap;padding:2px 10px;border-radius:999px;cursor:pointer;border:1px solid var(--color-success,#16a34a);color:var(--color-success,#16a34a);background:none';
+    const REQ_OFF = 'font-size:var(--text-xs);font-weight:500;white-space:nowrap;padding:2px 10px;border-radius:999px;cursor:pointer;border:1px solid var(--color-border);color:var(--color-text-muted);background:none';
+    function styleReqToggle(btn) { btn.style.cssText = btn.dataset.required === '1' ? REQ_ON : REQ_OFF; }
 
     function libEnabledCaseTypeKeys() {
       const enabledPaIds = new Set(practiceAreas.map(pa => pa.id));
@@ -308,12 +277,12 @@
       container.innerHTML = items.map(item => {
         const alreadyImported = importedLibraryIds.has(item.id);
         const checkId = `lib-cb-${item.id}`;
+        const reqDefault = item.is_required_by_default ? '1' : '0';
         return `
           <label style="display:flex;align-items:flex-start;gap:var(--space-3);padding:var(--space-3) var(--space-1);border-bottom:1px solid var(--color-border-subtle, var(--color-border));cursor:${alreadyImported ? 'default' : 'pointer'};opacity:${alreadyImported ? '0.45' : '1'}">
             <input type="checkbox" id="${checkId}" class="lib-item-cb" value="${item.id}"
               style="width:auto;flex-shrink:0;margin-top:2px"
-              ${alreadyImported ? 'disabled checked' : ''}
-              ${item.is_recommended && !alreadyImported ? 'checked' : ''}>
+              ${alreadyImported ? 'disabled checked' : ''}>
             <div style="flex:1;min-width:0">
               <div style="font-weight:500;font-size:var(--text-sm)">${Utils.esc(item.doc_name)}</div>
               <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px">
@@ -323,15 +292,25 @@
                 ${item.is_recommended && !alreadyImported ? '&nbsp;·&nbsp;<span style="color:var(--color-primary)">Recommended</span>' : ''}
               </div>
             </div>
-            <span style="font-size:var(--text-xs);color:${item.is_required_by_default ? 'var(--color-success,#16a34a)' : 'var(--color-text-muted)'};white-space:nowrap;padding-top:2px">
-              ${item.is_required_by_default ? 'Required' : 'Optional'}
-            </span>
+            ${alreadyImported
+              ? `<span style="font-size:var(--text-xs);color:var(--color-text-muted);white-space:nowrap;padding-top:2px">${item.is_required_by_default ? 'Required' : 'Optional'}</span>`
+              : `<button type="button" class="lib-req-toggle" data-id="${Utils.esc(item.id)}" data-required="${reqDefault}" title="Click to toggle required / optional" style="${reqDefault === '1' ? REQ_ON : REQ_OFF}">${reqDefault === '1' ? 'Required' : 'Optional'}</button>`
+            }
           </label>`;
       }).join('');
 
       updateImportBtn(importBtn);
       container.querySelectorAll('.lib-item-cb:not([disabled])').forEach(cb => {
         cb.addEventListener('change', () => updateImportBtn(importBtn));
+      });
+      container.querySelectorAll('.lib-req-toggle').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.preventDefault();       // don't let the surrounding <label> toggle the checkbox
+          e.stopPropagation();
+          btn.dataset.required = btn.dataset.required === '1' ? '0' : '1';
+          btn.textContent = btn.dataset.required === '1' ? 'Required' : 'Optional';
+          styleReqToggle(btn);
+        });
       });
     }
 
@@ -383,7 +362,13 @@
       const selectedIds = [...libModal.querySelectorAll('.lib-item-cb:not([disabled]):checked')].map(cb => cb.value);
       if (!selectedIds.length) return;
 
-      const items = library.filter(item => selectedIds.includes(item.id));
+      const items = library
+        .filter(item => selectedIds.includes(item.id))
+        .map(item => {
+          const toggle = libModal.querySelector(`.lib-req-toggle[data-id="${item.id}"]`);
+          const required = toggle ? toggle.dataset.required === '1' : item.is_required_by_default;
+          return { ...item, is_required_by_default: required };
+        });
       Utils.setLoading(importBtn, true);
 
       const session = await Auth.getSession();
@@ -563,9 +548,8 @@
 
   // ── Event wiring ──────────────────────────────────────────────────────────────
 
-  document.getElementById('btn-add-template').addEventListener('click',    () => openModal());
-  document.getElementById('btn-add-recommended').addEventListener('click', handleAddRecommended);
-  document.getElementById('btn-browse-library').addEventListener('click',  openLibraryPicker);
+  document.getElementById('btn-add-template').addEventListener('click',   () => openModal());
+  document.getElementById('btn-browse-library').addEventListener('click', openLibraryPicker);
 
   tbody.addEventListener('click', e => {
     const editBtn   = e.target.closest('.dt-edit-btn');

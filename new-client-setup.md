@@ -8,7 +8,7 @@ Estimated time: 2–3 hours (most of which is waiting on account provisioning).
 ## Prerequisites
 
 You need accounts for:
-- **Cloudflare** (Workers + R2) — use your IurisIQ CF account
+- **Cloudflare** (Workers + R2) — a separate CF account per client (like SSL and sandbox already are)
 - **Supabase** — create a new org per client (Pro for production; free org fine for dev/sandbox)
 - **Backblaze B2** — one bucket per client for file backup
 - **Resend** — one domain per client for email notifications
@@ -50,7 +50,29 @@ This copies all template files (excluding `.env`, `wrangler.toml`, `node_modules
 
 ## Step 3 — Apply database migrations
 
-In the Supabase SQL editor, run each file **in order**:
+### Use the baseline — don't replay 119 files
+
+```powershell
+# Regenerate first if the sandbox schema has moved since the baseline was cut
+./scripts/generate-baseline.ps1
+```
+
+Then, in the Supabase SQL editor for the **new** project:
+
+1. Run **`supabase/baseline/000_baseline.sql`** — one file, the whole schema as of the date in its header.
+2. Run any migration in `supabase/migrations/` **not listed in `supabase/baseline/MANIFEST.txt`**, in filename order. `generate-baseline.ps1` prints this tail when it runs.
+3. Run the seed steps below — the baseline is `--schema-only`, so module and practice-area seed rows are **not** in it.
+
+> **Existing deployments never touch the baseline.** SSL, KCL and the sandbox are already at current schema and must not replay it. They keep tracking migrations by filename in `applied-<target>.txt` via `db-migrate.ps1`, unchanged.
+
+**Why a filename manifest rather than "everything after 1536":** the `1600-*` USCIS form migrations deliberately share one number prefix — one file per form, so 125+ forms don't burn 125 numbers. A numeric cutoff is therefore ambiguous. The tail is computed by set difference on filenames.
+
+**The old hand-maintained list is gone on purpose.** It had to be updated by hand on every new migration, drifted badly (missing everything from 1100 onward except part of the trust suite until it was corrected 2026-07-02), and was stale again at 1518 by the time of the 2026-07 consolidation. The manifest is generated, so it cannot drift.
+
+**Numbering note:** this is the template's own numbering and will **not** match the wilsonlakesavage portal's numbers past 1050. That portal predates the template extraction and diverged independently — the two repos use different numbers for the same feature in several places (its doc-drafting-v2 is `1200`, the template's is `1112`). Always use the baseline + tail for a new client, never that portal's numbers; see `wilsonlakesavage/_planning/architecture.md §9a` if the two ever need reconciling.
+
+<details>
+<summary>Full migration list (reference only — superseded by the baseline)</summary>
 
 ```
 001_core_tables.sql
@@ -59,6 +81,7 @@ In the Supabase SQL editor, run each file **in order**:
 004_client_card_full.sql
 005_client_portal.sql
 006_client_self_service.sql
+007_practice_areas.sql
 400_uploads_init.sql
 401_uploads_cron_cleanup.sql
 402_ssn_encryption.sql
@@ -77,14 +100,57 @@ In the Supabase SQL editor, run each file **in order**:
 1002_calendar_outlook_provider.sql
 1003_messaging_debounced_notifications.sql
 1050_enabled_modules.sql
+1100_multi_opposing_counsel.sql
+1103_email_log.sql
+1104_ical_token.sql
+1105_practice_areas_backfill.sql
+1106_doc_drafting.sql
+1107_more_practice_areas.sql
+1108_enabled_practice_areas_rls.sql
+1109_doc_template_library.sql
+1110_immigration_module.sql
+1111_immigration_case_types.sql
+1112_doc_drafting_v2.sql
 1200_trust_accounting.sql
+1201_trust_balance_view_security.sql
 1201_trust_retainer_migration.sql
 1202_reconciliation_improvements.sql
 1203_flat_fee_milestones.sql
 1204_milestone_clawback.sql
 1205_trust_phase2_schema.sql
 1206_mfa_recovery_codes.sql
+1208_parenting_facilitation_case_type.sql
+1222_client_intake.sql
+1223_intake_gap_fill.sql
+1300_proof_scan.sql
+1301_sig_stamp_module.sql
+1400_activity_log.sql
+1500_translation.sql
+1501_translation_module_register.sql
+1502_time_entries.sql
+1503_invoicing_line_items.sql
+1504_invoice_guards.sql
+1505_process_invoice_payment.sql
+1506_user_avatar.sql
+1507_service_date_type.sql
+1508_files_folder_structure.sql
+1509_workflow_stages.sql
+1510_form_filler_module.sql
+1511_form_filler_schema.sql
+1512_users_bar_number.sql
+1513_firm_settings.sql
+1514_form_filler_g28_fieldmap.sql
+1515_users_phone.sql
+1516_key_dates_time.sql
+1517_form_builder_templates.sql
+1518_draft_template_attorney.sql
 ```
+
+Note: there are genuinely two different files both numbered `1201` (`trust_balance_view_security` and `trust_retainer_migration`), and likewise two at `1106` — real quirks in this repo's history, not typos. Both of each are load-bearing in sort order.
+
+⚠️ **This list stops at 1518 and has not been maintained since.** It is kept only as a record of the pre-baseline procedure. `supabase/baseline/MANIFEST.txt` is the accurate, generated list.
+
+</details>
 
 After applying 1050, seed the premium modules this client has purchased:
 
@@ -139,6 +205,26 @@ Update `supabase/migrations/applied-prod.txt` with all applied migration filenam
 2. Add the DNS records Resend provides (DKIM, SPF, DMARC)
 3. Wait for verification (5–30 min)
 4. The from address will be `portal@[clientdomain.com]`
+
+### 6a — Configure Supabase SMTP to use Resend
+
+Do this immediately after the Resend domain verifies. This ensures **all** Supabase auth emails (email-change confirmations, OTPs, any edge case) route through Resend instead of Supabase's default sender, which has strict rate limits.
+
+1. Supabase dashboard → Authentication → Emails (left sidebar)
+2. Under **SMTP provider settings**, fill in:
+
+| Field | Value |
+|---|---|
+| Host | `smtp.resend.com` |
+| Port | `465` |
+| Username | `resend` |
+| Password | *(your Resend API key)* |
+| Sender email | `portal@[clientdomain.com]` |
+| Sender name | *(client's firm name)* |
+
+3. Save. Send a test email from the Supabase UI to confirm delivery.
+
+> **Note:** The portal functions (`invite-user`, `invite-client`, `reset-user-password`) all use `generateLink` + Resend directly and never trigger Supabase's email system. The SMTP config above is a belt-and-suspenders fallback for any Supabase-native auth flow (e.g. email change confirmation).
 
 ---
 

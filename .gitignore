@@ -1,6 +1,7 @@
 .env
 .env.local
 .env.*.local
+js/config.js
 node_modules/
 .netlify/
 *.ps1.bak
@@ -9,5 +10,22 @@ clientdocs/
 slf_logo*.png
 supabase/.gitignore
 supabase/config.toml
+# Per-client config — copy from wrangler.toml.example and fill in; never commit with real values
+/wrangler.toml
 # Claude Code project settings (machine-specific)
 .claude/
+# USCIS source PDFs (re-downloadable from uscis.gov) and normalized build artifacts (live in R2)
+uscis-forms/
+normalized/
+# Per-client, one-off deploy playbooks (throwaway; pasted into a client-rooted window). Keep local only.
+# Moved under deploy/<client>/ in the 2026-07 root cleanup — old root paths kept
+# so an older working copy doesn't suddenly start tracking them.
+# Pattern, so a new dated playbook isn't accidentally tracked. deploy/README.md
+# (the client registry) is deliberately NOT matched and stays tracked.
+deploy/*/*DEPLOY*.md
+deploy/kcl/KCL-SYNC-DEPLOY.md
+deploy/ssl/SCROGGINS-CLONE-DEPLOY.md
+deploy/kcl/kcl-sync.ps1
+KCL-SYNC-DEPLOY.md
+SCROGGINS-CLONE-DEPLOY.md
+kcl-sync.ps1

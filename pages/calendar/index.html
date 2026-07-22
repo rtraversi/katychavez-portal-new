@@ -1,52 +1,54 @@
 <!-- Calendar — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Calendar</h1>
-    <p class="page-subtitle">Upcoming events from your connected calendar.</p>
-  </div>
-  <div style="display:flex;gap:var(--space-2)">
-    <button class="btn btn--ghost btn--sm" id="cal-settings-btn">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      Settings
-    </button>
-    <button class="btn btn--primary" id="cal-new-event-btn" style="display:none">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      New Event
-    </button>
-  </div>
+<!-- Docket-kit masthead (see .dk-* in portal.css / DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Daily Work · Calendar</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Deadlines, hearings, and <em>appearances</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Upcoming events from your connected calendar — grouped by day, so nothing slips.</p>
 </div>
 
-<!-- View tabs -->
-<div id="cal-tabs" class="hidden" style="display:flex;gap:var(--space-1);margin-bottom:var(--space-4);background:var(--color-bg-subtle,#f8f9fa);border-radius:8px;padding:4px">
-  <button class="cal-tab-btn btn btn--ghost btn--sm active" data-view="today"    style="flex:1">Today</button>
-  <button class="cal-tab-btn btn btn--ghost btn--sm"        data-view="week"     style="flex:1">This Week</button>
-  <button class="cal-tab-btn btn btn--ghost btn--sm"        data-view="month"    style="flex:1">This Month</button>
-  <button class="cal-tab-btn btn btn--ghost btn--sm"        data-view="upcoming" style="flex:1">Upcoming</button>
+<!-- Toolbar — view tabs + actions (handler ids preserved) -->
+<div class="dk-toolbar">
+  <div id="cal-tabs" class="hidden" style="display:inline-flex;gap:4px;background:var(--paper-deep);border:1px solid var(--line);border-radius:10px;padding:4px">
+    <button class="cal-tab-btn btn btn--ghost btn--sm" data-view="today">Today</button>
+    <button class="cal-tab-btn btn btn--ghost btn--sm" data-view="week">This Week</button>
+    <button class="cal-tab-btn btn btn--ghost btn--sm" data-view="month">This Month</button>
+    <button class="cal-tab-btn btn btn--ghost btn--sm" data-view="upcoming">Upcoming</button>
+  </div>
+  <span class="dk-spacer"></span>
+  <button class="btn btn--secondary" id="cal-settings-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    Settings
+  </button>
+  <button class="btn btn--primary" id="cal-new-event-btn" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    New Event
+  </button>
 </div>
 
 <!-- Not-connected state -->
-<div id="cal-not-connected" class="card hidden" style="text-align:center;padding:var(--space-12) var(--space-6)">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto var(--space-4);color:var(--color-text-muted)">
-    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-  </svg>
-  <h2 style="font-size:var(--font-size-lg);font-weight:600;margin-bottom:var(--space-2)">No calendar connected</h2>
-  <p class="text-muted" style="margin-bottom:var(--space-5)">Connect your Google or Outlook calendar to view and create events from the portal.</p>
-  <div style="display:flex;gap:var(--space-3);justify-content:center;flex-wrap:wrap">
-    <button class="btn btn--primary" id="cal-connect-google">Connect Google Calendar</button>
-    <button class="btn btn--secondary" id="cal-connect-outlook">Connect Outlook Calendar</button>
+<div id="cal-not-connected" class="dk-sec hidden">
+  <div class="dk-sec-head"><h2>Connect a calendar</h2><span class="dk-sec-rule"></span></div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;padding:44px 24px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--card-shadow)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:44px;height:44px;color:var(--ink-faint)">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+    </svg>
+    <h3 style="font-family:var(--font-serif);font-weight:600;font-size:18px;color:var(--ink);margin:0">No calendar connected</h3>
+    <p style="color:var(--ink-soft);font-size:14px;margin:0;max-width:44ch">Connect your Google or Outlook calendar to view and create events from the portal.</p>
+    <div style="display:flex;gap:var(--space-3);justify-content:center;flex-wrap:wrap">
+      <button class="btn btn--primary" id="cal-connect-google">Connect Google Calendar</button>
+      <button class="btn btn--secondary" id="cal-connect-outlook">Connect Outlook Calendar</button>
+    </div>
   </div>
 </div>
 
 <!-- Loading state -->
-<div id="cal-loading" class="card hidden" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">
-  Loading events…
-</div>
+<div id="cal-loading" class="dk-empty hidden">Loading events…</div>
 
 <!-- Events list -->
 <div id="cal-events-container" class="hidden"></div>
 
 <!-- No events state -->
-<div id="cal-no-events" class="card hidden" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">
+<div id="cal-no-events" class="dk-empty hidden">
   <span id="cal-no-events-msg">No events found.</span>
 </div>
 

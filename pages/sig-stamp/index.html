@@ -1,32 +1,33 @@
 <!-- Signature Stamp — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Signature Stamp</h1>
-    <p class="page-subtitle">Apply the attorney signature to any document</p>
-  </div>
+<!-- Docket-kit masthead (see .dk-* in portal.css / DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Documents &amp; Drafting · Signature Stamp</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Sign any document, <em>right in the browser</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Drop in a PDF or a phone photo, drag a signature into place, and download a stamped copy — the file never leaves this page.</p>
 </div>
 
 <!-- Signature warning (shown if no sig uploaded) -->
 <div id="sig-stamp-warning" class="hidden"
-  style="margin-bottom:var(--space-4);padding:var(--space-3) var(--space-4);border-radius:var(--radius);
-         background:var(--color-warning-bg,#fffbeb);border:1px solid var(--color-warning-border,#fde68a);
-         color:var(--color-warning-text,#92400e);font-size:var(--text-sm)">
-  No attorney signature uploaded yet — go to <strong>Settings &rarr; Attorney Signature</strong> to add one.
+  style="margin:0 0 24px;padding:12px 16px;border-radius:var(--r-card);
+         background:var(--color-warning-bg);border:1px solid color-mix(in srgb, var(--color-warning) 38%, transparent);
+         color:var(--color-warning);font-size:var(--text-sm)">
+  No signatures uploaded yet — go to <strong>Settings &rarr; My Signature</strong> to add one.
 </div>
 
-<!-- Upload card -->
-<div class="card" style="margin-bottom:var(--space-4)">
+<!-- Upload — ruled Docket section wrapping the drop zone -->
+<div class="dk-sec">
+  <div class="dk-sec-head"><h2>Add a document</h2><span class="dk-sec-rule"></span></div>
   <div id="sig-drop-zone"
-    style="border:2px dashed var(--color-border);border-radius:var(--radius);padding:var(--space-8) var(--space-4);
-           text-align:center;cursor:pointer;transition:border-color .15s,background .15s"
+    style="border:2px dashed var(--line-strong);border-radius:var(--r-card);padding:var(--space-8) var(--space-4);
+           text-align:center;cursor:pointer;background:var(--surface);transition:border-color .15s,background .15s"
     tabindex="0" role="button" aria-label="Drop a PDF, JPEG, or PNG here to open">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-      style="width:40px;height:40px;margin:0 auto var(--space-3);color:var(--color-text-muted)" aria-hidden="true">
+      style="width:40px;height:40px;margin:0 auto var(--space-3);color:var(--ink-faint)" aria-hidden="true">
       <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
       <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
     </svg>
-    <p style="font-weight:600;margin-bottom:var(--space-1)">Drop a PDF, JPEG, or PNG here</p>
-    <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-3)">
+    <p style="font-family:var(--font-serif);font-size:16px;font-weight:600;margin-bottom:var(--space-1);color:var(--ink)">Drop a PDF, JPEG, or PNG here</p>
+    <p style="font-size:var(--text-sm);color:var(--ink-soft);margin-bottom:var(--space-3)">
       A phone photo is fine — any format works
     </p>
     <button type="button" class="btn btn--secondary" id="sig-choose-file-btn">Choose File</button>
@@ -34,31 +35,34 @@
   </div>
 </div>
 
-<!-- Toolbar (hidden until file loaded) -->
-<div id="sig-toolbar" class="hidden card" style="margin-bottom:var(--space-4)">
-  <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap">
-    <button id="btn-prev-page" class="btn btn--ghost" title="Previous page" style="padding:var(--space-1) var(--space-2)">
-      &#8249;
-    </button>
-    <span id="page-info" style="font-size:var(--text-sm);white-space:nowrap">Page 1 of 1</span>
-    <button id="btn-next-page" class="btn btn--ghost" title="Next page" style="padding:var(--space-1) var(--space-2)">
-      &#8250;
-    </button>
-    <div style="width:1px;height:24px;background:var(--color-border);margin:0 var(--space-1)"></div>
-    <button id="btn-rotate" class="btn btn--ghost" title="Rotate 90° clockwise">Rotate</button>
-    <button id="btn-snap-g28" class="btn btn--ghost" title="Snap signature to G-28 attorney line">Snap to G-28</button>
-    <div style="width:1px;height:24px;background:var(--color-border);margin:0 var(--space-1)"></div>
-    <label style="font-size:var(--text-sm);display:flex;align-items:center;gap:var(--space-2);cursor:pointer">
-      <input id="chk-date" type="checkbox"> Add Date
-    </label>
-    <div style="width:1px;height:24px;background:var(--color-border);margin:0 var(--space-1)"></div>
-    <button id="btn-reset" class="btn btn--ghost" style="color:var(--color-text-muted)">Reset</button>
-    <button id="btn-apply-download" class="btn btn--primary" style="margin-left:auto">Apply &amp; Download</button>
-  </div>
+<!-- Toolbar (hidden until file loaded) — Docket toolbar row -->
+<div id="sig-toolbar" class="hidden dk-toolbar" style="margin-top:0">
+  <label style="font-size:var(--text-sm);display:flex;align-items:center;gap:var(--space-2);white-space:nowrap;color:var(--ink-soft)">
+    Signature:
+    <select id="sig-signer-select" style="max-width:220px"></select>
+  </label>
+  <span style="width:1px;height:24px;background:var(--line)"></span>
+  <button id="btn-prev-page" class="btn btn--ghost" title="Previous page" style="padding:var(--space-1) var(--space-2)">
+    &#8249;
+  </button>
+  <span id="page-info" style="font-size:var(--text-sm);white-space:nowrap;color:var(--ink-soft)">Page 1 of 1</span>
+  <button id="btn-next-page" class="btn btn--ghost" title="Next page" style="padding:var(--space-1) var(--space-2)">
+    &#8250;
+  </button>
+  <span style="width:1px;height:24px;background:var(--line)"></span>
+  <button id="btn-rotate" class="btn btn--ghost" title="Rotate 90° clockwise">Rotate</button>
+  <button id="btn-snap-g28" class="btn btn--ghost" title="Snap signature to G-28 attorney line">Snap to G-28</button>
+  <span style="width:1px;height:24px;background:var(--line)"></span>
+  <label style="font-size:var(--text-sm);display:flex;align-items:center;gap:var(--space-2);cursor:pointer;color:var(--ink-soft)">
+    <input id="chk-date" type="checkbox"> Add Date
+  </label>
+  <span class="dk-spacer"></span>
+  <button id="btn-reset" class="btn btn--ghost" style="color:var(--ink-faint)">Reset</button>
+  <button id="btn-apply-download" class="btn btn--primary">Apply &amp; Download</button>
 </div>
 
 <!-- Canvas viewer -->
-<div id="sig-viewer-wrap" class="hidden" style="position:relative;margin-bottom:var(--space-4);overflow:auto;background:var(--color-bg-subtle,#f8f9fa);border:1px solid var(--color-border);border-radius:var(--radius)">
+<div id="sig-viewer-wrap" class="hidden" style="position:relative;margin-bottom:var(--space-4);overflow:auto;background:var(--paper-deep);border:1px solid var(--line);border-radius:var(--r-card)">
   <canvas id="sig-doc-canvas" style="display:block;max-width:100%"></canvas>
 
   <!-- Signature overlay -->
@@ -74,17 +78,19 @@
              opacity:0.7"></div>
   </div>
 
-  <!-- Date overlay -->
+  <!-- Date overlay — #000 is intentional: it renders over the white document page
+       and must match the black date drawn into the downloaded PDF (rgb 0,0,0). -->
   <div id="date-overlay"
     style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
            cursor:move;user-select:none;touch-action:none;display:none;
-           font-family:serif;font-size:18px;color:#000;white-space:nowrap;
+           font-family:var(--font-serif);font-size:18px;color:#000;white-space:nowrap;
            background:transparent;padding:2px 4px">
     <span id="date-text"></span>
   </div>
 </div>
 
 <!-- Status area -->
-<div id="sig-stamp-status" style="font-size:var(--text-sm);color:var(--color-text-muted);min-height:1.5em"></div>
+<div id="sig-stamp-status" style="font-size:var(--text-sm);color:var(--ink-soft);min-height:1.5em"></div>
 
-<!-- CDN libraries are loaded dynamically by sig-stamp.js (innerHTML injection doesn't execute <script> tags) -->
+<!-- pdf.js / pdf-lib are lazy-loaded by sig-stamp.js — script tags here would
+     never execute because the SPA loader injects this file via innerHTML -->

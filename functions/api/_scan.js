@@ -21,7 +21,15 @@ import { HeadObjectCommand } from '@aws-sdk/client-s3';
 const SCAN_TIMEOUT_MS = 60_000;          // attachmentAV sync endpoint caps at 60s
 const PRESIGN_TTL_SECONDS = 300;         // scanner fetches the file within seconds
 
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;   // 25MB policy cap
+// Manual uploads stream browser → upload-proxy → R2 (never buffered in Worker
+// memory), so the ceiling is Cloudflare's 100MB request-body limit. Raising
+// past 100MB would need multipart chunking. attachmentAV scans up to 200MB.
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;  // 100MB — manual upload cap
+
+// Storage-sync imports DOWNLOAD the file into Worker memory (128MB) before the
+// R2 write, so they keep the tighter cap. Oversize synced files land in the
+// review queue with an over-limit message — upload those manually instead.
+export const MAX_SYNC_BYTES = 25 * 1024 * 1024;     // 25MB — sync/import cap
 
 // ── Actual object size (don't trust the client-declared file_size) ─────────
 // Returns size in bytes, or null if the object doesn't exist.

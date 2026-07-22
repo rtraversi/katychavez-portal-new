@@ -1,20 +1,6 @@
 'use strict';
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = src; s.onload = resolve; s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
-
 (async function SigStampPage() {
-
-  // Load PDF.js and PDF-lib before anything else (innerHTML injection doesn't run <script> tags)
-  await loadScript('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js');
-  if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
-  await loadScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js');
 
   // ── State ────────────────────────────────────────────────────────────────────
 
@@ -25,8 +11,9 @@ function loadScript(src) {
   let sourceFile    = null;       // original File object
   let sourcePdfBytes = null;      // ArrayBuffer of original PDF
   let sourceImageDataUrl = null;  // for image sources
-  let sigDataUrl    = null;       // attorney signature blob URL (for <img> preview)
-  let sigBytes      = null;       // attorney signature raw bytes (ArrayBuffer, for pdf-lib embed)
+  let sigDataUrl    = null;       // attorney signature blob URL (for the <img> overlay)
+  let sigBlob       = null;       // attorney signature Blob (for pdf-lib embedding —
+                                  // fetch(blob:) is blocked by our CSP connect-src)
   let pdfScale      = 1.5;
   let rotation      = 0;          // 0 | 90 | 180 | 270 (CW degrees applied to source)
 
@@ -59,22 +46,62 @@ function loadScript(src) {
   const warningEl        = document.getElementById('sig-stamp-warning');
   const statusEl         = document.getElementById('sig-stamp-status');
 
-  // ── Load attorney signature on mount ────────────────────────────────────────
+  // ── CDN libraries ────────────────────────────────────────────────────────────
+  //
+  // The SPA loader injects index.html via innerHTML, so <script> tags there
+  // never execute — both libraries must be lazy-loaded here (same pattern as
+  // the form editor in pages/clients/detail/detail.js).
 
-  async function loadSignature() {
+  const _libPromises = {};
+  function loadLib(globalName, src, onload) {
+    if (window[globalName]) return Promise.resolve(window[globalName]);
+    if (_libPromises[globalName]) return _libPromises[globalName];
+    _libPromises[globalName] = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload  = () => { if (onload) onload(); resolve(window[globalName]); };
+      s.onerror = () => { _libPromises[globalName] = null; reject(new Error(`Failed to load ${globalName}`)); };
+      document.body.appendChild(s);
+    });
+    return _libPromises[globalName];
+  }
+
+  function loadPdfJs() {
+    return loadLib('pdfjsLib', 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js',
+      () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js'; });
+  }
+
+  function loadPdfLib() {
+    return loadLib('PDFLib', 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js');
+  }
+
+  // ── Signature picker + load on mount ────────────────────────────────────────
+  //
+  // Each staff member has their own signature. The picker defaults to the
+  // current user's signature but can select any colleague's (e.g. a paralegal
+  // stamping an attorney's signature).
+
+  const signerSelect = document.getElementById('sig-signer-select');
+
+  // Fetch a specific user's signature into the overlay. null = the current user.
+  async function loadSignature(userId) {
     try {
       const session = await Auth.getSession();
-      const res = await fetch('/api/get-attorney-signature', {
+      const qs = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+      const res = await fetch(`/api/get-attorney-signature${qs}`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       });
       if (res.status === 404) {
+        if (sigDataUrl) URL.revokeObjectURL(sigDataUrl);
+        sigBlob = null; sigDataUrl = null; sigOverlayImg.removeAttribute('src');
         warningEl.classList.remove('hidden');
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      sigBytes   = await blob.arrayBuffer();
-      sigDataUrl = URL.createObjectURL(blob);
+      warningEl.classList.add('hidden');
+      if (sigDataUrl) URL.revokeObjectURL(sigDataUrl);
+      sigBlob = await res.blob();
+      sigDataUrl = URL.createObjectURL(sigBlob);
       sigOverlayImg.src = sigDataUrl;
     } catch (err) {
       warningEl.classList.remove('hidden');
@@ -82,7 +109,36 @@ function loadScript(src) {
     }
   }
 
-  await loadSignature();
+  async function initSignaturePicker() {
+    let signatures = [];
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch('/api/list-signatures', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (res.ok) ({ signatures } = await res.json());
+    } catch (err) {
+      console.error('[sig-stamp] list signatures:', err);
+    }
+
+    if (!signatures.length) {
+      // Nobody has a signature yet — hide the picker and warn.
+      signerSelect.closest('label').style.display = 'none';
+      warningEl.classList.remove('hidden');
+      return;
+    }
+
+    const myId = (await Auth.getProfile())?.id;
+    const defaultId = signatures.some(s => s.id === myId) ? myId : signatures[0].id;
+    signerSelect.innerHTML = signatures
+      .map(s => `<option value="${s.id}"${s.id === defaultId ? ' selected' : ''}>${Utils.esc(s.name)}${s.id === myId ? ' (you)' : ''}</option>`)
+      .join('');
+    signerSelect.addEventListener('change', () => loadSignature(signerSelect.value));
+
+    await loadSignature(defaultId);
+  }
+
+  await initSignaturePicker();
 
   // ── Set today's date ─────────────────────────────────────────────────────────
 
@@ -136,6 +192,7 @@ function loadScript(src) {
       if (isPdf) {
         sourcePdfBytes = await file.arrayBuffer();
         sourceType = 'pdf';
+        await loadPdfJs();
         const typedArray = new Uint8Array(sourcePdfBytes);
         pdfDoc = await pdfjsLib.getDocument({ data: typedArray }).promise;
         totalPages  = pdfDoc.numPages;
@@ -390,7 +447,7 @@ function loadScript(src) {
 
   btnApply.addEventListener('click', async () => {
     if (!sigDataUrl) {
-      Utils.toast('No attorney signature loaded. Upload one in Settings first.', 'error');
+      Utils.toast('No signature loaded. Choose a signer, or add one in Settings → My Signature.', 'error');
       return;
     }
     if (!sourceFile) return;
@@ -413,6 +470,7 @@ function loadScript(src) {
   });
 
   async function applyAndDownload() {
+    await loadPdfLib();
     const { PDFDocument, rgb } = PDFLib;
 
     let pdfLibDoc;
@@ -454,8 +512,9 @@ function loadScript(src) {
     const canW  = docCanvas.width;
     const canH  = docCanvas.height;
 
-    // Embed signature PNG (use stored bytes — fetching a blob: URL is blocked by CSP connect-src)
-    if (!sigBytes) throw new Error('No attorney signature loaded — upload one in Settings → Attorney Signature');
+    // Embed signature PNG (from the Blob kept at load time — fetching the
+    // blob: object URL would be blocked by CSP connect-src)
+    const sigBytes    = await sigBlob.arrayBuffer();
     const embeddedSig = await pdfLibDoc.embedPng(sigBytes);
 
     // Coordinate math: canvas → PDF

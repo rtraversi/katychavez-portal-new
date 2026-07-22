@@ -5,6 +5,7 @@
 // so they can re-enroll without being stuck behind an MFA gate.
 
 import { makeAdminClient, json } from './_helpers.js';
+import { validate, MfaRecoverSchema } from './_schemas.js';
 
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -29,8 +30,9 @@ export async function onRequest({ request, env }) {
 
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'Invalid JSON' }); }
-  const rawCode = (body.code || '').trim();
-  if (!rawCode) return json(400, { error: 'code is required' });
+  const v = validate(MfaRecoverSchema, body);
+  if (v.error) return v.error;
+  const rawCode = v.data.code;
 
   // Hash the submitted code
   const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawCode));

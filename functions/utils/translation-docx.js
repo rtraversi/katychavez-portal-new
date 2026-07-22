@@ -221,7 +221,13 @@ function renderBlocks(blocks) {
 
 // ---------- certification block ----------
 
-function certificationBlock(translatorName) {
+export function certificationText(translatorName, sourceLanguage) {
+  const name = translatorName || '_________________________';
+  const lang = sourceLanguage || 'Spanish';
+  return `I, ${name}, certify that I am competent to translate from ${lang} to English, and that the above translation is a true and accurate translation of the original document.`;
+}
+
+function certificationBlock(translatorName, sourceLanguage) {
   const today = new Date().toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -247,7 +253,7 @@ function certificationBlock(translatorName) {
       keepNext: true,
       spacing: { before: 0, after: 80 },
       children: [new TextRun({
-        text: `I, ${name}, certify that I am competent to translate from Spanish to English, and that the above translation is a true and accurate translation of the original document.`,
+        text: certificationText(translatorName, sourceLanguage),
         size: SZ_BODY,
       })],
     }),
@@ -299,10 +305,13 @@ function renderLegacy(text, translatorName) {
 
 // ---------- entry points ----------
 
-export function buildTranslationDocx(storedText, translatorName) {
+export function buildTranslationDocx(storedText, translatorName, includeCertification = true) {
   const parsed   = parseBlocks(storedText);
   const children = parsed
-    ? [...renderBlocks(parsed.blocks), ...certificationBlock(translatorName)]
+    ? [
+        ...renderBlocks(parsed.blocks),
+        ...(includeCertification ? certificationBlock(translatorName, parsed.source_language) : []),
+      ]
     : renderLegacy(storedText, translatorName);
 
   return new Document({

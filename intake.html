@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Client Intake</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --bg:#f3f4f6;
+      --card:#ffffff; --brand:#1a3a5c; --brand-ink:#ffffff;
+      --danger:#b91c1c; --ok:#16a34a; --radius:10px;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; background:var(--bg); color:var(--ink);
+      font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+      line-height:1.5;
+    }
+    .wrap { max-width:720px; margin:0 auto; padding:32px 20px 64px; }
+    .brandbar { background:var(--brand); color:var(--brand-ink); border-radius:var(--radius) var(--radius) 0 0; padding:22px 28px; }
+    .brandbar h1 { margin:0; font-size:18px; font-weight:600; }
+    .card { background:var(--card); border:1px solid var(--line); border-top:none; border-radius:0 0 var(--radius) var(--radius); padding:28px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+    .lead { color:var(--muted); font-size:14px; margin:0 0 8px; }
+    h2.section { font-size:15px; font-weight:700; margin:28px 0 4px; color:var(--ink); }
+    .section-sub { font-size:13px; color:var(--muted); margin:0 0 14px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 16px; }
+    .field { display:flex; flex-direction:column; gap:5px; }
+    .field.full { grid-column:1 / -1; }
+    .field label { font-size:12.5px; font-weight:500; color:var(--muted); }
+    .field input, .field textarea {
+      font:inherit; font-size:14px; color:var(--ink); background:#fff;
+      border:1px solid var(--line); border-radius:8px; padding:9px 11px; width:100%;
+    }
+    .field input:focus, .field textarea:focus { outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(26,58,92,.12); }
+    .field textarea { min-height:70px; resize:vertical; }
+    .child-block { border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:14px; position:relative; }
+    .child-block .child-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .child-head strong { font-size:13px; }
+    .btn { font:inherit; font-weight:600; font-size:14px; border-radius:8px; cursor:pointer; border:1px solid transparent; padding:11px 20px; }
+    .btn--primary { background:var(--brand); color:#fff; }
+    .btn--primary:disabled { opacity:.55; cursor:default; }
+    .btn--ghost { background:none; border:1px solid var(--line); color:var(--ink); padding:7px 14px; font-size:13px; }
+    .btn--link { background:none; border:none; color:var(--brand); cursor:pointer; font-weight:600; font-size:13px; padding:6px 0; }
+    .cf-turnstile-slot { margin:22px 0 6px; }
+    .actions { margin-top:24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+    .msg { padding:12px 14px; border-radius:8px; font-size:14px; margin-top:14px; }
+    .msg.err { background:#fef2f2; color:var(--danger); border:1px solid #fecaca; }
+    .state { text-align:center; padding:36px 12px; }
+    .state h2 { margin:0 0 8px; font-size:18px; }
+    .state p { color:var(--muted); margin:0; font-size:14.5px; }
+    .state .big { font-size:42px; line-height:1; margin-bottom:12px; }
+    .hidden { display:none !important; }
+    .foot { text-align:center; color:#9ca3af; font-size:11px; margin-top:20px; }
+    @media (max-width:560px){ .grid { grid-template-columns:1fr; } .wrap { padding:16px 12px 48px; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brandbar"><h1 id="firm-name">Client Intake</h1></div>
+    <div class="card">
+
+      <!-- Loading -->
+      <div id="state-loading" class="state">
+        <p>Loading your intake form…</p>
+      </div>
+
+      <!-- Invalid / expired -->
+      <div id="state-error" class="state hidden">
+        <div class="big">⚠️</div>
+        <h2 id="error-title">This link isn't available</h2>
+        <p id="error-body">Please contact the firm for an up-to-date intake link.</p>
+      </div>
+
+      <!-- Submitted / thank-you -->
+      <div id="state-done" class="state hidden">
+        <div class="big">✅</div>
+        <h2>Thank you</h2>
+        <p id="done-body">Your intake has been submitted.</p>
+      </div>
+
+      <!-- The form -->
+      <form id="state-form" class="hidden" novalidate>
+        <p class="lead" id="form-greeting"></p>
+        <p class="lead">Please fill in what you know. You can leave anything blank that doesn't apply or that you're unsure about.</p>
+
+        <div id="intake-sections"></div>
+
+        <div id="turnstile-intake" class="cf-turnstile-slot"></div>
+        <div id="submit-error" class="msg err hidden"></div>
+
+        <div class="actions">
+          <button type="submit" id="submit-btn" class="btn btn--primary">Submit intake</button>
+          <span class="lead" style="margin:0">Your information is sent securely to the firm.</span>
+        </div>
+      </form>
+
+    </div>
+    <div class="foot">Secure intake form · Do not share this link.</div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/turnstile-init.js"></script>
+  <script src="js/intake-public.js"></script>
+</body>
+</html>

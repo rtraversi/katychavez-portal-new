@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Book a Consultation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&family=Lora:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet">
+  <!-- Docket kit: tokens + .dk-* classes (see DESIGN-SYSTEM.md) -->
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/portal.css">
+  <style>
+    /* ── Public booking page — Docket "case file" look on a standalone page.
+       Reuses the .dk-* kit (masthead/section/avatar/tag/empty/btn/field) from
+       portal.css; only the booking-specific wizard chrome lives here. All
+       colors/fonts derive from the tokens, so light/dark come for free. ── */
+    body {
+      background:
+        radial-gradient(1100px 460px at 84% -160px, color-mix(in srgb, var(--h-daily) 12%, transparent), transparent 70%),
+        radial-gradient(760px 380px at 10% 2%, color-mix(in srgb, var(--h-docs) 7%, transparent), transparent 66%),
+        var(--paper);
+      background-attachment: fixed;
+      min-height: 100dvh;
+      color: var(--ink);
+    }
+    .book-shell { max-width: 660px; margin: 0 auto; padding: 40px 20px 72px; }
+
+    /* Masthead — firm logo, kicker, serif display title */
+    .book-mast { margin-bottom: 26px; }
+    .book-logo { display: block; max-height: 56px; max-width: 240px; margin: 0 0 18px; }
+    .book-logo[hidden] { display: none; }
+
+    /* The wizard lives in one paper "card" under the masthead */
+    .book-card {
+      background: var(--surface); border: 1px solid var(--line);
+      border-top: 3px solid var(--daily);
+      border-radius: var(--r-card); box-shadow: var(--card-shadow);
+      padding: 26px 26px 28px;
+    }
+    @media (max-width: 560px) { .book-card { padding: 20px 16px 22px; } .book-shell { padding: 22px 12px 52px; } }
+
+    .book-step-title { font-family: var(--font-serif); font-size: 20px; font-weight: 600; color: var(--ink); margin: 0 0 4px; }
+    .book-lead { color: var(--ink-soft); font-size: 14px; margin: 0 0 18px; line-height: 1.5; }
+
+    /* Quiet "back" link */
+    .book-back {
+      display: inline-flex; align-items: center; gap: 6px; margin: 0 0 16px;
+      background: none; border: 0; padding: 0; cursor: pointer;
+      font: inherit; font-size: 12.5px; font-weight: 700; color: var(--daily);
+    }
+    .book-back:hover { text-decoration: underline; }
+
+    /* Selectable option rows — people (attorneys) & records (consult types).
+       A clickable Docket row: paper card, hue edge, hover lift. */
+    .book-opt {
+      display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 15px; align-items: center;
+      width: 100%; text-align: left; cursor: pointer; font: inherit;
+      background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--daily);
+      border-radius: var(--r-card); padding: 14px 16px; margin-bottom: 12px; color: var(--ink);
+      box-shadow: var(--card-shadow); transition: transform .13s ease, box-shadow .13s ease, border-color .13s ease;
+    }
+    .book-opt:last-child { margin-bottom: 0; }
+    .book-opt:hover { transform: translateY(-1px); box-shadow: var(--card-shadow-hover); }
+    .book-opt--rec { grid-template-columns: minmax(0,1fr) auto; } /* records have no avatar */
+    .book-opt-name { display: block; font-family: var(--font-serif); font-size: 15.5px; font-weight: 600; }
+    .book-opt-sub  { display: block; color: var(--ink-soft); font-size: 13px; margin-top: 3px; }
+    .book-opt-go   { color: var(--daily); font-weight: 700; font-size: 17px; flex: none; }
+    /* Avatar photo fills the .dk-avatar circle */
+    .book-av-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+
+    /* Day + time pickers. The day strip is tinted with the firm hue and closed
+       off with a hairline, so the dates read as a distinct band above the
+       (plain, surface-colored) time grid. */
+    .book-days {
+      display: flex; gap: 8px; overflow-x: auto;
+      padding: 2px 0 14px; margin-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .book-times { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+    .book-chip {
+      font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+      border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+      border-radius: 9px; padding: 9px 14px; transition: border-color .12s, background .12s, color .12s;
+    }
+    .book-chip:hover { border-color: var(--daily); }
+    .book-chip[aria-pressed="true"] { background: var(--daily); border-color: var(--daily); color: var(--on-acc); }
+    /* Date chips carry a hue tint to set the day strip apart from the times */
+    .book-days .book-chip { background: var(--daily-tint); border-color: color-mix(in srgb, var(--daily) 22%, var(--line)); }
+    .book-days .book-chip:hover { border-color: var(--daily); }
+    .book-days .book-chip[aria-pressed="true"] { background: var(--daily); border-color: var(--daily); color: var(--on-acc); }
+
+    /* Summary / offer note */
+    .book-summary {
+      background: var(--daily-tint); border: 1px solid var(--line); border-radius: 10px;
+      padding: 13px 15px; font-size: 13.5px; color: var(--ink-soft); margin-bottom: 18px; line-height: 1.5;
+    }
+    .book-summary strong { display: block; font-family: var(--font-serif); font-size: 14.5px; color: var(--ink); margin-bottom: 3px; }
+
+    /* Details form (reuses .field from portal.css) */
+    .book-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px 16px; }
+    .book-grid .field.full { grid-column: 1 / -1; }
+    .book-grid label { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+    .book-grid input, .book-grid textarea, .book-grid select {
+      font: inherit; font-size: 14px; color: var(--ink); background: var(--surface);
+      border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; width: 100%;
+    }
+    .book-grid input:focus, .book-grid textarea:focus, .book-grid select:focus {
+      outline: none; border-color: var(--daily); box-shadow: 0 0 0 3px var(--daily-tint);
+    }
+    .book-grid textarea { min-height: 66px; resize: vertical; }
+    @media (max-width: 560px) { .book-grid { grid-template-columns: 1fr; } }
+
+    .cf-turnstile-slot { margin: 20px 0 4px; }
+    .book-actions { margin-top: 22px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .book-msg { padding: 12px 14px; border-radius: 9px; font-size: 14px; margin-top: 14px; }
+    .book-msg.err { background: var(--color-danger-bg); color: var(--color-danger); border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent); }
+
+    /* Inline "empty"/status notes inside a step */
+    .book-note { color: var(--ink-soft); font-size: 14px; padding: 18px 4px; }
+
+    /* Loading / closed / confirmed states */
+    .book-state { text-align: center; padding: 34px 12px; }
+    .book-state h2 { font-family: var(--font-serif); font-weight: 600; margin: 0 0 8px; font-size: 20px; color: var(--ink); }
+    .book-state p { color: var(--ink-soft); margin: 0; font-size: 14.5px; }
+    .book-state .big { font-size: 42px; line-height: 1; margin-bottom: 12px; }
+    .book-confirm {
+      background: var(--color-success-bg); border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
+      border-radius: 10px; padding: 14px 16px; margin: 18px auto 0; max-width: 400px; text-align: left;
+      font-size: 14px; color: var(--ink); line-height: 1.55;
+    }
+
+    .book-foot { text-align: center; color: var(--ink-faint); font-size: 11.5px; margin-top: 22px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="book-shell">
+
+    <!-- Masthead: firm logo + serif title -->
+    <div class="book-mast">
+      <img class="book-logo" id="firm-logo" alt="" src="" hidden>
+      <div class="dk-kicker">Consultations</div>
+      <h1 class="dk-title" style="margin-top:11px">Book a <em>consultation</em>.</h1>
+      <p class="dk-sub" id="firm-name">Pick a time that works for you — it only takes a minute.</p>
+    </div>
+
+    <div class="book-card">
+
+      <!-- Loading -->
+      <div id="state-loading" class="book-state"><p>Loading available times…</p></div>
+
+      <!-- Booking unavailable -->
+      <div id="state-closed" class="book-state hidden">
+        <div class="big">📅</div>
+        <h2>Online booking isn't available right now</h2>
+        <p>Please contact our office to schedule a consultation.</p>
+      </div>
+
+      <!-- Step 1: attorney -->
+      <div id="step-attorney" class="hidden">
+        <h2 class="book-step-title">Who would you like to meet with?</h2>
+        <p class="book-lead">Choose an attorney to see their available consultation times.</p>
+        <div id="attorney-list"></div>
+      </div>
+
+      <!-- Step 2: consult type -->
+      <div id="step-type" class="hidden">
+        <button type="button" class="book-back" id="back-to-attorney">&#8592; Change attorney</button>
+        <h2 class="book-step-title" id="type-title">Choose a consultation</h2>
+        <p class="book-lead">Select the type of consultation you'd like to book.</p>
+        <div id="type-list"></div>
+      </div>
+
+      <!-- Step 3: date & time -->
+      <div id="step-time" class="hidden">
+        <button type="button" class="book-back" id="back-to-type">&#8592; Change consultation type</button>
+        <div class="book-summary hidden" id="offer-note"></div>
+        <h2 class="book-step-title">Pick a date &amp; time</h2>
+        <p class="book-lead" id="time-tz-note"></p>
+        <div id="time-loading" class="book-note">Checking the calendar…</div>
+        <div id="time-empty" class="book-note hidden">No open times in the next few weeks. Please contact our office to schedule.</div>
+        <div id="time-picker" class="hidden">
+          <div class="book-days" id="day-chips"></div>
+          <div class="book-times" id="time-chips"></div>
+        </div>
+      </div>
+
+      <!-- Step 4: details -->
+      <form id="step-details" class="hidden" novalidate>
+        <button type="button" class="book-back" id="back-to-time">&#8592; Change time</button>
+        <h2 class="book-step-title">Your details</h2>
+        <div class="book-summary" id="details-summary"></div>
+        <div class="book-grid">
+          <div class="field"><label for="f-name">Full name *</label><input id="f-name" type="text" autocomplete="name" required></div>
+          <div class="field"><label for="f-email">Email *</label><input id="f-email" type="email" autocomplete="email" required></div>
+          <div class="field"><label for="f-phone">Phone</label><input id="f-phone" type="tel" autocomplete="tel"></div>
+          <div class="field" id="f-case-type-wrap"><label for="f-case-type">What is this regarding?</label>
+            <select id="f-case-type"><option value="">Select…</option></select>
+          </div>
+          <div class="field full"><label for="f-notes">Anything you'd like us to know? (optional)</label><textarea id="f-notes" maxlength="2000"></textarea></div>
+        </div>
+        <div id="turnstile-book" class="cf-turnstile-slot"></div>
+        <div id="book-error" class="book-msg err hidden"></div>
+        <div class="book-actions">
+          <button type="submit" id="book-btn" class="btn btn--primary">Confirm booking</button>
+          <span class="book-lead" style="margin:0">Your information is sent securely to the firm.</span>
+        </div>
+      </form>
+
+      <!-- Confirmed -->
+      <div id="state-done" class="book-state hidden">
+        <div class="big">✅</div>
+        <h2>You're booked!</h2>
+        <p>A confirmation email is on its way to you.</p>
+        <div class="book-confirm" id="done-summary"></div>
+      </div>
+
+    </div>
+    <div class="book-foot" id="foot-firm"></div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/turnstile-init.js"></script>
+  <script src="js/book.js"></script>
+</body>
+</html>

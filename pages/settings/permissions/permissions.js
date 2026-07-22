@@ -46,8 +46,11 @@
     const byWave = {};
     modules.forEach(m => (byWave[m.wave] = byWave[m.wave] || []).push(m));
 
-    const rows = Object.entries(byWave).map(([wave, mods]) => {
-      const header = `<tr><td colspan="${nonOwnerRoles.length + 1}" style="background:var(--color-bg);padding:var(--space-3) var(--space-4);font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted)">Wave ${wave}</td></tr>`;
+    // The access matrix is inherently a 2-D role × module grid with 4-level
+    // access cells (none/read/write/admin) — the Docket kit has no component
+    // for that, so we keep it as a table. Each wave becomes its own ruled
+    // section head (DK.sectionHead), with the grid preserved underneath.
+    const sections = Object.entries(byWave).map(([wave, mods]) => {
       const modRows = mods.map(mod => {
         const cells = nonOwnerRoles.map(role => {
           const current = getLevel(role.id, mod.key);
@@ -67,10 +70,15 @@
           ${cells}
         </tr>`;
       }).join('');
-      return header + modRows;
+      return `<div class="dk-sec">
+        ${DK.sectionHead(`Wave ${wave}`, { count: mods.length })}
+        <div class="table-wrap">
+          <table aria-label="Permissions matrix — Wave ${Utils.esc(wave)}">${thead}<tbody>${modRows}</tbody></table>
+        </div>
+      </div>`;
     }).join('');
 
-    wrap.innerHTML = `<table aria-label="Permissions matrix"><${thead}<tbody>${rows}</tbody></table>`;
+    wrap.innerHTML = sections;
 
     if (!canEdit) {
       const saveBtn = document.getElementById('btn-save-permissions');

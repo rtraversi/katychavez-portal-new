@@ -1,14 +1,14 @@
-<!-- Settings: Attorney Signature — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Attorney Signature</h1>
-    <p class="page-subtitle">This signature is stamped on documents using Signature Stamp. Only Owners can change it.</p>
-  </div>
+<!-- Settings: My Signature — loaded dynamically into #page-content by menu.js -->
+<!-- Docket-kit masthead (see .dk-* in portal.css) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · My signature</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Your <em>signature</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Upload your personal signature so you can stamp it onto documents with Signature Stamp.</p>
 </div>
 
 <!-- Current signature preview -->
-<div class="card" style="margin-bottom:var(--space-4)">
-  <h2 style="font-size:var(--text-base);font-weight:600;margin-bottom:var(--space-4)">Current Signature</h2>
+<div class="dk-sec" style="margin-top:var(--space-4)">
+  <div class="dk-sec-head"><h2>Current signature</h2><span class="dk-sec-rule"></span></div>
 
   <div id="sig-preview-wrap"
     style="width:320px;max-width:100%;height:120px;border:1px solid var(--color-border);border-radius:var(--radius);
@@ -23,9 +23,9 @@
   </p>
 </div>
 
-<!-- Upload section (Owner only) -->
-<div id="sig-upload-section" class="card hidden">
-  <h2 style="font-size:var(--text-base);font-weight:600;margin-bottom:var(--space-2)">Update Signature</h2>
+<!-- Update section (shown once loaded) -->
+<div id="sig-upload-section" class="dk-sec hidden">
+  <div class="dk-sec-head"><h2>Update signature</h2><span class="dk-sec-rule"></span></div>
   <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-4)">
     For best results: sign with a black pen on white paper, scan or photograph straight-on at high resolution,
     and make the signature as large as possible on the page. PNG and JPEG are both accepted.

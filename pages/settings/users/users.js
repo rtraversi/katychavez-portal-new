@@ -26,33 +26,38 @@
   }
 
   function renderTable() {
+    const countEl = document.getElementById('users-count');
+    if (countEl) countEl.textContent = users.length ? `${users.length} ${users.length === 1 ? 'person' : 'people'}` : '';
+
     if (!users.length) {
-      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p class="empty-state-title">No users yet</p><p>Invite your first team member.</p></div></td></tr>`;
+      tbody.innerHTML = `<div class="dk-empty">No users yet — invite your first team member.</div>`;
       return;
     }
-    tbody.innerHTML = users.map(u => {
+    // People → Docket roster (.dk-att). Keep each row's action classes + data-*
+    // so the delegated click handler on #users-tbody still fires.
+    const rows = users.map(u => {
       const inviter = users.find(x => x.id === u.invited_by);
-      return `<tr>
-        <td>
-          <div style="display:flex;align-items:center;gap:var(--space-3)">
-            <div style="width:32px;height:32px;border-radius:50%;background:${u.color || 'var(--color-primary)'};color:#fff;display:grid;place-items:center;font-size:var(--text-xs);font-weight:600;flex-shrink:0">${Utils.initials(u)}</div>
-            <span style="font-weight:500">${Utils.esc(Utils.fullName(u))}</span>
-          </div>
-        </td>
-        <td>${Utils.esc(u.email)}</td>
-        <td>${Utils.esc(u.roles?.name || '—')}</td>
-        <td><span class="badge badge--${u.active ? 'active' : 'closed'}">${u.active ? 'Active' : 'Inactive'}</span></td>
-        <td class="text-muted text-sm">${inviter ? Utils.fullName(inviter) : '—'}</td>
-        <td style="white-space:nowrap">
-          <button class="btn btn--ghost btn--sm btn-reset-pw-user" data-id="${u.id}" data-email="${Utils.esc(u.email)}" title="Send password reset email" style="margin-right:4px">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          </button>
-          <button class="btn btn--ghost btn--sm btn-edit-user" data-id="${u.id}" title="Edit user">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          </button>
-        </td>
-      </tr>`;
+      // Custom per-user color is meaningful (attorney color on the client list),
+      // so we keep it as the .dk-avatar background instead of DK.avatar's hash hue.
+      const avatar = `<span class="dk-avatar" style="width:40px;height:40px;font-size:14px;background:${u.color || 'var(--color-primary)'}">${Utils.initials(u)}</span>`;
+      const meta = [
+        Utils.esc(u.roles?.name || '—'),
+        inviter ? `invited by ${Utils.esc(Utils.fullName(inviter))}` : null,
+      ].filter(Boolean).join(' · ');
+      return `<div class="dk-att${u.active ? '' : ' warn'}">
+        ${avatar}
+        <div class="who">
+          <b>${Utils.esc(Utils.fullName(u))}</b>
+          <div class="slug"><code>${Utils.esc(u.email)}</code> · ${meta}</div>
+        </div>
+        ${DK.tag(u.active ? 'Active' : 'Inactive', u.active ? 'ok' : 'mut')}
+        <div class="dk-reg-act">
+          <button class="dk-linkbtn btn-reset-pw-user" data-id="${u.id}" data-email="${Utils.esc(u.email)}" type="button" title="Send password reset email">Reset password</button>
+          <button class="dk-linkbtn btn-edit-user" data-id="${u.id}" type="button" title="Edit user">Edit</button>
+        </div>
+      </div>`;
     }).join('');
+    tbody.innerHTML = `<div class="dk-roster">${rows}</div>`;
   }
 
   function openModal(userId = null) {

@@ -2,6 +2,11 @@
 
 (async function TranslationPage() {
 
+  // Escape user-controlled strings (uploaded filenames) before innerHTML.
+  const esc = (s) => (window.Utils?.esc
+    ? window.Utils.esc(s)
+    : String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
+
   // ── DOM refs ──────────────────────────────────────────────────────────────────
 
   const dropZone    = document.getElementById('tr-drop-zone');
@@ -73,8 +78,8 @@
 
   dropZone.addEventListener('dragover', e => {
     e.preventDefault();
-    dropZone.style.borderColor = 'var(--color-primary)';
-    dropZone.style.background  = 'var(--color-primary-bg,#eff6ff)';
+    dropZone.style.borderColor = 'var(--daily)';
+    dropZone.style.background  = 'var(--daily-tint)';
   });
 
   dropZone.addEventListener('dragleave', () => {
@@ -96,6 +101,13 @@
 
   document.querySelectorAll('input[name="trFormat"]').forEach(r => {
     r.addEventListener('change', updateDownloadLabel);
+  });
+
+  // Translator name only feeds the certification block — hide it when cert is off.
+  const certCheckbox    = document.getElementById('tr-include-cert');
+  const translatorWrap  = document.getElementById('tr-translator-wrap');
+  certCheckbox?.addEventListener('change', () => {
+    if (translatorWrap) translatorWrap.style.display = certCheckbox.checked ? '' : 'none';
   });
 
   // ── Submit ────────────────────────────────────────────────────────────────────
@@ -126,6 +138,7 @@
           filename:        selectedFile.name,
           translator_name: document.getElementById('tr-translator-name')?.value.trim() || '_________________________',
           translation_id:  translationId,
+          include_certification: document.getElementById('tr-include-cert')?.checked !== false,
         }),
       });
 
@@ -133,6 +146,18 @@
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `Unexpected status ${res.status}`);
       }
+
+      // Kick off the actual translation work. That request stays open for the
+      // whole generation (which is what keeps long documents alive) — the
+      // poller below drives the UI, so we deliberately don't await it.
+      fetch('/api/translation-process', {
+        method:  'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({ translation_id: translationId }),
+      }).catch(() => { /* poller reports the stored error/timeout */ });
 
       startPolling(translationId);
 
@@ -149,7 +174,7 @@
   function startPolling(translationId) {
     let elapsed = 0;
     const INTERVAL = 2500;
-    const TIMEOUT  = 300000; // 5-min hard stop
+    const TIMEOUT  = 600000; // 10-min hard stop (multi-page docs generate for several minutes)
 
     submitBtn.innerHTML = '<span class="spinner"></span> Translating… <span id="tr-elapsed">0s</span>';
 
@@ -160,7 +185,7 @@
 
       if (elapsed >= TIMEOUT) {
         clearInterval(pollTimer);
-        contentEl.textContent = 'Translation timed out after 5 minutes. Please try again.';
+        contentEl.textContent = 'Translation timed out after 10 minutes. Please try again.';
         resultsWrap.style.display = 'block';
         submitBtn.textContent = 'Translate Document';
         submitBtn.disabled    = false;
@@ -296,28 +321,49 @@
     } catch (_) {}
   }
 
+  // Map a stored job status to a Docket tag (label + kind).
+  function statusTag(status) {
+    const st = String(status || 'done').toLowerCase();
+    if (st === 'error' || st === 'failed')                          return { label: 'Error',       kind: 'crit' };
+    if (st === 'queued' || st === 'pending')                        return { label: 'Queued',      kind: 'mut'  };
+    if (st === 'processing' || st === 'in_progress' || st === 'in-progress')
+                                                                    return { label: 'In progress', kind: 'acc'  };
+    return { label: 'Done', kind: 'ok' };
+  }
+
+  const dkTag = (label, kind) =>
+    (window.DK ? window.DK.tag(label, kind) : `<span class="dk-tag ${kind}">${esc(label)}</span>`);
+
   function renderHistory(items) {
     if (!items.length) {
-      historyEl.innerHTML = '<p style="font-size:var(--text-sm);color:var(--color-text-muted)">No translations yet.</p>';
+      historyEl.innerHTML = '<div class="dk-empty">No translations yet.</div>';
       return;
     }
-    historyEl.innerHTML = items.map(t => `
-      <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) 0;border-bottom:1px solid var(--color-border)">
-        <div style="flex-shrink:0;width:32px;height:32px;border-radius:var(--radius);background:var(--color-bg-subtle);
-                    display:flex;align-items:center;justify-content:center;color:var(--color-text-muted)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px" aria-hidden="true">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="2" y1="12" x2="22" y2="12"/>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-          </svg>
+    historyEl.innerHTML = `<div class="dk-register">${items.map(t => {
+      const s     = statusTag(t.status);
+      const langs = t.source_lang ? `${esc(t.source_lang)} → English` : 'English';
+      const parts = [`<span>${langs}</span>`];
+      if (t.pages) parts.push(`<span class="sep">·</span><span>${esc(String(t.pages))} ${Number(t.pages) === 1 ? 'page' : 'pages'}</span>`);
+      parts.push(`<span class="sep">·</span><span>${esc(new Date(t.created_at).toLocaleString())}</span>`);
+      return `
+      <div class="dk-reg-row">
+        <div style="min-width:0">
+          <div class="dk-reg-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--ink-faint);flex:none" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="2" y1="12" x2="22" y2="12"/>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38ch">${esc(t.filename)}</span>
+            ${dkTag(s.label, s.kind)}
+          </div>
+          <div class="dk-reg-meta">${parts.join('')}</div>
         </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.filename}</div>
-          <div style="font-size:var(--text-xs,0.75rem);color:var(--color-text-muted)">${new Date(t.created_at).toLocaleString()}</div>
+        <div class="dk-reg-act">
+          <button class="dk-linkbtn" data-redownload="${esc(t.id)}" data-filename="${esc(t.filename)}">Download</button>
         </div>
-        <button class="btn btn--secondary" data-redownload="${t.id}" data-filename="${t.filename}"
-          style="font-size:12px;padding:6px 10px;white-space:nowrap;flex-shrink:0">Download</button>
-      </div>`).join('');
+      </div>`;
+    }).join('')}</div>`;
 
     historyEl.querySelectorAll('[data-redownload]').forEach(btn => {
       btn.addEventListener('click', () => handleDownload(btn.dataset.redownload, btn.dataset.filename));

@@ -164,12 +164,24 @@ async function handleSign(request, env) {
   const signedAt  = new Date().toISOString();
 
   let originalBuf;
-  try {
-    const obj = await r2.send(new GetObjectCommand({ Bucket: bucket, Key: req.document.r2_key }));
-    originalBuf = await streamToBuffer(obj.Body);
-  } catch (err) {
-    console.error('[sign-document] R2 fetch error:', err.message);
-    return json(503, { error: 'Could not retrieve document. Please try again.' });
+  if (env.DEMO_MODE === 'true') {
+    // Demo: no real PDFs in R2 — generate a minimal placeholder so the signing flow works end-to-end
+    const placeholderDoc = await PDFDocument.create();
+    const pg  = placeholderDoc.addPage([612, 792]);
+    const fnt = await placeholderDoc.embedFont(StandardFonts.HelveticaBold);
+    const reg = await placeholderDoc.embedFont(StandardFonts.Helvetica);
+    pg.drawText(req.document.file_name || 'Demo Document', { x: 50, y: 720, size: 16, font: fnt, color: rgb(0.08, 0.15, 0.30) });
+    pg.drawText('This is a sample document generated for demo purposes.', { x: 50, y: 690, size: 10, font: reg, color: rgb(0.4, 0.4, 0.4) });
+    pg.drawText('In a live deployment the actual uploaded PDF would appear here.', { x: 50, y: 674, size: 10, font: reg, color: rgb(0.4, 0.4, 0.4) });
+    originalBuf = Buffer.from(await placeholderDoc.save());
+  } else {
+    try {
+      const obj = await r2.send(new GetObjectCommand({ Bucket: bucket, Key: req.document.r2_key }));
+      originalBuf = await streamToBuffer(obj.Body);
+    } catch (err) {
+      console.error('[sign-document] R2 fetch error:', err.message);
+      return json(503, { error: 'Could not retrieve document. Please try again.' });
+    }
   }
 
   const hashBefore = sha256(originalBuf);
@@ -193,7 +205,12 @@ async function handleSign(request, env) {
   const signedKey = req.document.r2_key.replace(/\.pdf$/i, '') + `_signed_${signerRole}_${Date.now()}.pdf`;
 
   try {
-    await r2.send(new PutObjectCommand({ Bucket: bucket, Key: signedKey, Body: signedBuf, ContentType: 'application/pdf' }));
+    if (env.DEMO_MODE === 'true') {
+      // Demo: use native R2 binding — no S3 API credentials needed
+      await env.R2.put(signedKey, signedBuf, { httpMetadata: { contentType: 'application/pdf' } });
+    } else {
+      await r2.send(new PutObjectCommand({ Bucket: bucket, Key: signedKey, Body: signedBuf, ContentType: 'application/pdf' }));
+    }
   } catch (err) {
     console.error('[sign-document] R2 upload error:', err.message);
     return json(503, { error: 'Failed to save signed document. Please try again.' });

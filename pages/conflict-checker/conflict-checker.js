@@ -11,7 +11,8 @@
     protective_order: 'Protective Order', adoption: 'Adoption', other: 'Other',
   };
 
-  const STATUS_BADGE = { intake: 'normal', active: 'active', on_hold: 'pending', closed: 'closed' };
+  // status → Docket tag kind (warn|ok|mut|acc|crit)
+  const STATUS_TAG = { intake: 'mut', active: 'ok', on_hold: 'warn', closed: 'mut' };
 
   let currentCheckId  = null;
   let extraNameCount  = 0;
@@ -109,23 +110,21 @@
     // Summary banner
     const summary = document.getElementById('cc-summary');
     if (total_found === 0) {
-      summary.style.borderLeftColor = 'var(--color-success)';
       summary.innerHTML = `
-        <div style="display:flex;align-items:center;gap:var(--space-3)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" style="width:20px;height:20px;flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>
+        <div class="dk-empty" style="display:flex;align-items:center;gap:12px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" style="width:22px;height:22px;flex-shrink:0"><path d="M12 2 3 7v6c0 5 3.8 8.3 9 9 5.2-.7 9-4 9-9V7z"/><polyline points="9 12 11 14 15 10"/></svg>
           <div>
-            <div style="font-weight:600;color:var(--color-success)">No matches found</div>
-            <div class="text-sm text-muted">No existing clients or opposing parties matched these names.</div>
+            <div style="font-family:var(--font-serif);font-size:16px;font-weight:600;color:var(--ink)">No conflicts found</div>
+            <div style="color:var(--ink-soft);margin-top:2px">No existing clients or opposing parties matched these names.</div>
           </div>
         </div>`;
     } else {
-      summary.style.borderLeftColor = 'var(--color-warning, #f59e0b)';
       summary.innerHTML = `
-        <div style="display:flex;align-items:center;gap:var(--space-3)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-warning,#f59e0b)" stroke-width="2" style="width:20px;height:20px;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;background:var(--surface);border-top:2px solid var(--color-warning);border-radius:0 0 var(--r-card) var(--r-card);box-shadow:var(--card-shadow)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" stroke-width="2" style="width:22px;height:22px;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           <div>
-            <div style="font-weight:600">${total_found} match${total_found !== 1 ? 'es' : ''} found</div>
-            <div class="text-sm text-muted">Review each match carefully and record your decision below.</div>
+            <div style="font-family:var(--font-serif);font-size:16px;font-weight:600;color:var(--ink)">${total_found} match${total_found !== 1 ? 'es' : ''} found</div>
+            <div style="color:var(--ink-soft);margin-top:2px">Review each match carefully and record your decision below.</div>
           </div>
         </div>`;
     }
@@ -140,44 +139,61 @@
     }
 
     matchesCard.classList.remove('hidden');
-    matchesBody.innerHTML = matches.map(m => {
-      const isClient = m.type === 'existing_client';
-      const badge = isClient
-        ? `<span class="badge badge--urgent">Existing Client</span>`
-        : `<span class="badge badge--pending">Opposing Party</span>`;
+    const PRIOR_OUTCOME_LABEL = {
+      clear:         'previously marked “No conflict”',
+      conflict:      'previously marked “Conflict”',
+      review_needed: 'previously marked “Review needed”',
+    };
 
-      const matterRows = m.type === 'existing_client'
-        ? (m.matters || []).map(mt =>
-            `<div class="text-sm" style="margin-top:var(--space-1)">
-               <span class="badge badge--${STATUS_BADGE[mt.status] || 'normal'}" style="font-size:11px">${Utils.titleCase(mt.status)}</span>
-               ${CASE_LABELS[mt.case_type] || Utils.titleCase(mt.case_type)}
-               ${mt.case_number ? `· <span class="text-muted">${Utils.esc(mt.case_number)}</span>` : ''}
-             </div>`).join('')
-        : m.matter ? `<div class="text-sm" style="margin-top:var(--space-1)">
-               <span class="badge badge--${STATUS_BADGE[m.matter.status] || 'normal'}" style="font-size:11px">${Utils.titleCase(m.matter.status)}</span>
-               ${CASE_LABELS[m.matter.case_type] || Utils.titleCase(m.matter.case_type)}
-               ${m.matter.case_number ? `· <span class="text-muted">${Utils.esc(m.matter.case_number)}</span>` : ''}
-               ${m.related_client ? `<div class="text-muted" style="margin-top:2px">Our client: ${Utils.esc(m.related_client)}</div>` : ''}
-             </div>` : '';
+    // One matter rendered as a register meta line (status tag + case type + number)
+    const matterMeta = (mt, extra = '') =>
+      `<div class="dk-reg-meta">${DK.tag(Utils.titleCase(mt.status), STATUS_TAG[mt.status] || 'mut')}<span>${Utils.esc(CASE_LABELS[mt.case_type] || Utils.titleCase(mt.case_type))}</span>${mt.case_number ? `<span class="sep">·</span><span>${Utils.esc(mt.case_number)}</span>` : ''}${extra}</div>`;
+
+    matchesBody.innerHTML = '<div class="dk-register">' + matches.map(m => {
+      // ── Prior conflict-check inquiry ──────────────────────────────────────
+      // Surfaced prominently: a past inquirer (even one marked "clear") can
+      // conflict us out of the party now adverse to them (Rule 1.18).
+      if (m.type === 'prior_inquiry') {
+        const when    = Utils.formatDate(m.checked_at?.slice(0, 10));
+        const outcome = m.prior_outcome ? PRIOR_OUTCOME_LABEL[m.prior_outcome] || Utils.esc(m.prior_outcome) : 'no decision recorded';
+        return `
+          <div class="dk-reg-row" style="align-items:start">
+            <div style="min-width:0">
+              <div class="dk-reg-title"><span>${Utils.esc(m.name)}</span>${DK.tag('Prior Inquiry', 'crit')}</div>
+              <div class="dk-reg-meta">
+                <span>Contacted the firm <strong>${when}</strong></span>${m.checked_by_name ? `<span class="sep">·</span><span>checked by ${Utils.esc(m.checked_by_name)}</span>` : ''}<span class="sep">·</span><span>${outcome}</span>
+              </div>
+              <div class="dk-reg-meta">
+                <span>Matched on ${Utils.esc(m.matched_field)}: <em>${Utils.esc(m.matched_value)}</em></span><span class="sep">·</span><span>Searched: <em>${Utils.esc(m.searched_for)}</em></span>
+              </div>
+              ${m.opposing_party ? `<div class="dk-reg-meta"><span>That inquiry’s opposing party: ${Utils.esc(m.opposing_party)}</span></div>` : ''}
+              ${m.notes ? `<div class="dk-reg-meta"><span>Notes: ${Utils.esc(m.notes)}</span></div>` : ''}
+              <div class="dk-reg-meta"><span class="danger">A prior consultation may conflict the firm out of the adverse party — confirm before proceeding.</span></div>
+            </div>
+          </div>`;
+      }
+
+      const isClient = m.type === 'existing_client';
+      const sev = isClient ? DK.tag('Existing Client', 'crit') : DK.tag('Opposing Party', 'warn');
+
+      const matterRows = isClient
+        ? (m.matters || []).map(mt => matterMeta(mt)).join('')
+        : m.matter
+          ? matterMeta(m.matter, m.related_client ? `<span class="sep">·</span><span>Our client: ${Utils.esc(m.related_client)}</span>` : '')
+          : '';
 
       return `
-        <div style="display:flex;gap:var(--space-4);padding:var(--space-4);border:1px solid ${isClient ? '#fca5a5' : 'var(--color-border)'};border-radius:var(--radius-md);margin-bottom:var(--space-3);background:${isClient ? 'var(--color-danger-bg)' : 'transparent'}">
-          <div style="width:36px;height:36px;border-radius:50%;background:${isClient ? 'var(--color-danger)' : 'var(--color-warning,#f59e0b)'};color:#fff;display:grid;place-items:center;font-size:var(--text-xs);font-weight:600;flex-shrink:0">
-            ${Utils.esc(m.name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2))}
-          </div>
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap">
-              <span style="font-weight:600">${Utils.esc(m.name)}</span>
-              ${badge}
+        <div class="dk-reg-row" style="align-items:start">
+          <div style="min-width:0">
+            <div class="dk-reg-title"><span>${Utils.esc(m.name)}</span>${sev}</div>
+            <div class="dk-reg-meta">
+              <span>Found in: ${Utils.esc(m.matched_in)}</span><span class="sep">·</span><span>Searched: <em>${Utils.esc(m.searched_for)}</em></span>
             </div>
-            <div class="text-sm text-muted" style="margin-top:2px">
-              Found in: ${Utils.esc(m.matched_in)} · Searched for: <em>${Utils.esc(m.searched_for)}</em>
-            </div>
-            ${m.email ? `<div class="text-sm text-muted">${Utils.esc(m.email)}</div>` : ''}
+            ${m.email ? `<div class="dk-reg-meta"><span>${Utils.esc(m.email)}</span></div>` : ''}
             ${matterRows}
           </div>
         </div>`;
-    }).join('');
+    }).join('') + '</div>';
 
     // Scroll to results
     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -244,14 +260,14 @@
       if (error) throw error;
 
       if (!data?.length) {
-        body.innerHTML = `<div style="padding:var(--space-8);text-align:center;color:var(--color-text-muted)">No checks recorded yet.</div>`;
+        body.innerHTML = `<div class="dk-empty">No checks recorded yet.</div>`;
         return;
       }
 
-      const OUTCOME_BADGE = {
-        clear:         `<span class="badge badge--active">Clear</span>`,
-        conflict:      `<span class="badge badge--closed">Conflict</span>`,
-        review_needed: `<span class="badge badge--pending">Review Needed</span>`,
+      const OUTCOME_TAG = {
+        clear:         DK.tag('Clear', 'ok'),
+        conflict:      DK.tag('Conflict', 'crit'),
+        review_needed: DK.tag('Review Needed', 'warn'),
       };
 
       body.innerHTML = `
@@ -267,7 +283,7 @@
               <td class="text-sm text-muted">${Utils.formatDate(r.checked_at?.slice(0,10))}</td>
               <td style="font-weight:500">${Utils.esc(r.prospective_client_name)}</td>
               <td class="text-muted">${Utils.esc(r.opposing_party_name || '—')}</td>
-              <td>${r.outcome ? OUTCOME_BADGE[r.outcome] || Utils.esc(r.outcome) : '<span class="text-muted">—</span>'}</td>
+              <td>${r.outcome ? OUTCOME_TAG[r.outcome] || Utils.esc(r.outcome) : '<span class="text-muted">—</span>'}</td>
               <td class="text-muted">${r.users ? Utils.esc(Utils.fullName(r.users)) : '—'}</td>
             </tr>`).join('')}
           </tbody>

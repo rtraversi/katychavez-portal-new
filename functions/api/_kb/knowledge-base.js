@@ -168,7 +168,7 @@ The portal has six roles, each with different permissions:
 - Records deposits (retainer payments), disbursements (attorney fees earned), and refunds.
 - The trust ledger updates automatically when a client makes a payment through the portal's billing system.
 - All trust transactions are logged for compliance and reporting purposes.
-- IOLTA compliance requires your payment processor (Clover) to be configured for gross settlement into your trust account — this is a bank/processor configuration, not a portal setting.
+- IOLTA compliance requires your payment processor to be configured for gross settlement into your trust account — the full amount lands in trust and processing fees are debited separately. This is a bank/processor configuration, not a portal setting.
 
 ---
 
@@ -180,11 +180,11 @@ The portal has six roles, each with different permissions:
 ### Generating an Invoice
 1. Open the Billing module.
 2. Select the unbilled time entries you want to include.
-3. Click "Generate Invoice." A draft invoice is created with a Clover payment link automatically attached.
+3. Click "Generate Invoice." A draft invoice is created with an online payment link automatically attached.
 4. Review the invoice, then click "Send" to email it to the client.
 
 ### Payments
-- Clients receive the invoice by email and can pay via the Clover payment link.
+- Clients receive the invoice by email and can pay via the payment link.
 - When payment is received, the portal updates the trust ledger automatically via webhook.
 
 ### Invoice Status

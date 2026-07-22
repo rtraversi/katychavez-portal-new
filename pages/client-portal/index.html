@@ -32,6 +32,13 @@
     <div id="cp-dates-body"></div>
   </div>
 
+  <!-- Invoices (sent/paid only — staff drafts never appear here) -->
+  <div id="cp-invoices-card" class="card hidden" style="margin-bottom:var(--space-4)">
+    <h2 class="card-title" style="margin-bottom:var(--space-1)">Invoices</h2>
+    <p class="text-muted text-sm" style="margin-bottom:var(--space-4)">Invoices from the firm. Pay online or download a copy for your records.</p>
+    <div id="cp-invoices-body"></div>
+  </div>
+
   <!-- Pending signatures -->
   <div id="cp-esign-card" class="card hidden" style="margin-bottom:var(--space-4);border-left:4px solid var(--color-primary)">
     <h2 class="card-title" style="margin-bottom:var(--space-1)">
@@ -112,6 +119,281 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- ── CASE INTAKE TAB ──────────────────────────────────────────────────────── -->
+<div id="cp-tab-intake" class="hidden">
+
+  <div id="cp-intake-locked-banner" class="hidden card" style="margin-bottom:var(--space-4);border-left:4px solid var(--color-primary);background:var(--color-bg)">
+    <p style="margin:0;font-weight:600">✓ Intake submitted</p>
+    <p class="text-muted text-sm" style="margin:4px 0 0">Your case intake has been submitted and is now locked. If anything needs to change, contact your attorney's office.</p>
+  </div>
+
+  <div id="cp-intake-no-matter" class="hidden card" style="margin-bottom:var(--space-4)">
+    <p class="text-muted">No active matter on file. Please contact the firm.</p>
+  </div>
+
+  <div id="cp-intake-body" class="hidden">
+
+    <p class="text-muted text-sm" style="margin-bottom:var(--space-4)">
+      Fill in as much as you can below. You can save each section as you go and come back later — nothing is final until you click Submit at the bottom.
+    </p>
+
+    <!-- Spouse -->
+    <div class="card" style="margin-bottom:var(--space-4)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
+        <div>
+          <h2 class="card-title" style="margin-bottom:2px">Spouse</h2>
+          <p class="text-muted text-sm">The other party in your case.</p>
+        </div>
+        <button class="btn btn--secondary btn--sm cp-intake-add-btn" data-entity="op" type="button">+ Add</button>
+      </div>
+      <div id="cp-intake-op-list"></div>
+      <p id="cp-intake-op-empty" class="text-muted text-sm hidden">None added yet.</p>
+    </div>
+
+    <!-- Spouse's Attorney -->
+    <div class="card" style="margin-bottom:var(--space-4)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
+        <div>
+          <h2 class="card-title" style="margin-bottom:2px">Spouse's Attorney</h2>
+          <p class="text-muted text-sm">Your spouse's attorney, if they have one.</p>
+        </div>
+        <button class="btn btn--secondary btn--sm cp-intake-add-btn" data-entity="oc" type="button">+ Add</button>
+      </div>
+      <div id="cp-intake-oc-list"></div>
+      <p id="cp-intake-oc-empty" class="text-muted text-sm hidden">None added yet.</p>
+    </div>
+
+    <!-- Marriage & Case Narrative -->
+    <div class="card" id="cp-intake-matter-card" style="margin-bottom:var(--space-4)">
+      <h2 class="card-title" style="margin-bottom:var(--space-1)">Marriage &amp; Case Details</h2>
+      <p class="text-muted text-sm" style="margin-bottom:var(--space-4)">Background on the marriage and how things stand today.</p>
+      <form id="cp-intake-matter-form" class="field-stack">
+        <div class="field-row">
+          <div class="field">
+            <label for="cp-mat-place_of_marriage">Place of marriage (city, county, state)</label>
+            <input type="text" id="cp-mat-place_of_marriage" name="place_of_marriage">
+          </div>
+          <div class="field">
+            <label for="cp-mat-date_of_marriage">Date of marriage</label>
+            <input type="date" id="cp-mat-date_of_marriage" name="date_of_marriage">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cp-mat-separation_status">Separation status</label>
+            <select id="cp-mat-separation_status" name="separation_status">
+              <option value="">—</option>
+              <option value="not_separated">Not separated</option>
+              <option value="separated">Separated</option>
+              <option value="counseling">In counseling</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="cp-mat-separation_date">Date of separation</label>
+            <input type="date" id="cp-mat-separation_date" name="separation_date">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cp-mat-marriage_counselor">Marriage counselor (if any)</label>
+            <input type="text" id="cp-mat-marriage_counselor" name="marriage_counselor">
+          </div>
+          <div class="field">
+            <label for="cp-mat-separation_agreement">Separation agreement</label>
+            <select id="cp-mat-separation_agreement" name="separation_agreement">
+              <option value="">—</option>
+              <option value="none">None</option>
+              <option value="written">Written</option>
+              <option value="oral">Oral</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="cp-mat-marital_difficulties">Briefly describe the marital difficulties</label>
+          <textarea id="cp-mat-marital_difficulties" name="marital_difficulties" rows="3"></textarea>
+        </div>
+        <div class="field-row thirds">
+          <div class="field field-inline">
+            <input type="checkbox" id="cp-mat-has_prenup" name="has_prenup" style="width:auto">
+            <label for="cp-mat-has_prenup">There is a prenuptial/postnuptial agreement</label>
+          </div>
+          <div class="field field-inline">
+            <input type="checkbox" id="cp-mat-prior_divorce_filed" name="prior_divorce_filed" style="width:auto">
+            <label for="cp-mat-prior_divorce_filed">A prior divorce has been filed</label>
+          </div>
+          <div class="field field-inline">
+            <input type="checkbox" id="cp-mat-prior_protective_order" name="prior_protective_order" style="width:auto">
+            <label for="cp-mat-prior_protective_order">There is a prior protective order</label>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:var(--space-3)">
+          <button type="submit" class="btn btn--secondary btn--sm">Save</button>
+          <span id="cp-intake-matter-saved" class="text-muted text-sm hidden">✓ Saved</span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Previous Marriages -->
+    <div class="card" id="cp-intake-prevmarriage-card" style="margin-bottom:var(--space-4)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
+        <div>
+          <h2 class="card-title" style="margin-bottom:2px">Your Previous Marriages</h2>
+          <p class="text-muted text-sm">Any marriages you had before this one.</p>
+        </div>
+        <button class="btn btn--secondary btn--sm cp-intake-add-btn" data-entity="prev_marriage" type="button">+ Add</button>
+      </div>
+      <div id="cp-intake-prevmarriage-list"></div>
+      <p id="cp-intake-prevmarriage-empty" class="text-muted text-sm hidden">None added yet.</p>
+    </div>
+
+    <!-- Children -->
+    <div class="card" id="cp-intake-children-card" style="margin-bottom:var(--space-4)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
+        <div>
+          <h2 class="card-title" style="margin-bottom:2px">Children</h2>
+          <p class="text-muted text-sm">Children involved in this case.</p>
+        </div>
+        <button class="btn btn--secondary btn--sm cp-intake-add-btn" data-entity="child" type="button">+ Add</button>
+      </div>
+      <div id="cp-intake-child-list"></div>
+      <p id="cp-intake-child-empty" class="text-muted text-sm hidden">None added yet.</p>
+    </div>
+
+    <!-- Children From Other Relationships -->
+    <div class="card" id="cp-intake-childother-card" style="margin-bottom:var(--space-4)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
+        <div>
+          <h2 class="card-title" style="margin-bottom:2px">Your Children From Other Relationships</h2>
+          <p class="text-muted text-sm">Children you have who aren't part of this marriage.</p>
+        </div>
+        <button class="btn btn--secondary btn--sm cp-intake-add-btn" data-entity="child_other" type="button">+ Add</button>
+      </div>
+      <div id="cp-intake-childother-list"></div>
+      <p id="cp-intake-childother-empty" class="text-muted text-sm hidden">None added yet.</p>
+    </div>
+
+    <!-- Financial -->
+    <div class="card" id="cp-intake-financial-card" style="margin-bottom:var(--space-4)">
+      <h2 class="card-title" style="margin-bottom:var(--space-1)">Financial</h2>
+      <p class="text-muted text-sm" style="margin-bottom:var(--space-4)">Approximate figures are fine — exact numbers aren't required here.</p>
+      <form id="cp-intake-financial-form" class="field-stack">
+        <div class="field-row">
+          <div class="field">
+            <label for="cp-intake-fin-client-income">Your monthly income ($)</label>
+            <input type="number" min="0" step="0.01" id="cp-intake-fin-client-income" name="client_monthly_income">
+          </div>
+          <div class="field">
+            <label for="cp-intake-fin-opposing-income">Spouse's monthly income ($, if known)</label>
+            <input type="number" min="0" step="0.01" id="cp-intake-fin-opposing-income" name="opposing_monthly_income">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cp-intake-fin-trust-client">Do you have any assets in a trust?</label>
+            <select id="cp-intake-fin-trust-client" name="client_has_trust_assets">
+              <option value="">—</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="cp-intake-fin-trust-client-explain">If yes, please explain</label>
+            <input type="text" id="cp-intake-fin-trust-client-explain" name="client_trust_assets_explain">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cp-intake-fin-trust-spouse">Does your spouse have any assets in a trust?</label>
+            <select id="cp-intake-fin-trust-spouse" name="opposing_has_trust_assets">
+              <option value="">—</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="cp-intake-fin-trust-spouse-explain">If yes, please explain</label>
+            <input type="text" id="cp-intake-fin-trust-spouse-explain" name="opposing_trust_assets_explain">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cp-intake-fin-real-estate">Real estate — total value ($)</label>
+            <input type="number" min="0" step="0.01" id="cp-intake-fin-real-estate" name="real_estate_gross_value">
+          </div>
+          <div class="field">
+            <label for="cp-intake-fin-liquid">Liquid assets — total value ($)</label>
+            <input type="number" min="0" step="0.01" id="cp-intake-fin-liquid" name="liquid_assets_value">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cp-intake-fin-retirement-desc">Retirement accounts (describe)</label>
+            <input type="text" id="cp-intake-fin-retirement-desc" name="retirement_description">
+          </div>
+          <div class="field">
+            <label for="cp-intake-fin-retirement-value">Retirement accounts — estimated value ($)</label>
+            <input type="number" min="0" step="0.01" id="cp-intake-fin-retirement-value" name="retirement_estimated_value">
+          </div>
+        </div>
+        <div class="field">
+          <label for="cp-intake-fin-vehicles">Vehicles (year/make/model for each)</label>
+          <textarea id="cp-intake-fin-vehicles" name="vehicles_description" rows="2"></textarea>
+        </div>
+        <div class="field">
+          <label for="cp-intake-fin-other-assets">Other assets or investments</label>
+          <textarea id="cp-intake-fin-other-assets" name="other_assets_description" rows="2"></textarea>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cp-intake-fin-liabilities">Total liabilities / debts ($)</label>
+            <input type="number" min="0" step="0.01" id="cp-intake-fin-liabilities" name="total_liabilities">
+          </div>
+          <div class="field">
+            <label for="cp-intake-fin-ff-miles">Frequent flier miles</label>
+            <input type="text" id="cp-intake-fin-ff-miles" name="frequent_flyer_miles">
+          </div>
+        </div>
+        <div class="field">
+          <label for="cp-intake-fin-weapons">Weapons (describe, if any)</label>
+          <textarea id="cp-intake-fin-weapons" name="weapons_description" rows="2"></textarea>
+        </div>
+        <div style="display:flex;align-items:center;gap:var(--space-3)">
+          <button type="submit" class="btn btn--secondary btn--sm">Save</button>
+          <span id="cp-intake-fin-saved" class="text-muted text-sm hidden">✓ Saved</span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Submit -->
+    <div class="card" style="border-left:4px solid var(--color-primary)">
+      <h2 class="card-title" style="margin-bottom:var(--space-1)">Submit Intake</h2>
+      <p class="text-muted text-sm" style="margin-bottom:var(--space-4)">Once submitted, this section locks and your attorney is notified. You can still upload documents and send messages after submitting — contact the office if anything above needs to change.</p>
+      <div id="cp-intake-submit-error" class="form-error hidden" style="margin-bottom:var(--space-3)"></div>
+      <button id="cp-intake-submit-btn" class="btn btn--primary" type="button">Submit Intake</button>
+    </div>
+
+  </div>
+
+  <!-- Shared record modal (Spouse / Spouse's Attorney / Child) -->
+  <div id="cp-intake-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header">
+        <h2 class="modal-title" id="cp-intake-modal-title">Add</h2>
+        <button class="modal-close" id="cp-intake-modal-close" aria-label="Close" type="button">×</button>
+      </div>
+      <form id="cp-intake-modal-form">
+        <div class="modal-body" id="cp-intake-modal-fields"></div>
+        <div class="modal-footer">
+          <div id="cp-intake-modal-error" class="form-error hidden"></div>
+          <button type="button" class="btn btn--ghost" id="cp-intake-modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="cp-intake-modal-save">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 </div>
 
 <!-- ── MY PROFILE TAB ──────────────────────────────────────────────────────── -->
@@ -195,6 +477,22 @@
           <div class="field" style="flex:1">
             <label for="cp-emp-state">State</label>
             <input type="text" id="cp-emp-state" name="employer_state" placeholder="TX" maxlength="2" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <!-- Texas residency -->
+      <div style="margin-bottom:var(--space-5)">
+        <div style="font-size:var(--text-xs);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);margin-bottom:var(--space-3)">Texas Residency</div>
+        <p class="text-muted text-sm" style="margin-bottom:var(--space-3)">Texas requires 6+ months state residency and 90+ days county residency to file for divorce.</p>
+        <div class="field-row">
+          <div class="field" style="flex:2">
+            <label for="cp-tx-residency">How long have you lived in Texas?</label>
+            <input type="text" id="cp-tx-residency" name="texas_residency_duration" placeholder="e.g. 3 years" autocomplete="off">
+          </div>
+          <div class="field field-inline" style="flex:1;margin-top:22px">
+            <input type="checkbox" id="cp-county-90-days" name="county_residency_90_days" style="width:auto">
+            <label for="cp-county-90-days">90+ days in this county</label>
           </div>
         </div>
       </div>

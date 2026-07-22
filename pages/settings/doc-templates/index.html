@@ -1,43 +1,28 @@
-<!-- Settings: Doc Templates — loaded dynamically into #page-content by menu.js -->
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Document Templates</h1>
-    <p class="page-subtitle">Required document checklists by case type. Applied automatically when staff clicks "Apply Checklist" on a matter.</p>
-  </div>
-  <div class="flex gap-2">
-    <button class="btn btn--secondary" id="btn-browse-library">Browse library</button>
-    <button class="btn btn--secondary" id="btn-add-recommended">Add recommended templates</button>
-    <button class="btn btn--primary" id="btn-add-template">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Custom item
-    </button>
-  </div>
+<!-- Settings: Client Document Checklist — loaded dynamically into #page-content by menu.js -->
+<!-- Docket-kit masthead (see DESIGN-SYSTEM.md) -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · Document checklist</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Client <em>document</em> checklist.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">The documents you ask clients for, organized by case type and applied when staff run "Apply Checklist" on a matter. Editable Word templates live under Word Templates.</p>
 </div>
 
-<!-- Case type filter — populated dynamically from practice_areas + case_types tables -->
-<div class="card" style="margin-bottom:var(--space-4);padding:0 0 var(--space-3)">
-  <div id="dt-filter-bar" style="padding:0 var(--space-5)">
-    <div style="height:1px;background:var(--color-border);margin-bottom:var(--space-3)"></div>
+<div class="dk-sec" style="margin-bottom:0">
+  <div class="dk-sec-head">
+    <h2>Requested documents</h2>
+    <span class="dk-sec-rule"></span>
+    <button class="dk-sec-add" id="btn-add-template" type="button">Custom item</button>
+    <button class="dk-sec-add" id="btn-browse-library" type="button">＋ Add document</button>
+  </div>
+
+  <!-- Case type filter — populated dynamically from practice_areas + case_types tables -->
+  <div id="dt-filter-bar" style="margin-bottom:var(--space-4)">
     <span class="text-sm text-muted">Loading…</span>
   </div>
-</div>
 
-<!-- Templates table -->
-<div class="card" style="padding:0;overflow:hidden">
-  <table aria-label="Document templates">
-    <thead>
-      <tr>
-        <th>Document name</th>
-        <th>Case type</th>
-        <th>Category</th>
-        <th>Required by default</th>
-        <th style="width:80px"></th>
-      </tr>
-    </thead>
-    <tbody id="templates-tbody">
-      <tr><td colspan="5" style="padding:var(--space-10);text-align:center;color:var(--color-text-muted)">Loading…</td></tr>
-    </tbody>
-  </table>
+  <!-- Register of requested documents -->
+  <div id="templates-tbody">
+    <div class="dk-empty" style="margin-top:var(--space-4)">Loading…</div>
+  </div>
 </div>
 
 <!-- Add/Edit modal -->

@@ -69,18 +69,6 @@ function row(label, value) {
     : '';
 }
 
-export async function sendPasswordReset(env, { toEmail, resetLink }) {
-  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
-  await sendEmail(env, toEmail, `Reset your ${firmName} portal password`,
-    layout(env, `
-      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">Password reset request</p>
-      <p style="margin:0 0 16px;color:#374151">A password reset was requested for your account at <strong>${firmName}</strong>. Click the button below to set a new password.</p>
-      <p style="margin:0 0 20px;font-size:13px;color:#6b7280">This link expires in 1 hour. If you didn't request a password reset, you can ignore this email.</p>
-      ${btn(resetLink, 'Reset my password')}
-    `), 'password_reset'
-  );
-}
-
 export async function notifyClientInvited(env, { toEmail, clientName, inviteLink }) {
   const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   const firmName  = env.PORTAL_FIRM_NAME || 'Your Law Firm';
@@ -169,6 +157,89 @@ export async function notifyChecklistItemReceived(env, { toEmail, clientName, do
   );
 }
 
+export async function notifyIntakeSubmitted(env, { toEmail, clientName, matterLabel }) {
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
+  await sendEmail(env, toEmail, `Intake submitted — ${clientName}`,
+    layout(env, `
+      <p style="margin:0 0 20px;font-size:16px;font-weight:600;color:#111">A client has completed their intake</p>
+      <table style="border-collapse:collapse">
+        ${row('Client', clientName)}
+        ${row('Matter', matterLabel)}
+      </table>
+      <p style="margin:16px 0 0;color:#374151">Opposing party, opposing counsel, children, and financial info have been submitted and are now locked on the client's end. Review and edit as needed from the client's case file.</p>
+      ${btn(`${portalUrl}/portal#clients`, 'Review client')}
+    `), 'intake_submitted'
+  );
+}
+
+export async function notifyIntakeRequest(env, { toEmail, clientName, link }) {
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  const greeting = clientName ? `Hello ${clientName},` : 'Hello,';
+  await sendEmail(env, toEmail, `${firmName} — please complete your intake form`,
+    layout(env, `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">${greeting}</p>
+      <p style="margin:0 0 12px;color:#374151"><strong>${firmName}</strong> has requested some information to get started on your case. Please click below to complete a short, secure intake form.</p>
+      <p style="margin:0 0 16px;color:#374151">No account or password is needed — the form opens right from this link. <strong>The link expires in 14 days.</strong></p>
+      ${btn(link, 'Complete your intake')}
+      <p style="margin:20px 0 0;font-size:12px;color:#9ca3af">If the button doesn't work, copy and paste this link into your browser:<br>${link}</p>
+    `), 'intake_request'
+  );
+}
+
+export async function notifyRetainerRequest(env, { toEmail, clientName, amount, description, link }) {
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  const greeting = clientName ? `Hello ${clientName},` : 'Hello,';
+  // Open-amount request (amount null): the client enters the amount at checkout.
+  const hasAmount = amount != null && Number(amount) > 0;
+  const amountStr = hasAmount
+    ? '$' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : null;
+  await sendEmail(env, toEmail, `${firmName} — retainer payment request`,
+    layout(env, `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">${greeting}</p>
+      <p style="margin:0 0 12px;color:#374151"><strong>${firmName}</strong> has requested a retainer payment to get started on your matter.</p>
+      <table style="border-collapse:collapse;margin:0 0 8px">
+        ${row('Amount', `<strong>${amountStr || 'You choose the amount to pay'}</strong>`)}
+        ${description ? row('For', description) : ''}
+      </table>
+      <p style="margin:0 0 16px;color:#374151">Your payment is held securely in the firm's client trust account. Click below to pay by card or bank transfer — no account or password is needed.</p>
+      ${btn(link, amountStr ? `Pay ${amountStr} retainer` : 'Pay retainer')}
+      <p style="margin:20px 0 0;font-size:12px;color:#9ca3af">If the button doesn't work, copy and paste this link into your browser:<br>${link}</p>
+    `), 'retainer_request'
+  );
+}
+
+// Staff-facing: a retainer payment landed in trust. Sent individually to every
+// active staff user (anyone whose role isn't Client) by the payment webhook.
+// fbHint: 'recorded' (portal put the prepayment credit into FreshBooks),
+// 'manual' (FreshBooks is connected — remind staff to record it there), or
+// null (no FreshBooks on this deployment — say nothing about it).
+export async function notifyRetainerPaid(env, { toEmail, clientName, matterLabel, amount, description, fbHint }) {
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
+  const amountStr = amount != null
+    ? '$' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : null;
+  const fbLine = fbHint === 'recorded'
+    ? `<p style="margin:12px 0 0;color:#374151">This retainer was also recorded in FreshBooks as a <strong>Prepayment credit</strong> under the client.</p>`
+    : fbHint === 'manual'
+      ? `<p style="margin:12px 0 0;padding:10px 14px;background:#fef3c7;border-radius:6px;color:#92400e"><strong>FreshBooks reminder:</strong> record this retainer as a <strong>Prepayment credit</strong> under the client (Credits → New Credit → Prepayment) — <em>not</em> as an invoice — so it can be applied to their next invoice.</p>`
+      : '';
+  await sendEmail(env, toEmail, `Retainer paid — ${clientName || 'client'}${amountStr ? ` (${amountStr})` : ''}`,
+    layout(env, `
+      <p style="margin:0 0 20px;font-size:16px;font-weight:600;color:#15803d">A retainer payment has been received</p>
+      <table style="border-collapse:collapse">
+        ${row('Client', esc(clientName))}
+        ${row('Matter', esc(matterLabel))}
+        ${row('Amount', amountStr ? `<strong>${amountStr}</strong>` : null)}
+        ${description ? row('For', esc(description)) : ''}
+      </table>
+      <p style="margin:16px 0 0;color:#374151">The funds have been recorded as a deposit in the client's trust ledger.</p>
+      ${fbLine}
+      ${btn(`${portalUrl}/portal#billing`, 'Open Billing')}
+    `), 'retainer_paid'
+  );
+}
+
 export async function notifySignatureRequested(env, { toEmail, clientName, requestedBy, documentName, message }) {
   const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
   await sendEmail(env, toEmail, `Signature requested — ${documentName}`,
@@ -205,6 +276,22 @@ export async function notifySignatureCompleted(env, { documentName, requestId })
   console.log(`[notify] Signature completed for "${documentName}" (request ${requestId}) — no email configured yet`);
 }
 
+export async function notifySignatureDeclined(env, { toEmail, clientName, documentName, reason }) {
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
+  await sendEmail(env, toEmail, `Signature declined — ${documentName}`,
+    layout(env, `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">A client has declined to sign</p>
+      <table style="border-collapse:collapse">
+        ${row('Document', documentName)}
+        ${row('Client', clientName)}
+        ${reason ? row('Reason', reason) : ''}
+      </table>
+      <p style="margin:16px 0 0;font-size:13px;color:#6b7280">Log in to the portal to follow up with the client.</p>
+      ${btn(`${portalUrl}/portal#esign`, 'View e-sign requests')}
+    `), 'signature_declined'
+  );
+}
+
 export async function notifyProofScanComplete(env, { toEmail, filename, status, resultHtml }) {
   const label    = status === 'needs_correction' ? 'NEEDS CORRECTION' : 'PASS';
   const subject  = `Proof Scan — ${label} — ${filename}`;
@@ -233,18 +320,102 @@ export async function notifyProofScanComplete(env, { toEmail, filename, status, 
   await sendEmail(env, toEmail, subject, html, 'proof_scan');
 }
 
-export async function notifySignatureDeclined(env, { toEmail, clientName, documentName, reason }) {
-  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
-  await sendEmail(env, toEmail, `Signature declined — ${documentName}`,
+export async function notifyPasswordReset(env, { toEmail, resetLink }) {
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  await sendEmail(env, toEmail, `Reset your ${firmName} portal password`,
     layout(env, `
-      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">A client has declined to sign</p>
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">Password reset request</p>
+      <p style="margin:0 0 20px;color:#374151">A password reset was requested for your <strong>${firmName}</strong> portal account. Click the button below to choose a new password.</p>
+      <p style="margin:0 0 20px;color:#374151"><strong>This link expires in 1 hour.</strong> If you did not request this, you can safely ignore this email — your password has not changed.</p>
+      ${btn(resetLink, 'Reset my password')}
+    `), 'password_reset'
+  );
+}
+
+// ── Scheduling / consult booking ─────────────────────────────────────────────
+// Prospect-supplied strings (name, notes) are attacker-controlled on the public
+// booking endpoint — escape them before interpolating into email HTML.
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+export async function notifyBookingProspect(env, {
+  toEmail, prospectName, attorneyName, consultTypeName, whenText, feeText,
+}) {
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  await sendEmail(env, toEmail, `Your consultation with ${firmName} is confirmed`,
+    layout(env, `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">You're booked, ${esc(prospectName)}</p>
+      <p style="margin:0 0 20px;color:#374151">Your consultation with <strong>${firmName}</strong> has been scheduled.</p>
       <table style="border-collapse:collapse">
-        ${row('Document', documentName)}
-        ${row('Client', clientName)}
-        ${reason ? row('Reason', reason) : ''}
+        ${row('Attorney', esc(attorneyName))}
+        ${row('Consultation', esc(consultTypeName))}
+        ${row('When', esc(whenText))}
+        ${row('Fee', feeText ? esc(feeText) : null)}
       </table>
-      <p style="margin:16px 0 0;font-size:13px;color:#6b7280">Log in to the portal to follow up with the client.</p>
-      ${btn(`${portalUrl}/portal#esign`, 'View e-sign requests')}
-    `), 'signature_declined'
+      <p style="margin:20px 0 0;color:#374151">If you need to reschedule or cancel, please contact our office.</p>
+    `), 'booking_confirmed'
+  );
+}
+
+export async function notifyBookingAttorney(env, {
+  toEmail, prospectName, prospectEmail, prospectPhone, consultTypeName, whenText, caseTypeName, notes,
+}) {
+  await sendEmail(env, toEmail, `New consultation booked — ${prospectName}`,
+    layout(env, `
+      <p style="margin:0 0 20px;font-size:16px;font-weight:600;color:#111">A new consultation was booked online</p>
+      <table style="border-collapse:collapse">
+        ${row('Prospect', esc(prospectName))}
+        ${row('Email', esc(prospectEmail))}
+        ${row('Phone', esc(prospectPhone))}
+        ${row('Consultation', esc(consultTypeName))}
+        ${row('When', esc(whenText))}
+        ${row('Regarding', esc(caseTypeName))}
+        ${row('Notes', esc(notes))}
+      </table>
+      <p style="margin:20px 0 0;color:#374151">The appointment has been added to your calendar. Manage it from the portal's Appointments page.</p>
+    `), 'booking_received'
+  );
+}
+
+export async function notifyBookingCancelled(env, { toEmail, prospectName, consultTypeName, whenText }) {
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  await sendEmail(env, toEmail, `Your consultation with ${firmName} has been cancelled`,
+    layout(env, `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">Hi ${esc(prospectName)},</p>
+      <p style="margin:0 0 12px;color:#374151">Your <strong>${esc(consultTypeName)}</strong> scheduled for
+      ${esc(whenText)} has been <strong>cancelled</strong>.</p>
+      <p style="margin:0;color:#374151">If you'd like to rebook, please visit our booking page or contact our office.</p>
+    `), 'booking_cancelled'
+  );
+}
+
+export async function notifyBookingPaymentLink(env, { toEmail, prospectName, consultTypeName, amount, link }) {
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  const amt = '$' + Number(amount).toFixed(2);
+  await sendEmail(env, toEmail, `Payment for your consultation with ${firmName}`,
+    layout(env, `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">Hi ${esc(prospectName)},</p>
+      <p style="margin:0 0 12px;color:#374151">Here is the secure payment link for your
+      <strong>${esc(consultTypeName)}</strong> (${amt}).</p>
+      ${btn(link, `Pay ${amt}`)}
+      <p style="margin:20px 0 0;color:#374151;font-size:13px">If you have any questions about this payment, please contact our office.</p>
+    `), 'booking_payment_link'
+  );
+}
+
+export async function notifyBookingReminder(env, { toEmail, prospectName, consultTypeName, attorneyName, whenText }) {
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  await sendEmail(env, toEmail, `Reminder: your consultation with ${firmName}`,
+    layout(env, `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">Hi ${esc(prospectName)},</p>
+      <p style="margin:0 0 12px;color:#374151">This is a friendly reminder about your upcoming consultation.</p>
+      <table style="border-collapse:collapse">
+        ${row('Consultation', esc(consultTypeName))}
+        ${row('Attorney', esc(attorneyName))}
+        ${row('When', esc(whenText))}
+      </table>
+      <p style="margin:20px 0 0;color:#374151">If you need to reschedule or cancel, please contact our office as soon as possible.</p>
+    `), 'booking_reminder'
   );
 }

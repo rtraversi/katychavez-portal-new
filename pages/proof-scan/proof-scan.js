@@ -33,11 +33,11 @@
 
   // ── State ────────────────────────────────────────────────────────────────────
 
-  let selectedFile    = null;
-  let rulesOpen       = false;
-  let rulesOriginal   = '';
+  let selectedFile        = null;
+  let rulesOpen           = false;
+  let rulesOriginal       = '';
   let notifyEmailOriginal = '';
-  let rulesChanged    = false;
+  let rulesChanged        = false;
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,14 +52,13 @@
   }
 
   function setRulesFeedback(msg, type) {
-    // type: 'success' | 'error'
+    // type: 'success' | 'error' — token-driven so it stays readable in dark mode.
+    const accent = type === 'success' ? 'var(--color-success)' : 'var(--color-danger)';
     rulesFeedback.style.display    = 'block';
     rulesFeedback.style.background = type === 'success'
-      ? 'var(--color-success-bg,#f0fdf4)' : 'var(--color-danger-bg,#fef2f2)';
-    rulesFeedback.style.color = type === 'success'
-      ? 'var(--color-success,#15803d)' : 'var(--color-danger,#dc2626)';
-    rulesFeedback.style.border = type === 'success'
-      ? '1px solid var(--color-success-border,#bbf7d0)' : '1px solid var(--color-danger-border,#fecaca)';
+      ? 'var(--color-success-bg)' : 'var(--color-danger-bg)';
+    rulesFeedback.style.color  = accent;
+    rulesFeedback.style.border = `1px solid color-mix(in srgb, ${accent} 32%, transparent)`;
     rulesFeedback.textContent = msg;
   }
 
@@ -73,8 +72,8 @@
 
   dropZone.addEventListener('dragover', e => {
     e.preventDefault();
-    dropZone.style.borderColor = 'var(--color-primary)';
-    dropZone.style.background  = 'var(--color-primary-bg,#eff6ff)';
+    dropZone.style.borderColor = 'var(--daily)';
+    dropZone.style.background  = 'var(--daily-tint)';
   });
 
   dropZone.addEventListener('dragleave', () => {
@@ -132,7 +131,7 @@
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
       // Show results
-      resultsContent.innerHTML = data.html;
+      resultsContent.innerHTML = themeResultHtml(data.html);
       resultsWrap.classList.remove('hidden');
       resultsWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -185,8 +184,8 @@
       notifyEmailOriginal     = data.notify_email        || '';
       rulesTextarea.value     = rulesOriginal;
       notifyEmailInput.value  = notifyEmailOriginal;
-      rulesTextarea.disabled  = false;
-      rulesChanged            = false;
+      rulesTextarea.disabled = false;
+      rulesChanged           = false;
     } catch (err) {
       rulesTextarea.value = '';
       rulesTextarea.disabled = false;
@@ -194,13 +193,11 @@
     }
   }
 
-  function checkRulesChanged() {
+  rulesTextarea.addEventListener('input', () => {
     rulesChanged          = rulesTextarea.value !== rulesOriginal ||
                             notifyEmailInput.value.trim() !== notifyEmailOriginal;
     rulesSaveBtn.disabled = !rulesChanged;
-  }
-  rulesTextarea.addEventListener('input', checkRulesChanged);
-  notifyEmailInput.addEventListener('input', checkRulesChanged);
+  });
 
   rulesSaveBtn.addEventListener('click', async () => {
     rulesSaveBtn.disabled    = true;
@@ -225,7 +222,7 @@
       rulesOriginal       = rulesTextarea.value;
       notifyEmailOriginal = notifyEmailInput.value.trim();
       rulesChanged        = false;
-      setRulesFeedback('Settings saved. They will apply to the next scan.', 'success');
+      setRulesFeedback('Rules saved. They will apply to the next scan.', 'success');
     } catch (err) {
       setRulesFeedback('Save failed: ' + err.message, 'error');
     } finally {
@@ -248,7 +245,7 @@
   // ── History ──────────────────────────────────────────────────────────────────
 
   async function loadHistory() {
-    historyList.innerHTML = '<p style="font-size:var(--text-sm);color:var(--color-text-muted)">Loading…</p>';
+    historyList.innerHTML = '<div class="dk-empty">Loading…</div>';
     try {
       const session = await getSession();
       const res = await fetch('/api/proof-scan-history', {
@@ -260,30 +257,27 @@
 
       const scans = data.scans || [];
       if (!scans.length) {
-        historyList.innerHTML = '<p style="font-size:var(--text-sm);color:var(--color-text-muted)">No scans yet.</p>';
+        historyList.innerHTML = '<div class="dk-empty">No scans yet.</div>';
         return;
       }
 
-      historyList.innerHTML = scans.map(s => {
-        const badgeColor = s.status === 'pass'
-          ? 'background:#dcfce7;color:#15803d'
-          : 'background:#fef9c3;color:#92400e';
-        const badgeLabel = s.status === 'pass' ? 'Pass' : 'Needs Correction';
+      const rows = scans.map(s => {
+        // pass → ok (green), anything else (needs correction) → warn (amber)
+        const kind  = s.status === 'pass' ? 'ok' : 'warn';
+        const label = s.status === 'pass' ? 'Pass' : 'Needs Correction';
         return `
-          <div data-scan-id="${s.id}" style="display:flex;align-items:center;gap:var(--space-3);
-               padding:var(--space-3) 0;border-bottom:1px solid var(--color-border);cursor:pointer"
-               class="ps-history-item">
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:500;font-size:var(--text-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          <div class="dk-reg-row ps-history-item" data-scan-id="${s.id}"
+               data-scan-filename="${escHtml(s.filename)}" style="cursor:pointer">
+            <div style="min-width:0">
+              <div class="dk-reg-title" style="font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">
                 ${escHtml(s.filename)}
               </div>
-              <div style="font-size:var(--text-xs,0.75rem);color:var(--color-text-muted)">${formatDate(s.created_at)}</div>
+              <div class="dk-reg-meta">${formatDate(s.created_at)}</div>
             </div>
-            <span style="${badgeColor};padding:2px 8px;border-radius:9999px;font-size:var(--text-xs,0.75rem);font-weight:600;white-space:nowrap">
-              ${badgeLabel}
-            </span>
+            ${DK.tag(label, kind)}
           </div>`;
       }).join('');
+      historyList.innerHTML = `<div class="dk-register">${rows}</div>`;
 
       // Attach click handlers to load full result
       historyList.querySelectorAll('.ps-history-item').forEach(el => {
@@ -291,7 +285,7 @@
       });
 
     } catch (err) {
-      historyList.innerHTML = `<p style="font-size:var(--text-sm);color:var(--color-danger)">${escHtml(err.message)}</p>`;
+      historyList.innerHTML = `<div class="dk-empty" style="color:var(--color-danger)">${escHtml(err.message)}</div>`;
     }
   }
 
@@ -308,9 +302,9 @@
     // The result_html is not returned by the history endpoint (only metadata).
     // We need to fetch it — add a simple mechanism using the history row.
 
-    const filename = rowEl.querySelector('[style*="font-weight:500"]').textContent.trim();
+    const filename = rowEl.dataset.scanFilename || '';
     modalTitle.textContent = filename;
-    modalBody.innerHTML    = '<p style="color:var(--color-text-muted)">Loading…</p>';
+    modalBody.innerHTML    = '<p style="color:var(--ink-soft)">Loading…</p>';
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 
@@ -325,10 +319,39 @@
         .limit(1);
 
       if (!rows?.length) throw new Error('Scan not found');
-      modalBody.innerHTML = rows[0].result_html;
+      modalBody.innerHTML = themeResultHtml(rows[0].result_html);
     } catch (err) {
       modalBody.innerHTML = `<p style="color:var(--color-danger)">Could not load result: ${escHtml(err.message)}</p>`;
     }
+  }
+
+  // Neutralize light-mode colors baked into AI-generated result HTML so it inherits
+  // the theme tokens (readable in dark mode), and tag the status column so Pass /
+  // Needs-Correction keep a theme-aware green/red. Also fixes older stored scans.
+  function themeResultHtml(raw) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = String(raw || '');
+
+    // Drop hardcoded color / background declarations from inline styles.
+    tpl.content.querySelectorAll('[style]').forEach(el => {
+      const kept = el.getAttribute('style')
+        .split(';')
+        .filter(d => d.trim() && !/^\s*(color|background(-color)?)\s*:/i.test(d))
+        .join(';');
+      if (kept.trim()) el.setAttribute('style', kept);
+      else el.removeAttribute('style');
+    });
+
+    // Tag the status column (first cell of each row) for theme-aware recoloring.
+    tpl.content.querySelectorAll('tr').forEach(tr => {
+      const cell = tr.querySelector('td, th');
+      if (!cell) return;
+      const t = (cell.textContent || '').trim().toUpperCase();
+      if (/\bPASS\b/.test(t)) cell.classList.add('ps-status', 'ps-pass');
+      else if (/NEEDS CORRECTION|\bFAIL\b|\bERROR\b|✗|✕/.test(t)) cell.classList.add('ps-status', 'ps-fail');
+    });
+
+    return tpl.innerHTML;
   }
 
   function escHtml(s) {
