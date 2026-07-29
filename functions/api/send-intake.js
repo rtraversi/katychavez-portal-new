@@ -11,7 +11,10 @@ import { makeAdminClient, json } from './_helpers.js';
 import { notifyIntakeRequest } from './_notifications.js';
 
 const INTAKE_TTL_DAYS = 14;
-const ALLOWED_ROLES = ['Owner', 'Attorney', 'Partner Attorney', 'Staff Admin'];
+// Intake collection is core paralegal/legal-assistant work (the Paralegal role is
+// literally seeded as "Client intake, document tracking, tasks"), so this is wider
+// than the invite-client gate — sending an intake link creates no portal account.
+const ALLOWED_ROLES = ['Owner', 'Attorney', 'Partner Attorney', 'Staff Admin', 'Paralegal', 'Legal Assistant'];
 
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -41,7 +44,7 @@ export async function onRequest({ request, env }) {
     return json(503, { error: 'Service unavailable. Please try again.' });
   }
   if (!ALLOWED_ROLES.includes(callerRole)) {
-    return json(403, { error: 'Forbidden — Attorney or Owner role required' });
+    return json(403, { error: 'Forbidden — staff role required to send client intake' });
   }
 
   let body;
