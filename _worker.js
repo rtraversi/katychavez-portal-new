@@ -128,6 +128,9 @@ import { onRequest as storageSyncImportClient }    from './functions/api/storage
 import { onRequest as bookingPublic }              from './functions/api/booking-public.js';
 import { onRequest as bookingStaff }               from './functions/api/booking-staff.js';
 import { runBookingReminders }                     from './functions/api/_booking-reminders.js';
+import { onRequest as mondaySyncPreview }          from './functions/api/monday-sync-preview.js';
+import { onRequest as mondaySyncImport }           from './functions/api/monday-sync-import.js';
+import { onRequest as mondaySyncItems }            from './functions/api/monday-sync-items.js';
 
 export const routes = {
   '/api/confirm-upload':    confirmUpload,
@@ -135,6 +138,9 @@ export const routes = {
   '/api/storage-sync-status':   storageSyncStatus,
   '/api/storage-sync-unmatched': storageSyncUnmatched,
   '/api/storage-sync-import-client': storageSyncImportClient,
+  '/api/monday-sync-preview':   mondaySyncPreview,
+  '/api/monday-sync-import':    mondaySyncImport,
+  '/api/monday-sync-items':     mondaySyncItems,
   '/api/set-matter-stage':  setMatterStage,
   '/api/form-filler/package':  formFillerPackage,
   '/api/form-filler/generate': formFillerGenerate,

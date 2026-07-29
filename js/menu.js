@@ -322,6 +322,7 @@ window.Menu = (function () {
       { route: 'settings/calendar',     name: 'Calendar Sync' },
       { route: 'settings/scheduling',   name: 'Scheduling' },
       { route: 'settings/storage-sync', name: 'Storage Sync' },
+      { route: 'settings/monday-sync',  name: 'Monday Sync' },
     ]},
   ];
 

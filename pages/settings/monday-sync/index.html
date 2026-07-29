@@ -1,0 +1,59 @@
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Settings · Monday sync</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">Monday <em>sync</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Bring new clients across from the monday.com board. Nothing is created until you have seen the preview and confirmed it.</p>
+</div>
+
+<div class="dk-sec">
+  <div class="dk-sec-head">
+    <h2>Last run</h2><span class="dk-sec-rule"></span>
+    <button class="dk-sec-add" id="ms-preview-btn" type="button">Preview import</button>
+  </div>
+  <div id="ms-state">
+    <div class="dk-empty" style="margin-top:0">Loading…</div>
+  </div>
+</div>
+
+<div class="dk-sec hidden" id="ms-preview-sec">
+  <div class="dk-sec-head">
+    <h2>Preview</h2><span class="dk-sec-rule"></span>
+    <span class="dk-sec-count" id="ms-preview-count"></span>
+  </div>
+
+  <p class="dk-sub" style="margin-top:0" id="ms-preview-summary"></p>
+
+  <div id="ms-preview-body"></div>
+
+  <div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-4)">
+    <button class="btn btn--ghost" id="ms-preview-cancel" type="button">Cancel</button>
+    <button class="btn btn--primary" id="ms-preview-confirm" type="button" disabled>Import selected</button>
+  </div>
+</div>
+
+<div class="dk-sec">
+  <div class="dk-sec-head">
+    <h2>Needs review</h2><span class="dk-sec-rule"></span>
+    <span class="dk-sec-count" id="ms-review-count"></span>
+  </div>
+  <div id="ms-review">
+    <div class="dk-empty" style="margin-top:0">Loading…</div>
+  </div>
+</div>
+
+<div class="dk-sec">
+  <div class="dk-sec-head">
+    <h2>No longer on the board</h2><span class="dk-sec-rule"></span>
+    <span class="dk-sec-count" id="ms-departed-count"></span>
+  </div>
+  <p class="dk-sub" style="margin-top:0">These clients were imported from the board but their item has left the group. Nothing has been changed — their matters, documents and forms are untouched. Dismissing only clears the flag.</p>
+  <div id="ms-departed"></div>
+</div>
+
+<div class="dk-sec" style="margin-bottom:0">
+  <div class="dk-sec-head">
+    <h2>Ignored</h2><span class="dk-sec-rule"></span>
+    <span class="dk-sec-count" id="ms-ignored-count"></span>
+  </div>
+  <p class="dk-sub" style="margin-top:0">Board items that are not clients — working notes, staff, mail threads — plus anything you have dismissed. Kept so they stop asking on every run.</p>
+  <div id="ms-ignored"></div>
+</div>
