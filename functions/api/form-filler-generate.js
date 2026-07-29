@@ -10,7 +10,7 @@
 
 import { PDFDocument } from 'pdf-lib';
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
-import { applyFieldMap, applyManualEdits } from './_form-fill.js';
+import { applyFieldMap, applyManualEdits, stripRichText } from './_form-fill.js';
 import { loadPackageTemplates, seedMatterForms, buildFillContext, loadManualEdits } from './_fill-context.js';
 
 export async function onRequest(context) {
@@ -107,6 +107,9 @@ async function handleRequest(request, env) {
       const bytes  = await obj.arrayBuffer();
       const pdfDoc = await PDFDocument.load(bytes);
       const form   = pdfDoc.getForm();
+      // Guard: a template uploaded before the rich-text normalize fix would
+      // throw at save() below. Harmless no-op on already-clean templates.
+      stripRichText(form);
 
       // Firm-edited standing defaults (see form-filler-template-defaults.js)
       // sit over the package field_map: attorneys can set/clear literals but

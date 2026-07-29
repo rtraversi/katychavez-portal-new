@@ -255,3 +255,22 @@ export function applyManualEdits(pdfForm, edits) {
 
   return { appliedCount, warnings };
 }
+
+// pdf-lib cannot READ rich-text fields, and pdfDoc.save() regenerates every
+// field's appearance stream (which reads its value) — so one rich-text box like
+// the I-485 Part 14 "Additional Information" throws mid-save, OUTSIDE
+// applyFieldMap's per-field guard, aborting the whole generate/download.
+// Downgrade any rich-text field to plain text before saving: the field name and
+// value are preserved, only the XFA-era rich-formatting flag is dropped (no
+// USCIS filing needs it). Paired with the normalize-time fix so templates
+// uploaded before that fix still generate. Idempotent; safe on any form.
+export function stripRichText(pdfForm) {
+  let cleared = 0;
+  for (const field of pdfForm.getFields()) {
+    if (field instanceof PDFTextField && field.isRichFormatted()) {
+      field.disableRichFormatting();
+      cleared++;
+    }
+  }
+  return cleared;
+}

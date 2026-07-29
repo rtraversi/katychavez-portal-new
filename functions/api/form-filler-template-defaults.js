@@ -20,7 +20,7 @@
 
 import { PDFDocument } from 'pdf-lib';
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
-import { applyFieldMap } from './_form-fill.js';
+import { applyFieldMap, stripRichText } from './_form-fill.js';
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 
@@ -138,6 +138,7 @@ async function downloadForEditing(env, tmpl) {
 
   const pdfDoc = await PDFDocument.load(await obj.arrayBuffer());
   const form   = pdfDoc.getForm();
+  stripRichText(form); // else save() below throws on rich-text fields (e.g. I-485 Part 14)
 
   const standing = {};
   for (const [name, entry] of Object.entries(tmpl.field_map || {})) {

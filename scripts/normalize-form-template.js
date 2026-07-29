@@ -89,6 +89,22 @@ async function main() {
   }
   if (readOnlyCleared) console.log(`[normalize-form-template] Cleared read-only flag on ${readOnlyCleared} fields`);
 
+  // pdf-lib cannot READ rich-text fields, and every downstream save() (generate,
+  // template-defaults download) regenerates appearances by reading each field —
+  // so a single rich-text box (e.g. the I-485 Part 14 "Additional Information")
+  // makes the whole form throw at generate time. USCIS filings need none of the
+  // XFA-era rich formatting, so downgrade them to plain text now. Field name and
+  // any value are preserved. (This save uses updateFieldAppearances:false, which
+  // is why normalization itself never hit the error — only downstream fills do.)
+  let richCleared = 0;
+  for (const f of form.getFields()) {
+    if (typeof f.isRichFormatted === 'function' && f.isRichFormatted()) {
+      f.disableRichFormatting();
+      richCleared++;
+    }
+  }
+  if (richCleared) console.log(`[normalize-form-template] Downgraded ${richCleared} rich-text field(s) to plain text`);
+
   const fields = form.getFields().map(f => ({
     name: f.getName(),
     type: f.constructor.name.replace('PDF', ''),
