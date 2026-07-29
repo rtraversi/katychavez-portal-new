@@ -115,6 +115,10 @@ import { onRequest as formFillerReset }            from './functions/api/form-fi
 import { onRequest as formFillerTemplateDefaults } from './functions/api/form-filler-template-defaults.js';
 import { onRequest as formFillerFields }           from './functions/api/form-filler-fields.js';
 import { onRequest as formFillerMatterForms }      from './functions/api/form-filler-matter-forms.js';
+import { onRequest as caseBuilderPackages }        from './functions/api/case-builder-packages.js';
+import { onRequest as caseBuilderCaseType }        from './functions/api/case-builder-case-type.js';
+import { onRequest as caseBuilderPackage }         from './functions/api/case-builder-package.js';
+import { onRequest as caseBuilderPackageItems }    from './functions/api/case-builder-package-items.js';
 import { onRequest as updateMyProfile }            from './functions/api/update-my-profile.js';
 import { runStoragePull }                          from './functions/api/_storage-pull.js';
 import { onRequest as storageSyncRecon }           from './functions/api/storage-sync-recon.js';
@@ -140,6 +144,10 @@ export const routes = {
   '/api/form-filler/template-defaults': formFillerTemplateDefaults,
   '/api/form-filler/fields':   formFillerFields,
   '/api/form-filler/matter-forms': formFillerMatterForms,
+  '/api/case-builder/packages':      caseBuilderPackages,
+  '/api/case-builder/case-type':     caseBuilderCaseType,
+  '/api/case-builder/package':       caseBuilderPackage,
+  '/api/case-builder/package-items': caseBuilderPackageItems,
   '/api/update-my-profile': updateMyProfile,
   '/api/create-signature-request': createSignatureRequest,
   '/api/decline-signature': declineSignature,
