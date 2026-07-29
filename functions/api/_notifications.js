@@ -419,3 +419,31 @@ export async function notifyBookingReminder(env, { toEmail, prospectName, consul
     `), 'booking_reminder'
   );
 }
+
+// Weekly edition-check digest to staff. `forms` is the list of forms that newly
+// went stale/error this run: { form_number, ours, upstream, status, detail }.
+export async function notifyFormEditionStale(env, { toEmail, forms }) {
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
+  const list = (forms || []).map(f => {
+    const isStale = f.status === 'stale';
+    const badge = isStale ? '#b45309' : '#6b7280';
+    const line  = isStale
+      ? `USCIS now shows <strong>${esc(f.upstream)}</strong>; the portal has <strong>${esc(f.ours)}</strong>.`
+      : `Could not verify automatically — check it by hand.${f.detail ? ` (${esc(f.detail)})` : ''}`;
+    return `<tr>
+      <td style="padding:8px 12px 8px 0;font-size:13px;font-weight:700;color:#111;vertical-align:top;white-space:nowrap">${esc(f.form_number)}
+        <span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:${badge};color:#fff;font-size:10px;font-weight:700;text-transform:uppercase">${isStale ? 'Stale' : 'Unverified'}</span>
+      </td>
+      <td style="padding:8px 0;font-size:13px;color:#374151">${line}</td>
+    </tr>`;
+  }).join('');
+
+  await sendEmail(env, toEmail, `Form editions need review — ${forms.length} form${forms.length === 1 ? '' : 's'}`,
+    layout(env, `
+      <p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#111">Form editions need review</p>
+      <p style="margin:0 0 16px;color:#374151">The weekly edition check flagged the following. USCIS rejects filings made on a superseded edition, so please confirm each against uscis.gov and update the template if it has changed.</p>
+      <table style="border-collapse:collapse;width:100%">${list}</table>
+      ${btn(`${portalUrl}/portal#draft-forms`, 'Open USCIS Forms')}
+    `), 'form_edition_stale'
+  );
+}

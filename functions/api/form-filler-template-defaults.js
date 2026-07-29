@@ -113,19 +113,41 @@ async function handleRequest(request, env) {
 async function listTemplates(admin) {
   const { data: rows, error } = await admin
     .from('form_templates')
-    .select('id, form_key, label, r2_key, active, field_map, firm_overrides')
+    .select('id, form_key, label, r2_key, active, field_map, firm_overrides, edition_date')
     .eq('active', true)
     .order('form_key');
   if (error) return json(500, { error: 'Failed to load templates' });
 
-  const templates = rows.map(t => ({
-    template_id:    t.id,
-    form_key:       t.form_key,
-    label:          t.label,
-    template_ready: !!t.r2_key,
-    data_mapped:    Object.values(t.field_map || {}).filter(isDataDriven).length,
-    firm_defaults:  Object.keys(t.firm_overrides || {}).length,
-  }));
+  // Edition-guard status per form, keyed by uppercased form_key -> form_number.
+  // Best-effort: a missing form_editions table or row just yields no badge.
+  const editionByNumber = {};
+  try {
+    const { data: eds } = await admin
+      .from('form_editions')
+      .select('form_number, edition_date, upstream_edition, check_status, check_error, last_checked_at, last_verified_at');
+    for (const e of eds || []) editionByNumber[e.form_number] = e;
+  } catch { /* no edition data — templates still list */ }
+
+  const templates = rows.map(t => {
+    const e = editionByNumber[(t.form_key || '').toUpperCase()] || null;
+    return {
+      template_id:    t.id,
+      form_key:       t.form_key,
+      label:          t.label,
+      template_ready: !!t.r2_key,
+      data_mapped:    Object.values(t.field_map || {}).filter(isDataDriven).length,
+      firm_defaults:  Object.keys(t.firm_overrides || {}).length,
+      // null when the form has no form_editions row at all (edition unmanaged).
+      edition: e ? {
+        edition_date:     t.edition_date || e.edition_date || null,
+        upstream_edition: e.upstream_edition || null,
+        check_status:     e.check_status || 'unknown',
+        check_error:      e.check_error || null,
+        last_checked_at:  e.last_checked_at || null,
+        last_verified_at: e.last_verified_at || null,
+      } : null,
+    };
+  });
   return json(200, { templates });
 }
 

@@ -128,6 +128,8 @@ import { onRequest as storageSyncImportClient }    from './functions/api/storage
 import { onRequest as bookingPublic }              from './functions/api/booking-public.js';
 import { onRequest as bookingStaff }               from './functions/api/booking-staff.js';
 import { runBookingReminders }                     from './functions/api/_booking-reminders.js';
+import { run as runFormEditionCheck }              from './functions/api/process-form-edition-check.js';
+import { onRequest as formEditionsVerify }         from './functions/api/form-editions-verify.js';
 
 export const routes = {
   '/api/confirm-upload':    confirmUpload,
@@ -144,6 +146,7 @@ export const routes = {
   '/api/form-filler/template-defaults': formFillerTemplateDefaults,
   '/api/form-filler/fields':   formFillerFields,
   '/api/form-filler/matter-forms': formFillerMatterForms,
+  '/api/form-editions/verify':          formEditionsVerify,
   '/api/case-builder/packages':      caseBuilderPackages,
   '/api/case-builder/case-type':     caseBuilderCaseType,
   '/api/case-builder/package':       caseBuilderPackage,
@@ -388,6 +391,11 @@ export default {
       // Every 5 min — consult reminder emails (no-ops unless the scheduling
       // premium module is enabled AND reminders are on in booking_settings)
       ctx.waitUntil(runBookingReminders(env));
+    } else if (event.cron === '0 15 * * 1') {
+      // Weekly, Monday 10am CST — check every USCIS form's edition against
+      // uscis.gov and flag any that have gone stale (or that could not be
+      // verified). Emails staff a digest only when a form newly goes bad.
+      ctx.waitUntil(runFormEditionCheck(env));
     }
   },
 

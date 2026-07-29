@@ -2194,6 +2194,32 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 /* A register whose first child is a group head shouldn't double-rule at the top */
 .dk-register .dk-reg-group:first-child { border-top: 0; }
 
+/* USCIS Template Defaults — search bar + collapsible category groups.
+   Each category is a native <details>, so collapse needs no JS state; the
+   summary reuses the .dk-reg-group divider language. */
+.dk-formbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.dk-search { flex: 1; min-width: 220px; padding: 9px 13px; border: 1px solid var(--line);
+  border-radius: 9px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; }
+.dk-search:focus { outline: none; border-color: var(--ink-faint); }
+.dk-formchips { display: flex; gap: 8px; flex-wrap: wrap; }
+.dk-chipbtn { padding: 7px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  color: var(--ink-soft); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.dk-chipbtn:hover { border-color: var(--ink-faint); color: var(--ink); }
+.dk-chipbtn.is-on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.dk-reg-fold > summary {
+  padding: 11px 20px; background: var(--paper-deep); border-bottom: 1px solid var(--line);
+  cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px;
+  font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint);
+}
+.dk-reg-fold > summary::-webkit-details-marker { display: none; }
+.dk-reg-fold > summary::before { content: '▸'; font-size: 11px; transition: transform .15s; color: var(--ink-faint); }
+.dk-reg-fold[open] > summary::before { transform: rotate(90deg); }
+.dk-reg-fold > summary:hover { color: var(--ink-soft); }
+.dk-reg-fold .n { color: var(--ink-soft); font-weight: 600; }
+.dk-reg-fold-warn { margin-left: auto; text-transform: none; letter-spacing: 0; font-size: 11px; font-weight: 700;
+  color: var(--color-warn); background: color-mix(in srgb, var(--color-warn) 14%, var(--surface)); padding: 2px 9px; border-radius: 999px; }
+.dk-reg-hint { font-size: 12.5px; color: var(--ink-soft); padding: 10px 20px 2px; }
+
 /* ── Help drawer — shared slide-over that renders window.HELP_GUIDES ───────────
    Opened from the Trust/Billing masthead "Help" buttons and the avatar-menu
    "Help & Guides" item. Layered above the floating help-chat (z 9000). Fully
