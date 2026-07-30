@@ -16,6 +16,12 @@ routes = [
 directory = "."
 binding = "ASSETS"
 
+# Form-filler parses/re-saves whole USCIS PDFs in-Worker; the biggest need a
+# few seconds of CPU. Uncomment on Workers Paid -- the Free plan rejects it and
+# leaves the big forms tripping the CPU ceiling as a 1102 (a bare 503).
+# [limits]
+# cpu_ms = 60000
+
 [[r2_buckets]]
 binding    = "R2"
 bucket_name = "iurisiq-demo"
