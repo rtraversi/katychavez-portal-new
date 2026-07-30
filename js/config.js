@@ -10,7 +10,7 @@ window.APP_CONFIG = {
   cfBeaconToken: "",
   turnstileSiteKey: "0x4AAAAAAD5_18ybr8_Swbpp",
   mfaRequiredRoles: [],
-  deployVersion: 1785422517563,
+  deployVersion: 1785423134973,
 };
 // Alias used by demo login page and event logger
 window.IURISIQ_CONFIG = window.APP_CONFIG;
