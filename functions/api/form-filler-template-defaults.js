@@ -18,7 +18,7 @@
 // sources) are never converted to literals -- autofill always wins for those,
 // and any values the attorney typed into them are reported back as ignored.
 
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFBool } from 'pdf-lib';
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 import { applyFieldMap, stripRichText } from './_form-fill.js';
 
@@ -158,25 +158,38 @@ async function downloadForEditing(env, tmpl) {
   const obj = await env.R2.get(tmpl.r2_key);
   if (!obj) return json(404, { error: 'Template file missing in R2.' });
 
-  const pdfDoc = await PDFDocument.load(await obj.arrayBuffer());
-  const form   = pdfDoc.getForm();
-  stripRichText(form); // else save() below throws on rich-text fields (e.g. I-485 Part 14)
+  const headers = {
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `attachment; filename="${tmpl.form_key}-template-defaults.pdf"`,
+  };
 
   const standing = {};
   for (const [name, entry] of Object.entries(tmpl.field_map || {})) {
     if (entry.source && entry.source.startsWith('literal:')) standing[name] = entry;
   }
   Object.assign(standing, tmpl.firm_overrides || {});
+
+  // Nothing standing to fill -> stream the master template straight through.
+  // Parsing and re-saving one of the big forms burns seconds of Worker CPU to
+  // hand back a byte-for-byte identical PDF; most templates start out here.
+  if (!Object.keys(standing).length) {
+    return new Response(obj.body, { status: 200, headers });
+  }
+
+  const pdfDoc = await PDFDocument.load(await obj.arrayBuffer());
+  const form   = pdfDoc.getForm();
+  stripRichText(form); // else save() below throws on rich-text fields (e.g. I-485 Part 14)
   applyFieldMap(form, standing, {}, env);
 
-  const bytes = await pdfDoc.save();
-  return new Response(bytes, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${tmpl.form_key}-template-defaults.pdf"`,
-    },
-  });
+  // Rebuilding every field's appearance stream is the most expensive half of
+  // save() (~1s of the I-485's ~4.5s) and buys nothing here: NeedAppearances
+  // makes the viewer render the values, and the round trip back through
+  // saveDefaults() reads /V, never the appearance. Together with the fast path
+  // above this is what keeps the big forms under the CPU limit -- exceeding it
+  // is a Cloudflare 1102, which reaches the browser as a bare 503.
+  form.acroForm.dict.set(PDFName.of('NeedAppearances'), PDFBool.True);
+  const bytes = await pdfDoc.save({ updateFieldAppearances: false });
+  return new Response(bytes, { status: 200, headers });
 }
 
 async function saveDefaults(request, admin, env, tmpl) {
