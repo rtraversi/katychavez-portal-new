@@ -3,6 +3,8 @@
 **For:** Max
 **Written:** 2026-08-18
 
+> **This is a guideline, not a spec.** It's a starting map of what's there now and what looked worth attention from a read of the code — nothing here is a requirement. Max owns the approach and can change, reorder, or discard any of it. Where it makes a recommendation, treat that as one opinion to weigh, not a decision already made.
+
 ## The ask
 
 Three deliverables, in Rob's words:
@@ -13,7 +15,7 @@ Three deliverables, in Rob's words:
 
 One cross-cutting constraint that came up alongside these: this was built as a **Netlify** function and now runs on **Cloudflare**, where document size limits and timeouts are different. It was never re-tuned. Specifically, **on Netlify an AOS package with many pages of evidence could not complete inside the 26 s function timeout** — which is exactly the case item 3 depends on. Cloudflare's limits are shaped differently and the old wall may simply not exist; **Rob's call is that Max determines whether this needs handling**, by measuring rather than assuming. → §6
 
-> **Blocker on item 1 — get this before starting.** "The proof checklist" needs to be an actual artifact handed over by Rob or the paralegals. The nine checks currently in the prompt (§3) are what the *code* does; they are not evidence of what the *firm's checklist* says. Item 1 cannot be verified without the authoritative list, and guessing at it recreates exactly the problem in item 2.
+> **Worth getting up front for item 1.** "The proof checklist" is most useful as an actual artifact from Rob or the paralegals. The nine checks currently in the prompt (§3) are what the *code* does; they are not evidence of what the *firm's checklist* says. Without the authoritative list, "is each aspect handled?" is hard to answer, and guessing at it risks recreating the problem in item 2.
 
 ---
 
@@ -183,7 +185,7 @@ So the question is not "do we have 26 seconds?" — it's which of these actually
 
 **Mitigations, roughly cheapest first — apply only what the measurement justifies:**
 
-1. **A file-size guard.** There is **none anywhere** today — not in the UI, not in the Worker — so an oversized evidence package fails opaquely. Even if everything else turns out fine, a clear "this package is too large, split it" message beats a mystery error. Do this one regardless.
+1. **A file-size guard.** There is **none anywhere** today — not in the UI, not in the Worker — so an oversized evidence package fails opaquely. Even if everything else turns out fine, a clear "this package is too large, split it" message beats a mystery error, so this one is cheap to keep on the list.
 2. **Stream the Anthropic response.** Keeps the connection alive and output flowing on a long scan instead of a silent multi-minute wait, and removes the truncation risk of a large non-streaming `max_tokens` (§7.6).
 3. **Split the package into multiple calls** — a forms pass and an evidence pass, or per-form chunks — and merge findings. This is likely necessary anyway on page count and token budget for an AOS, and it lines up naturally with the forms/evidence split in §5.
 4. **Anthropic Files API** — upload once, reference by `file_id`, instead of inlining base64 on every request. Takes the payload out of both our request body and the Worker's memory.
@@ -257,7 +259,9 @@ There is no harness today, so building one is part of the job — and it is the 
 
 ---
 
-## 11. Suggested order
+## 11. One possible order
+
+Offered as a starting point — the sequencing rationale matters more than the sequence, so rearrange freely.
 
 1. **Get the firm's proof checklist** (see the blocker note at the top), then build the **fixture set + baseline** (§9.1-9.3). Everything downstream is unmeasurable without these two, and the false-positive count is the whole point.
 2. **Cheap correctness fixes needing no rule debate:** model choice, `max_tokens`, `stop_reason` check, obsolete beta header, `check_status` filtering, refreshed fallback string (§7.1-7.3, §7.6).
