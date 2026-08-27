@@ -1,17 +1,58 @@
+# Everything the Worker serves as a static asset is PUBLIC on the portal domain.
+# `directory = "."` in wrangler.toml means the whole repo is the asset root, so
+# anything not listed here is fetchable by anyone who guesses the path — no auth,
+# no session. Adding a file to the repo publishes it.
+#
+# Hardened 2026-08-27 (ported from the IurisIQ template, which audited this
+# against a live deployment): server code and secrets were already excluded, but
+# everything merely internal — CLAUDE.md and the module plans, the test suite,
+# CI config, the deploy runbooks and sync scripts — was being served.
+#
+# When adding a top-level file or directory that is not part of the app the
+# client's browser loads, add it here in the same commit.
+
+# ── Server code and configuration ────────────────────────────────────────────
 _worker.js
-node_modules
 functions/
 scripts/
-_planning/
-_migrations/
-clientdocs/
 supabase/
-.claude/
-.env
-.env.*
-package.json
-package-lock.json
-wrangler.toml
-netlify.toml
+node_modules
 .git
 .wrangler
+.claude/
+.github/
+
+# ── Secrets and deploy configuration ─────────────────────────────────────────
+.env
+.env.*
+wrangler.toml
+wrangler.toml.*
+netlify.toml
+r2-cors.json
+package.json
+package-lock.json
+
+# ── Tests and tooling: reveal schema, RPC names and internal logic ───────────
+test/
+vitest.config.mjs
+*.ps1
+
+# ── Internal documentation, planning and deploy runbooks ─────────────────────
+# *.md covers CLAUDE.md, the module plans, help/guides/README.md and the deploy
+# runbooks. Nothing the app loads at runtime is markdown — verified before
+# excluding (help guides are HTML fragments under /help/guides/, still served).
+*.md
+memory/
+deploy/
+_planning/
+_migrations/
+
+# ── Client data, samples and stray backups ───────────────────────────────────
+clientdocs/
+normalized/
+_pre-sync-backup-*/
+
+# ── Repo metadata ────────────────────────────────────────────────────────────
+.gitignore
+.gitattributes
+.assetsignore

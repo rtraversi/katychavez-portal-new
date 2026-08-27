@@ -30,7 +30,7 @@ function pageUrlFor(row) {
 }
 
 // USCIS prints editions as MM/DD/YY. Normalize to MMDDYY so "04/01/24" and
-// "04/01/2024" compare equal. Mirrors parseEdition() in smart-intake-analyze.js.
+// "04/01/2024" compare equal. Mirrors parseEdition() in package-builder-analyze.js.
 function normalizeEdition(s) {
   const m = String(s || '').match(/(\d{1,2})\D+(\d{1,2})\D+(\d{2,4})/);
   if (!m) return null;

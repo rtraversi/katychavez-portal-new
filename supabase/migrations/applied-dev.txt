@@ -151,3 +151,4 @@
 1600-i918supb.sql
 1600-n600.sql
 1625_form_template_edition_backfill.sql
+1626_package_builder.sql

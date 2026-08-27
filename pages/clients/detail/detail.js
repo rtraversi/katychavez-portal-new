@@ -3017,6 +3017,9 @@
       if (f.generated_form_id) {
         act.push(`<button class="dk-linkbtn ff-download-btn" data-id="${Utils.esc(f.generated_form_id)}" data-final="${f.status === 'finalized' ? '1' : '0'}">Open</button>`);
       }
+      if (f.has_signed) {
+        act.push(`<button class="dk-linkbtn ff-open-signed-btn" data-id="${Utils.esc(f.generated_form_id)}">Open signed</button>`);
+      }
       if (f.generated_form_id && f.status !== 'finalized') {
         act.push(`<button class="dk-linkbtn ff-finalize-btn" data-id="${Utils.esc(f.generated_form_id)}">Finalize</button>`);
       }
@@ -3080,7 +3083,8 @@
         </div>
         ${body}
         ${footer}
-      </div>`;
+      </div>
+      <div id="pb-mount"></div>`;
 
     document.getElementById('ff-generate-package-btn')?.addEventListener('click', async (e) => {
       await runFormFillerGenerate({ matter_id: matter.id }, e.currentTarget);
@@ -3183,6 +3187,10 @@
       });
     });
 
+    container.querySelectorAll('.ff-open-signed-btn').forEach(btn => {
+      btn.addEventListener('click', () => openSignedForm(btn));
+    });
+
     container.querySelectorAll('.ff-download-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const orig = btn.textContent;
@@ -3207,6 +3215,241 @@
         }
       });
     });
+
+    mountPackageBuilder(container.querySelector('#pb-mount'), data);
+  }
+
+  // ── Package Builder (upload signed pages → AI routes → replace pages) ──────
+  // Staff uploads whatever the client sent back (one combined signed PDF or
+  // several loose page scans). The AI routes each page to the matter's forms
+  // and checks edition / signature / footer — advisory flags, never blockers.
+  // Every routed page with a generated form to replace into is Apply-able;
+  // Apply splices the scan into a NEW signed copy, leaving the clean draft
+  // untouched (accumulating across applies). See PACKAGE-BUILDER-PLAN.md.
+  const _pb = { batchId: null, pages: [] };
+
+  function mountPackageBuilder(mount, data) {
+    if (!mount) return;
+    _pb.batchId = null;
+    _pb.pages   = [];
+    const anyGenerated = data.forms.some(f => f.generated_form_id);
+
+    mount.innerHTML = `
+      <div class="dk-sec" style="margin-top:var(--space-4)">
+        <div class="dk-sec-head">
+          <h2>Package Builder</h2>
+          <span class="dk-sec-rule"></span>
+        </div>
+        <p class="dk-reg-meta" style="margin:0 0 var(--space-2)">
+          Upload the signed pages the client sent back — one combined PDF or several scans. The AI
+          routes each page to the right form and page, checks the edition, signature, and footer, and
+          replaces the matching page in a new signed copy.
+          ${anyGenerated ? '' : '<br><span class="danger">No forms on this matter have been generated yet — generate the package first so there are pages to replace into.</span>'}
+        </p>
+        <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap">
+          <input type="file" id="pb-files" accept=".pdf,image/jpeg,image/png" multiple>
+          <button id="pb-analyze-btn" class="btn btn--secondary btn--sm" disabled>Analyze</button>
+        </div>
+        <div id="pb-status" class="dk-reg-meta" style="margin-top:var(--space-2)"></div>
+        <div id="pb-results" style="margin-top:var(--space-3)"></div>
+      </div>`;
+
+    const fileInput  = mount.querySelector('#pb-files');
+    const analyzeBtn = mount.querySelector('#pb-analyze-btn');
+    const statusEl   = mount.querySelector('#pb-status');
+    const resultsEl  = mount.querySelector('#pb-results');
+
+    fileInput.addEventListener('change', () => { analyzeBtn.disabled = !fileInput.files.length; });
+
+    analyzeBtn.addEventListener('click', async () => {
+      const files = Array.from(fileInput.files || []);
+      if (!files.length) return;
+      analyzeBtn.disabled = true;
+      fileInput.disabled  = true;
+      resultsEl.innerHTML = '';
+      _pb.batchId = null; _pb.pages = [];
+
+      const documentIds = [];
+      try {
+        for (let i = 0; i < files.length; i++) {
+          statusEl.textContent = `Uploading ${i + 1} of ${files.length}: ${files[i].name}…`;
+          documentIds.push(await packageBuilderUpload(files[i]));
+        }
+        statusEl.textContent = 'Analyzing pages with AI…';
+        const session = await Auth.getSession();
+        const res = await fetch('/api/package-builder/analyze', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body:    JSON.stringify({ matter_id: matter.id, document_ids: documentIds }),
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(result.error || `Error ${res.status}`);
+        _pb.batchId = result.batch_id;
+        _pb.pages   = result.pages || [];
+        statusEl.textContent = `${result.summary.applyable} page(s) ready to apply · ${result.summary.skipped} skipped.`;
+        renderPackageBuilderResults(resultsEl);
+      } catch (err) {
+        statusEl.innerHTML = `<span class="danger">${Utils.esc(err.message || 'Package Builder failed.')}</span>`;
+      } finally {
+        fileInput.disabled = false;
+        fileInput.value    = '';
+        analyzeBtn.disabled = true;
+      }
+    });
+  }
+
+  // Upload one file through the normal malware-scanned trio, return document_id.
+  async function packageBuilderUpload(file) {
+    const session    = await Auth.getSession();
+    const authHeader = { 'Authorization': `Bearer ${session.access_token}` };
+
+    const urlRes = await fetch('/api/get-upload-url', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body:    JSON.stringify({
+        matter_id:    matter.id,
+        file_name:    file.name,
+        file_size:    file.size,
+        content_type: file.type || 'application/octet-stream',
+        name:         file.name,
+        doc_type:     'other',
+      }),
+    });
+    const urlData = await urlRes.json().catch(() => ({}));
+    if (!urlRes.ok) throw new Error(urlData.error || 'Could not start the upload.');
+
+    const putRes = await fetch(urlData.upload_url, {
+      method:  'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body:    file,
+    });
+    if (!putRes.ok) throw new Error(`Upload failed (${putRes.status}).`);
+
+    const confirmRes = await fetch('/api/confirm-upload', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body:    JSON.stringify({ document_id: urlData.document_id, file_size: file.size }),
+    });
+    const confirmData = await confirmRes.json().catch(() => ({}));
+    if (!confirmRes.ok) throw new Error(confirmData.error || 'The upload could not be confirmed (it may have failed the malware scan).');
+
+    return urlData.document_id;
+  }
+
+  function renderPackageBuilderResults(el) {
+    const pages = _pb.pages;
+    if (!pages || !pages.length) {
+      el.innerHTML = `<div class="dk-empty">No pages were detected.</div>`;
+      return;
+    }
+    // Advisory flag: ✓ pass, ✗ fail, ? unknown — never blocks Apply.
+    const flag = (v, label) => {
+      const mark  = v === true ? '✓' : v === false ? '✗' : '?';
+      const color = v === true ? 'var(--color-success)' : v === false ? 'var(--color-danger)' : 'var(--ink-soft)';
+      return `<span title="${label}" style="display:inline-flex;align-items:center;gap:2px;font-size:.8em;color:${color}"><strong>${mark}</strong> ${label}</span>`;
+    };
+
+    const rows = pages.map(p => {
+      const applied   = p.status === 'applied';
+      const applyable = p.applyable && !applied;
+      const tag = applied ? DK.tag('Applied', 'ok')
+        : applyable ? DK.tag('Ready', 'acc')
+        : DK.tag('Skipped', 'mut');
+
+      const target = p.form_key
+        ? `${Utils.esc(p.label || p.form_key)}${p.target_page_number ? ` · page ${p.target_page_number}${p.form_total_pages ? ` of ${p.form_total_pages}` : ''}` : ''}`
+        : '<em>Unrouted</em>';
+
+      const flags = p.form_key
+        ? `<div class="dk-reg-meta" style="display:flex;gap:var(--space-3);flex-wrap:wrap;margin-top:2px">
+             ${flag(p.checks.edition_ok, 'Edition')}${flag(p.checks.signed, 'Signed')}${flag(p.checks.dated, 'Dated')}${flag(p.checks.footer_visible, 'Footer')}
+           </div>`
+        : '';
+
+      const src = `${Utils.esc(p.source_name)}${p.source_page_index != null ? ` · p${p.source_page_index + 1}` : ''}`;
+
+      const pick = applyable
+        ? `<label style="display:flex;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" class="pb-pick" data-id="${Utils.esc(p.id)}" checked> apply</label>`
+        : '';
+      const openSigned = applied && p.target_generated_form_id
+        ? `<button class="dk-linkbtn pb-open-signed" data-id="${Utils.esc(p.target_generated_form_id)}">Open signed</button>`
+        : '';
+
+      return `
+        <div class="dk-reg-row">
+          <div style="min-width:0">
+            <div class="dk-reg-title"><span>${target}</span>${tag}</div>
+            <div class="dk-reg-meta">${src}${p.reason ? `<span class="sep">·</span>${Utils.esc(p.reason)}` : ''}</div>
+            ${flags}
+          </div>
+          <div class="dk-reg-act">${openSigned}${pick}</div>
+        </div>`;
+    }).join('');
+
+    const applyableCount = pages.filter(p => p.applyable && p.status !== 'applied').length;
+    const footer = applyableCount
+      ? `<div style="display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-3)">
+           <button id="pb-apply-btn" class="btn btn--secondary btn--sm">Apply selected</button>
+         </div>`
+      : '';
+
+    el.innerHTML = `<div class="dk-register">${rows}</div>${footer}`;
+
+    el.querySelector('#pb-apply-btn')?.addEventListener('click', () => applyPackageBuilder(el));
+    el.querySelectorAll('.pb-open-signed').forEach(btn => btn.addEventListener('click', () => openSignedForm(btn)));
+  }
+
+  async function applyPackageBuilder(el) {
+    const ids = Array.from(el.querySelectorAll('.pb-pick:checked')).map(cb => cb.dataset.id);
+    if (!ids.length) { Utils.toast('Select at least one page to apply.', 'error'); return; }
+    if (!await Utils.confirm(`Replace ${ids.length} page${ids.length === 1 ? '' : 's'} with the signed scan${ids.length === 1 ? '' : 's'}? This writes a new signed copy — the clean generated form is left untouched.`, { confirmLabel: 'Apply' })) return;
+
+    const btn = el.querySelector('#pb-apply-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch('/api/package-builder/apply', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body:    JSON.stringify({ batch_id: _pb.batchId, page_ids: ids }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || `Error ${res.status}`);
+
+      const applied = new Set((result.results || []).filter(r => r.status === 'applied').map(r => r.page_id));
+      const errors  = (result.results || []).filter(r => r.status === 'error');
+      _pb.pages = _pb.pages.map(p => applied.has(p.id) ? { ...p, status: 'applied', applyable: false } : p);
+      if (errors.length) {
+        Utils.toast(`Applied ${result.applied}, ${errors.length} failed — see console.`, 'error');
+        console.warn('[package-builder] apply errors:', errors);
+      } else {
+        Utils.toast(`Applied ${result.applied} page(s) into signed copies.`, 'success');
+      }
+      renderPackageBuilderResults(el);
+    } catch (err) {
+      Utils.toast(err.message || 'Failed to apply.', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Apply selected'; }
+    }
+  }
+
+  async function openSignedForm(btn) {
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Opening…';
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch(`/api/form-filler/download?id=${encodeURIComponent(btn.dataset.id)}&signed=1`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      Utils.toast(err.message || 'Failed to open signed form.', 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = orig;
+    }
   }
 
   // "Add form" picker — every active, uploaded template not already on the

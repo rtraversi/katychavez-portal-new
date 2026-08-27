@@ -49,7 +49,7 @@ async function handleRequest(request, env) {
 
   const { data: generated } = await admin
     .from('generated_forms')
-    .select('id, template_id, status, version_num, fields_filled, fields_total, finalized_at, created_at')
+    .select('id, template_id, status, version_num, fields_filled, fields_total, finalized_at, created_at, signed_r2_key, signed_at')
     .eq('matter_id', matterId)
     .in('template_id', templateIds.length ? templateIds : ['00000000-0000-0000-0000-000000000000'])
     .order('version_num', { ascending: false });
@@ -72,6 +72,11 @@ async function handleRequest(request, env) {
       fields_filled:     latest?.fields_filled ?? null,
       fields_total:      latest?.fields_total ?? null,
       finalized_at:      latest?.finalized_at || null,
+      // Package Builder writes the client's signed pages into a signed copy of the
+      // latest generated form (generated_forms.signed_r2_key). Surface it here so
+      // it's reachable from the form row, not just the transient builder panel.
+      has_signed:        !!latest?.signed_r2_key,
+      signed_at:         latest?.signed_at || null,
     };
   });
 
