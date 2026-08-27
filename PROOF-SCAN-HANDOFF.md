@@ -391,4 +391,39 @@ Offered as a starting point — the sequencing rationale matters more than the s
 
 ---
 
+## 12. Platform rebuild — progress log
+
+The §6 pipeline broken into shippable steps, with what is already done. Rob is working this track;
+Max owns the rules track (§2-§5). **Step 5 is where the two meet** — coordinate before touching it.
+
+| # | Step | State |
+|---|---|---|
+| 1 | Central model selection + response-shape fix | **Done 2026-08-27** — `3870633` |
+| 2 | Size guard + honest failure messages | **Done 2026-08-27** — `3870633` |
+| 3 | Direct-to-R2 upload for proof scan | next |
+| 4 | Async job — queue, poll, existing email as the completion signal | |
+| 5 | Extract the segmenter into a shared module | |
+
+**Done in steps 1-2** (`functions/api/_models.js`, `proof-scan.js`, `pages/proof-scan/*`): model ids are
+no longer hardcoded at six call sites — callers name a role (`chat` / `extract` / `reason` / `judge`) and
+a `MODEL_*` Worker var can override any one of them per portal without a code change. `textFrom()` fixed a
+latent break: every call site read `content[0].text`, which returns nothing once a model runs adaptive
+thinking (Sonnet 5 and Opus 5 do by default; Sonnet 4.6 did not). Proof scan got the §7.6 hygiene —
+`max_tokens` 16000, obsolete beta header removed, and `stop_reason` checked so a truncated report can no
+longer be stored as a clean PASS. The size guard refuses above 23 MiB with a reason, warns above 8 MB, and
+renders a 524 as a sentence instead of a JSON parse error.
+
+**`judge` is pinned to Sonnet 5, not Opus 5, on purpose.** The workload wants the stronger model, but the
+scan is still synchronous on the request path where Opus plus thinking pushes mid-size packages past the
+edge timeout. **Flip it to `claude-opus-5` in `_models.js` when step 4 lands** — that is the payoff for
+doing the async work, and it is the single line most likely to be forgotten.
+
+**Step 3 — direct-to-R2 upload.** Browser PUTs to R2 through the presigned trio
+(`/api/get-upload-url` → presigned PUT → `/api/confirm-upload`); the Worker fetches bytes from R2 instead
+of receiving base64 in a JSON body. Removes the 128 MB isolate ceiling (today the UI builds a ~27 MB
+base64 string and the Worker holds two or three copies of it), and satisfies the project rule that files
+live in R2. Prerequisite for step 4, since a queued job cannot carry the file in its message.
+
+---
+
 *Questions on intent or priorities → Rob. Questions on where something lives → this document, then the code.*
