@@ -75,6 +75,10 @@ import { onRequest as getAttorneySig }              from './functions/api/get-at
 import { onRequest as saveAttorneySig }             from './functions/api/save-attorney-signature.js';
 import { onRequest as listSignatures }              from './functions/api/list-signatures.js';
 import { onRequest as proofScan }                   from './functions/api/proof-scan.js';
+import { onRequest as proofScanUpload, runProofScanTmpCleanup } from './functions/api/proof-scan-upload.js';
+import { onRequest as proofScanProcess }            from './functions/api/proof-scan-process.js';
+import { onRequest as proofScanPoll }               from './functions/api/proof-scan-poll.js';
+import { runProofScanSweep }                        from './functions/api/_proof-scan-run.js';
 import { onRequest as proofScanHistory }            from './functions/api/proof-scan-history.js';
 import { onRequest as proofScanConfig }             from './functions/api/proof-scan-config.js';
 import { onRequest as translationStart, runTranslationTmpCleanup } from './functions/api/translation-start.js';
@@ -225,6 +229,9 @@ export const routes = {
   '/api/save-attorney-signature':        saveAttorneySig,
   '/api/list-signatures':                listSignatures,
   '/api/proof-scan':                     proofScan,
+  '/api/proof-scan-upload':              proofScanUpload,
+  '/api/proof-scan-process':             proofScanProcess,
+  '/api/proof-scan-poll':                proofScanPoll,
   '/api/proof-scan-history':             proofScanHistory,
   '/api/proof-scan-config':              proofScanConfig,
   '/api/translation-start':             translationStart,
@@ -382,6 +389,9 @@ export default {
       // Daily — remove translation-tmp/ uploads that never got processed
       // (tab closed between translation-start and translation-process).
       ctx.waitUntil(runTranslationTmpCleanup(env));
+      // Daily — same for proof-scan-tmp/ packages that were staged but never
+      // scanned (tab closed between the upload and Run Proof Scan).
+      ctx.waitUntil(runProofScanTmpCleanup(env));
       // Daily — generate monthly admin-fee draft invoices for any active
       // recurring_charges due today (self-gates by day_of_month + month, so it
       // bills each charge at most once per calendar month).
@@ -395,6 +405,10 @@ export default {
       // Every 5 min — consult reminder emails (no-ops unless the scheduling
       // premium module is enabled AND reminders are on in booking_settings)
       ctx.waitUntil(runBookingReminders(env));
+      // Every 5 min — pick up proof scans the browser never started, or that
+      // died mid-run when a tab closed. The scan is a job now; this is what
+      // makes closing the tab safe (PROOF-SCAN-HANDOFF.md §12 step 4).
+      ctx.waitUntil(runProofScanSweep(env));
     } else if (event.cron === '0 15 * * 1') {
       // Weekly, Monday 10am CST — check every USCIS form's edition against
       // uscis.gov and flag any that have gone stale (or that could not be

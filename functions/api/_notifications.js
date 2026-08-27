@@ -292,11 +292,16 @@ export async function notifySignatureDeclined(env, { toEmail, clientName, docume
   );
 }
 
+// status: 'pass' | 'needs_correction' | 'error'. The scan runs as a queued job,
+// so this email is the completion signal for anyone who closed the tab — which
+// makes a failed scan worth sending too. Silence would read as "still running".
 export async function notifyProofScanComplete(env, { toEmail, filename, status, resultHtml }) {
-  const label    = status === 'needs_correction' ? 'NEEDS CORRECTION' : 'PASS';
+  const label    = status === 'error'            ? 'DID NOT COMPLETE'
+                 : status === 'needs_correction' ? 'NEEDS CORRECTION'
+                 : 'PASS';
   const subject  = `Proof Scan — ${label} — ${filename}`;
   const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
-  const color    = status === 'needs_correction' ? '#b91c1c' : '#15803d';
+  const color    = status === 'pass' ? '#15803d' : '#b91c1c';
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">

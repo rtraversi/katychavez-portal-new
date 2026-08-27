@@ -31,6 +31,21 @@ describe('createSseAccumulator', () => {
     expect(acc.stopReason()).toBe('max_tokens');
   });
 
+  it('accumulates usage across message_start and message_delta', () => {
+    // A streamed call has no response body to read usage off, so anything that
+    // records token spend (proof_scans.tokens_used) depends on this. The two
+    // events carry different halves of it — input on start, output on delta.
+    const acc = createSseAccumulator();
+    acc.push(evt('message_start',  { message: { usage: { input_tokens: 4211, output_tokens: 0 } } }));
+    acc.push(evt('message_delta',  { delta: {}, usage: { output_tokens: 12 } }));
+    acc.push(evt('message_delta',  { delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 980 } }));
+    expect(acc.usage()).toEqual({ input_tokens: 4211, output_tokens: 980 });
+  });
+
+  it('reports empty usage rather than undefined when the stream carried none', () => {
+    expect(createSseAccumulator().usage()).toEqual({});
+  });
+
   it('surfaces stream errors', () => {
     const acc = createSseAccumulator();
     acc.push(evt('error', { error: { type: 'overloaded_error', message: 'Overloaded' } }));

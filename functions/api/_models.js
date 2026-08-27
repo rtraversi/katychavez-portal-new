@@ -28,13 +28,13 @@ const MODELS = {
   chat:    'claude-haiku-4-5-20251001',
   extract: 'claude-haiku-4-5-20251001',
   reason:  'claude-sonnet-5',
-  // Sonnet, not Opus, deliberately and temporarily. The judge workload (proof
-  // scan) wants the strongest model available — a miss is a USCIS rejection —
-  // but it is still a synchronous call on the request path, and Opus plus
-  // thinking pushes mid-size packages past Cloudflare's edge timeout. Move this
-  // to 'claude-opus-5' once the scan runs as an async job
-  // (PROOF-SCAN-HANDOFF.md §6); until then a slower model just fails later.
-  judge:   'claude-sonnet-5',
+  // Opus, because the judge workload (proof scan) is the one place where a miss
+  // is a USCIS rejection and a false positive burns paralegal time. This was
+  // pinned to Sonnet only while the scan was a synchronous request that Opus
+  // plus thinking could push past Cloudflare's edge timeout; the scan is a
+  // queued job now (PROOF-SCAN-HANDOFF.md §12 step 4), so nothing is waiting on
+  // it and the stronger model is simply better.
+  judge:   'claude-opus-5',
 };
 
 const ENV_OVERRIDE = {

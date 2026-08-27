@@ -94,9 +94,9 @@
     if (fileInput.files[0]) selectFile(fileInput.files[0]);
   });
 
-  // Mirrors MAX_PDF_BYTES in functions/api/proof-scan.js. The Worker is the
-  // authority — this copy exists so an oversized package is refused before the
-  // browser spends time turning 20 MB into a 27 MB base64 string it can't send.
+  // Mirrors MAX_PDF_BYTES in functions/api/proof-scan-upload.js. The Worker is
+  // the authority — this copy exists so an oversized package is refused before
+  // the browser spends time pushing 20 MB it can't send.
   const MAX_PDF_BYTES  = 23 * 1024 * 1024;
   // Not a limit, a warning line. Packages this size have taken long enough that
   // the edge gives up mid-scan; below it, scans have been completing.
@@ -149,59 +149,133 @@
     if (!selectedFile) return;
 
     runBtn.disabled    = true;
-    runBtn.textContent = 'Scanning…';
+    runBtn.textContent = 'Uploading…';
     filenameEl.textContent = selectedFile.name;
 
     try {
-      // Read file as base64
-      const file_base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload  = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(selectedFile);
-      });
-
       const session = await getSession();
+
+      // 1. Stage the package in R2. The bytes go up as the request body — no
+      //    base64, no JSON wrapper — so the browser never builds a 27 MB string
+      //    out of a 20 MB file.
+      const upRes = await fetch('/api/proof-scan-upload', {
+        method:  'PUT',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type':  'application/pdf',
+        },
+        body: selectedFile,
+      });
+      const upData = await upRes.json().catch(() => null);
+      if (!upRes.ok) throw new Error(upData?.error || `Upload failed (HTTP ${upRes.status})`);
+      if (!upData?.upload_id) throw new Error('The upload did not complete. Please try again.');
+
+      // 2. Queue the scan. This request carries an id, not a file, and returns
+      //    at once — the scan is a job now, so there is nothing here to time out.
       const res = await fetch('/api/proof-scan', {
         method:  'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type':  'application/json',
         },
-        body: JSON.stringify({ file_base64, filename: selectedFile.name }),
+        body: JSON.stringify({ upload_id: upData.upload_id, filename: selectedFile.name }),
       });
-
-      // A timeout doesn't come back as JSON — Cloudflare returns an HTML error
-      // page, and calling res.json() on it used to throw a parse error that told
-      // the user nothing about what actually happened.
       const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        if (res.status === 524 || res.status === 504) {
-          throw new Error(
-            'The scan ran too long and the connection timed out before it finished. '
-            + 'Try splitting the forms from the evidence and scanning each separately.',
-          );
-        }
-        throw new Error(data?.error || `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      if (!data?.scan_id) throw new Error('The scan could not be queued. Please try again.');
+
+      // 3. Start it now rather than waiting for the cron to notice. This request
+      //    stays open for the whole scan, so we deliberately don't await it —
+      //    the poller drives the UI, and if this request dies with the tab the
+      //    sweeper picks the job up regardless.
+      if (!data.demo) {
+        fetch('/api/proof-scan-process', {
+          method:  'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type':  'application/json',
+          },
+          body: JSON.stringify({ scan_id: data.scan_id }),
+        }).catch(() => { /* the poller reports whatever the row ends up saying */ });
       }
-      if (!data) throw new Error('The server returned an unreadable response.');
 
-      // Show results
-      resultsContent.innerHTML = themeResultHtml(data.html);
-      resultsWrap.classList.remove('hidden');
-      resultsWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-      // Refresh history
       await loadHistory();
+      startPolling(data.scan_id);
 
     } catch (err) {
       Utils.toast('Scan failed: ' + err.message, 'error');
       console.error('[proof-scan] run:', err);
-    } finally {
       runBtn.disabled    = false;
       runBtn.textContent = 'Run Proof Scan';
     }
   });
+
+  // ── Polling ──────────────────────────────────────────────────────────────────
+  // The scan runs server-side whether or not this page is open. Polling is how
+  // the page finds out; the emailed result is how anyone who left finds out.
+
+  let pollTimer = null;
+
+  function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    runBtn.disabled    = false;
+    runBtn.textContent = 'Run Proof Scan';
+  }
+
+  function startPolling(scanId) {
+    const INTERVAL = 2500;
+    const TIMEOUT  = 600000;   // 10 min — matches the server's generation cap
+    let elapsed = 0;
+
+    const tick = async () => {
+      runBtn.textContent = `Scanning… ${Math.round(elapsed / 1000)}s`;
+      elapsed += INTERVAL;
+
+      // Giving up watching is not giving up on the scan: the job keeps running
+      // and the result still lands in Recent Scans and in the email.
+      if (elapsed >= TIMEOUT) {
+        stopPolling();
+        showSizeNote(
+          'This scan is taking longer than 10 minutes. It is still running — the result will '
+          + 'appear under Recent Scans and be emailed when it finishes.',
+          'warn',
+        );
+        await loadHistory();
+        return;
+      }
+
+      try {
+        const session = await getSession();
+        const res = await fetch(`/api/proof-scan-poll?id=${encodeURIComponent(scanId)}`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) return;                       // transient — try again next tick
+        const data = await res.json();
+
+        if (data.status === 'queued' || data.status === 'processing') return;
+
+        stopPolling();
+        await loadHistory();
+
+        if (data.status === 'error') {
+          Utils.toast('Scan failed: ' + (data.error || 'The scan did not complete.'), 'error');
+          return;
+        }
+
+        resultsContent.innerHTML = themeResultHtml(data.html);
+        resultsWrap.classList.remove('hidden');
+        resultsWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (err) {
+        console.error('[proof-scan] poll:', err);  // keep polling; the row is the truth
+      }
+    };
+
+    runBtn.disabled    = true;
+    runBtn.textContent = 'Scanning… 0s';
+    pollTimer = setInterval(tick, INTERVAL);
+    tick();   // DEMO_MODE finishes instantly — don't sit on a spinner for 2.5s
+  }
 
   // ── Clear results ────────────────────────────────────────────────────────────
 
@@ -300,6 +374,15 @@
 
   // ── History ──────────────────────────────────────────────────────────────────
 
+  // kinds are the .dk-tag variants in portal.css: warn | ok | mut | acc | crit
+  const STATUS_TAG = {
+    queued:           { kind: 'mut',  label: 'Queued' },
+    processing:       { kind: 'acc',  label: 'Scanning…' },
+    pass:             { kind: 'ok',   label: 'Pass' },
+    needs_correction: { kind: 'warn', label: 'Needs Correction' },
+    error:            { kind: 'crit', label: 'Did Not Finish' },
+  };
+
   async function loadHistory() {
     historyList.innerHTML = '<div class="dk-empty">Loading…</div>';
     try {
@@ -318,9 +401,10 @@
       }
 
       const rows = scans.map(s => {
-        // pass → ok (green), anything else (needs correction) → warn (amber)
-        const kind  = s.status === 'pass' ? 'ok' : 'warn';
-        const label = s.status === 'pass' ? 'Pass' : 'Needs Correction';
+        // A scan is a job, so this list carries in-flight rows too — a queued or
+        // running scan appears here the moment it is submitted, including one
+        // started in a tab that has since been closed.
+        const { kind, label } = STATUS_TAG[s.status] || STATUS_TAG.needs_correction;
         return `
           <div class="dk-reg-row ps-history-item" data-scan-id="${s.id}"
                data-scan-filename="${escHtml(s.filename)}" style="cursor:pointer">
@@ -345,19 +429,10 @@
     }
   }
 
-  // Load a past scan result into the results area (we'd need a get-scan-by-id endpoint,
-  // but since we have the result in the history row's data attribute we use the modal with
-  // a re-fetch or show a note directing user to re-run if full HTML not cached).
-  // We show the result_html if available via re-fetch of a dedicated endpoint, OR display
-  // the results in the main results area. For MVP: show a modal with the scan summary.
+  // Open one scan from Recent Scans. The same poll endpoint the live scan uses
+  // answers this: a finished row returns its report, and an unfinished one says
+  // so — which matters now that a row appears here the moment it is queued.
   async function loadScanResult(scanId, rowEl) {
-    // Fetch full scan result — we'll use a direct Supabase query via the existing client
-    // or we can store result temporarily. Since we need the full HTML, we show it from
-    // the most recent scan in-memory, or we create a lightweight fetch here.
-    // For this implementation, when the user clicks history, we re-display using modal.
-    // The result_html is not returned by the history endpoint (only metadata).
-    // We need to fetch it — add a simple mechanism using the history row.
-
     const filename = rowEl.dataset.scanFilename || '';
     modalTitle.textContent = filename;
     modalBody.innerHTML    = '<p style="color:var(--ink-soft)">Loading…</p>';
@@ -366,16 +441,23 @@
 
     try {
       const session = await getSession();
-      // Re-fetch from proof_scans by id using a simple POST to a generic query endpoint
-      // Since we don't have a dedicated get-scan-by-id, use the supabase client directly
-      const { data: rows } = await window.db
-        .from('proof_scans')
-        .select('result_html, filename, status')
-        .eq('id', scanId)
-        .limit(1);
+      const res = await fetch(`/api/proof-scan-poll?id=${encodeURIComponent(scanId)}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      if (!rows?.length) throw new Error('Scan not found');
-      modalBody.innerHTML = themeResultHtml(rows[0].result_html);
+      if (data.status === 'completed') {
+        modalBody.innerHTML = themeResultHtml(data.html);
+      } else if (data.status === 'error') {
+        modalBody.innerHTML =
+          `<p style="color:var(--color-danger)">This scan did not finish.</p>`
+          + `<p style="color:var(--ink-soft)">${escHtml(data.error || '')}</p>`;
+      } else {
+        modalBody.innerHTML =
+          '<p style="color:var(--ink-soft)">This scan is still running. The report will appear '
+          + 'here when it finishes, and is emailed if a result address is configured.</p>';
+      }
     } catch (err) {
       modalBody.innerHTML = `<p style="color:var(--color-danger)">Could not load result: ${escHtml(err.message)}</p>`;
     }

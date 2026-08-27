@@ -8,6 +8,7 @@
 //   for await (chunk of response) acc.push(decoder.decode(chunk, {stream:true}));
 //   acc.text()        → concatenated text deltas
 //   acc.stopReason()  → 'end_turn' | 'max_tokens' | … | null
+//   acc.usage()       → { input_tokens, output_tokens, … } accumulated, or {}
 //   acc.error()       → error message string, or null
 
 export function createSseAccumulator() {
@@ -15,6 +16,7 @@ export function createSseAccumulator() {
   let text = '';
   let stopReason = null;
   let errorMsg = null;
+  let usage = {};
 
   const handleData = (jsonStr) => {
     if (!jsonStr || jsonStr === '[DONE]') return;
@@ -22,8 +24,14 @@ export function createSseAccumulator() {
     try { evt = JSON.parse(jsonStr); } catch { return; }
     if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
       text += evt.delta.text || '';
-    } else if (evt.type === 'message_delta' && evt.delta?.stop_reason) {
-      stopReason = evt.delta.stop_reason;
+    } else if (evt.type === 'message_delta') {
+      if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
+      // Token counts arrive here, not on the final event — a streamed call has
+      // no response body to read usage off, so anything that records cost has
+      // to pick it up in passing.
+      if (evt.usage) usage = { ...usage, ...evt.usage };
+    } else if (evt.type === 'message_start' && evt.message?.usage) {
+      usage = { ...usage, ...evt.message.usage };
     } else if (evt.type === 'error') {
       errorMsg = evt.error?.message || 'stream error';
     }
@@ -44,6 +52,7 @@ export function createSseAccumulator() {
     },
     text:       () => text,
     stopReason: () => stopReason,
+    usage:      () => usage,
     error:      () => errorMsg,
   };
 }

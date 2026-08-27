@@ -52,6 +52,8 @@ OUTLOOK_REDIRECT_URI = "https://CLIENT-SLUG.YOUR-CF-SUBDOMAIN.workers.dev/api/ca
 # only to pin THIS portal to a specific model, or to try a new one here before
 # it becomes the default for everyone. Verify an id is reachable for the account
 # first: GET https://api.anthropic.com/v1/models
+# MODEL_JUDGE must be a 4.6-or-later model: the proof scan sends
+# thinking + output_config.effort, which older models reject with a 400.
 # MODEL_CHAT    = "claude-haiku-4-5-20251001"
 # MODEL_EXTRACT = "claude-haiku-4-5-20251001"
 # MODEL_REASON  = "claude-sonnet-5"
