@@ -1,7 +1,20 @@
 // proof-scan.js — USCIS document proof checker (CF Worker port from Katy's Netlify function)
 // POST only. Body: { file_base64: string, filename: string }
+//
+// Size limits, and what they are actually protecting against:
+//
+// Anthropic accepts a 32 MiB request. Base64 inflates a file by 4/3, so a PDF
+// above 24 MiB cannot physically fit, prompt included — that ceiling is hard and
+// this endpoint refuses it with a reason instead of letting the API reject it.
+//
+// The softer, nearer wall is TIME. A 107-page AOS package (19.4 MiB) returns
+// HTTP 524: Cloudflare's edge stops waiting before one blocking, non-streaming
+// call over that many pages finishes. Nothing here can raise that ceiling — the
+// fix is to move the scan off the request path (PROOF-SCAN-HANDOFF.md §6). Until
+// then this at least fails in words rather than as a mystery gateway error.
 
 import { verifyAuth, json, makeAdminClient } from './_helpers.js';
+import { modelFor, textFrom } from './_models.js';
 import { notifyProofScanComplete } from './_notifications.js';
 
 const FALLBACK_EDITIONS = 'G-1145|1p|09/26/14, G-1450|1p|06/03/25, G-1650|1p|06/03/25, G-28|4p|09/17/18, I-90|7p|01/20/25, I-130|12p|04/01/24, I-130A|6p|04/01/24, I-131|14p|01/20/25, I-485|24p|01/20/25, I-751|11p|04/01/24, I-765|7p|08/21/25, I-765WS|1p|08/21/25, I-821D|7p|01/20/25, I-864|12p|10/17/24, N-400|14p|01/20/25';
@@ -52,6 +65,21 @@ Format your response as:
 - A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address, signature date order)
 - If a G-1650 is found: a Bank Validation section showing routing number, bank name on form, expected bank, and match status. (G-1450 is credit card — no routing validation needed.)`;
 
+// 23 MiB, not 24: base64 of 24 MiB is exactly Anthropic's 32 MiB request limit,
+// leaving nothing for the system prompt or the JSON around it.
+const MAX_PDF_BYTES = 23 * 1024 * 1024;
+
+const mib = bytes => (bytes / 1024 / 1024).toFixed(1);
+
+// Original byte count of a base64 string, without decoding 20 MiB to find out.
+// Exported for tests: the padding term is the part that is easy to get wrong,
+// and getting it wrong shifts the size limit by a couple of bytes in silence.
+export function base64Bytes(b64) {
+  if (typeof b64 !== 'string' || !b64.length) return 0;
+  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  return Math.floor((b64.length * 3) / 4) - padding;
+}
+
 export async function onRequest({ request, env, ctx }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
 
@@ -64,6 +92,13 @@ export async function onRequest({ request, env, ctx }) {
 
   const { file_base64, filename } = body;
   if (!file_base64) return json(400, { error: 'No file provided' });
+
+  const fileBytes = base64Bytes(file_base64);
+  if (fileBytes > MAX_PDF_BYTES) {
+    return json(413, {
+      error: `This package is ${mib(fileBytes)} MB, over the ${mib(MAX_PDF_BYTES)} MB limit a single scan can accept. Split it — scanning the forms and the evidence separately works — and run each part.`,
+    });
+  }
 
   const admin = makeAdminClient(env);
 
@@ -119,12 +154,16 @@ export async function onRequest({ request, env, ctx }) {
       headers: {
         'x-api-key':        env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta':   'pdfs-2024-09-25',
         'content-type':     'application/json',
       },
       body: JSON.stringify({
-        model:      'claude-sonnet-4-6',
-        max_tokens: 4096,
+        model:      modelFor('judge', env),
+        // A miss here is a USCIS rejection and a false positive burns paralegal
+        // time, so this runs on the judge tier with thinking left on (adaptive
+        // by default on Opus 5). It is slower than the old Sonnet 4.6 call —
+        // acceptable only because 4096 could truncate a full AOS report mid-table
+        // and the scan is moving off the request path (PROOF-SCAN-HANDOFF.md §6).
+        max_tokens: 16000,
         system:     fullSystemPrompt,
         messages: [{
           role: 'user',
@@ -147,7 +186,7 @@ export async function onRequest({ request, env, ctx }) {
       throw new Error(`Claude API ${claudeRes.status}: ${errText}`);
     }
     claudeData = await claudeRes.json();
-    if (!claudeData?.content?.[0]?.text) {
+    if (!textFrom(claudeData)) {
       throw new Error('Unexpected response from Claude API (no content)');
     }
   } catch (err) {
@@ -155,9 +194,17 @@ export async function onRequest({ request, env, ctx }) {
     return json(500, { error: err.message });
   }
 
-  const html       = claudeData.content[0].text;
+  const truncated  = claudeData.stop_reason === 'max_tokens';
   const tokensUsed = claudeData.usage?.output_tokens ?? 0;
-  const status     = html.includes('NEEDS CORRECTION') ? 'needs_correction' : 'pass';
+
+  // A report cut off mid-table used to be stored as a clean pass, because
+  // stop_reason was never read and the status is a substring match. Say so on
+  // the report and never let a truncated scan read as passing.
+  const html = truncated
+    ? `<div class="proof-result"><strong>⚠ This report was cut off before it finished.</strong> It is incomplete — re-run the scan or split the package.</div>${textFrom(claudeData)}`
+    : textFrom(claudeData);
+  const status = (truncated || html.includes('NEEDS CORRECTION')) ? 'needs_correction' : 'pass';
+  if (truncated) console.warn('[proof-scan] output hit max_tokens — report truncated');
 
   // Save to proof_scans table
   let scanId;

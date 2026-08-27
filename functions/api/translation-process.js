@@ -13,6 +13,7 @@
 
 import { verifyAuth, json, makeAdminClient } from './_helpers.js';
 import { extractEntities }             from '../utils/extract-entities.js';
+import { modelFor }                   from './_models.js';
 import { compressPdf }                 from '../utils/compress-pdf.js';
 import { parseBlocks, blocksToText }   from '../utils/translation-docx.js';
 import { readSseStream }               from '../utils/anthropic-stream.js';
@@ -133,7 +134,7 @@ export async function onRequest({ request, env }) {
       headers: claudeHeaders,
       signal:  AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
       body: JSON.stringify({
-        model:      'claude-sonnet-4-6',
+        model:      modelFor('reason', env),
         max_tokens: 32000,
         stream:     true,
         system:     SYSTEM_PROMPT,
@@ -164,7 +165,7 @@ export async function onRequest({ request, env }) {
     let extracted_people = [];
     try {
       const entities = await Promise.race([
-        extractEntities(flatText, env.ANTHROPIC_API_KEY, 'translation'),
+        extractEntities(flatText, env.ANTHROPIC_API_KEY, 'translation', env),
         new Promise(resolve => setTimeout(() => resolve({ people: [] }), 30000)),
       ]);
       extracted_people = entities.people || [];

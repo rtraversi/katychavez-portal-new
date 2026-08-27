@@ -29,7 +29,7 @@ binding    = "R2"
 bucket_name = "CLIENT-SLUG-portal-prod"   # must match R2_BUCKET_NAME var
 
 [triggers]
-crons = ["0 14 * * *", "*/5 * * * *"]   # Daily 9am CST: doc reminders | Every 5 min: message notifications
+crons = ["0 14 * * *", "*/5 * * * *", "0 15 * * 1"]   # Daily 9am CST: doc reminders + trash purge | Every 5 min: message notifications | Weekly Mon 10am CST: USCIS form-edition check
 
 # ── Non-sensitive vars (safe to commit once filled in) ────────────────────────
 # Secrets (listed below) are set via: npx wrangler secret put <NAME>
@@ -46,6 +46,16 @@ B2_BUCKET_NAME    = "CLIENT-SLUG-portal-backup"
 ATTACHMENTAV_API_URL = "https://us.developer.attachmentav.com"   # or eu. for EU region
 GOOGLE_REDIRECT_URI  = "https://CLIENT-SLUG.YOUR-CF-SUBDOMAIN.workers.dev/api/calendar/oauth-callback"
 OUTLOOK_REDIRECT_URI = "https://CLIENT-SLUG.YOUR-CF-SUBDOMAIN.workers.dev/api/calendar/outlook-oauth-callback"
+
+# Claude model overrides — optional. Roles and defaults live in
+# functions/api/_models.js (chat / extract / reason / judge); set one of these
+# only to pin THIS portal to a specific model, or to try a new one here before
+# it becomes the default for everyone. Verify an id is reachable for the account
+# first: GET https://api.anthropic.com/v1/models
+# MODEL_CHAT    = "claude-haiku-4-5-20251001"
+# MODEL_EXTRACT = "claude-haiku-4-5-20251001"
+# MODEL_REASON  = "claude-sonnet-5"
+# MODEL_JUDGE   = "claude-opus-5"
 
 # ── Secrets — set via CLI, never in this file ────────────────────────────────
 # npx wrangler secret put SUPABASE_SERVICE_KEY

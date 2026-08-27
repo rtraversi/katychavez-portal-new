@@ -169,28 +169,139 @@ So the question is not "do we have 26 seconds?" — it's which of these actually
 - **Anthropic-side limits** — 32 MB request, 600 pages. An AOS evidence package can plausibly exceed both.
 - **How long the connection is held open** end-to-end before the browser or the edge gives up. Verify the current behaviour rather than assuming; this is the one most likely to *look* like the old Netlify timeout.
 
-**Rob's call: Max defines whether this needs handling.** The way to settle it is a measurement, not a judgment — take the largest real AOS package on hand, run it end to end, and record which ceiling is hit first (and the CPU time, body size, page count, and wall-clock actually observed). If nothing breaks, document the headroom and move on. If something breaks, the mitigations in the next section are ordered roughly by cost.
+**What the current path does:** the browser reads the entire file into a base64 string (`pages/proof-scan/proof-scan.js:113-120`), posts it as a JSON body, the Worker parses that JSON into memory, and forwards the base64 to Anthropic. Base64 inflates the payload by ~33%, and at least two full copies of it exist in Worker memory at once. There is no file-size guard anywhere — not in the UI, not in the Worker.
 
-**What the current path does:** the browser reads the entire file into a base64 string (`pages/proof-scan/proof-scan.js:113-120`), posts it as a JSON body, the Worker parses that JSON into memory, and forwards the base64 to Anthropic. Base64 inflates the payload by ~33%, and at least two full copies of it exist in Worker memory at once.
+**Measured 2026-08-27 — the question is settled, and the answer is yes.** Rob ran the largest real
+AOS package on hand end to end:
 
-**Limits that actually bind — confirm each against our plan before designing:**
+| | |
+|---|---|
+| File | `REVIEW SCAN FOR MARGARITA.pdf` — an AOS package, forms + evidence |
+| Size | 19.4 MB on disk; **25.9 MB once base64-encoded** |
+| Pages | **107** |
+| Result | **HTTP 524** — Cloudflare's edge gave up waiting for the Worker |
 
-| Limit | Value | Where it bites |
+**What bound, of the candidates listed above:**
+
+| Limit | Observed | Verdict |
 |---|---|---|
-| Anthropic request size | **32 MB** total request | A ~24 MB PDF is already over once base64-encoded |
-| Anthropic PDF page count | **600 pages** (100 on 200K-context models) | Large evidence packages |
-| Worker CPU time | **60 s**, configured via `limits.cpu_ms = 60000` (`wrangler.toml.example:21-22`) | Base64/JSON handling of large bodies |
-| Worker memory | 128 MB per isolate | Multiple copies of a large base64 string |
-| Cloudflare request body size | **Plan-dependent** — verify ours | Silent 413 before the Worker even runs |
+| Anthropic request size (32 MB) | 25.9 MB + prompt | passed, ~19% headroom |
+| Anthropic page count (600 on a 1M-context model) | 107 | passed easily |
+| Worker CPU (60 s) | base64/JSON handling only | not close |
+| Worker memory (128 MB) | ~52 MB per copy of the base64 string as UTF-16, 2-3 copies live | **latent — not what failed here, but the next wall** |
+| **End-to-end wall clock** | one blocking, non-streaming call over 107 pages | **this is the 524** |
 
-**Mitigations, roughly cheapest first — apply only what the measurement justifies:**
+So the size ceilings were not the problem. The Netlify 26 s timeout did not transfer, but **a new wall was
+sitting in the same place**: `proof-scan.js` makes one synchronous, non-streaming Anthropic call and holds
+the connection open until it returns. That is exactly the failure this section predicted as "the one most
+likely to *look* like the old Netlify timeout." An AOS evidence package — the case item 3 depends on —
+cannot complete on the current architecture.
 
-1. **A file-size guard.** There is **none anywhere** today — not in the UI, not in the Worker — so an oversized evidence package fails opaquely. Even if everything else turns out fine, a clear "this package is too large, split it" message beats a mystery error, so this one is cheap to keep on the list.
-2. **Stream the Anthropic response.** Keeps the connection alive and output flowing on a long scan instead of a silent multi-minute wait, and removes the truncation risk of a large non-streaming `max_tokens` (§7.6).
-3. **Split the package into multiple calls** — a forms pass and an evidence pass, or per-form chunks — and merge findings. This is likely necessary anyway on page count and token budget for an AOS, and it lines up naturally with the forms/evidence split in §5.
-4. **Anthropic Files API** — upload once, reference by `file_id`, instead of inlining base64 on every request. Takes the payload out of both our request body and the Worker's memory.
-5. **Direct-to-R2 upload** from the browser, with the Worker fetching from R2. Consistent with the project rule that files live in R2, and it removes the base64-through-JSON path entirely.
-6. **Make the scan an async job.** If wall-clock genuinely can't be contained, stop trying to answer in the request: queue the scan, return immediately, and use the email notification that already exists (`notifyProofScanComplete`) as the completion signal. This makes the timeout question permanently moot at the cost of a UX change.
+### The architecture this points to
+
+The mitigation ladder below still describes the right staging, but it is worth being clear about the
+destination, because every ceiling above is downstream of one design fact: **the scan is a single prompt
+over a single PDF, in which the model is simultaneously the segmenter, the rule engine, the cross-checker
+and the report formatter.** Separating those is what removes the ceilings — and, not incidentally, most of
+the false positives in §2.
+
+1. **Browser → R2** via the presigned upload trio that already exists. Nothing large passes through a JSON
+   body or Worker memory again (mitigation 5).
+2. **Async job.** POST creates the `proof_scans` row as `queued` and returns a scan id; the work runs off
+   the request path; `notifyProofScanComplete` already exists as the completion signal (mitigation 6). This
+   *removes* the wall-clock ceiling rather than raising it.
+3. **Segment the package into `(form, page-range)` spans, plus an evidence remainder.**
+   `package-builder-analyze.js` already does this job for a different feature: it sends the PDF to Claude
+   and asks, per page, which USCIS form and which page number the footer says it is. Note this is a **model
+   call, not deterministic code** — but it is a narrow one (read a footer, return a form key and a page
+   number) and it is **self-checking**: `form_editions.pages` already stores the expected page count per
+   form, so a span claiming I-485 pages 1-24 can be validated against the known 24, and a disagreement is
+   itself a finding worth reporting. Run it cheap (Haiku-class) and treat its output as a page map.
+4. **Map — one call per segment.** Each form segment is scanned with only the rules for that form; the
+   evidence remainder gets the closed, case-type-keyed checklist from §5. Small calls are fast, accurate,
+   individually retryable, and run in parallel, so wall clock becomes the slowest segment rather than the
+   sum of all of them.
+5. **Reduce over extracted fields, not over pages.** Each segment returns structured JSON — names,
+   A-numbers, addresses, signature dates, per-page edition. The cross-document checks (rules 5, 6, 7, 8)
+   then become **code comparing values**, which is what §7.4 already argues for and where most of the
+   reported false positives live. Nothing asks a model to hold 107 pages in its head and notice that two
+   strings differ.
+6. **Findings as rows carrying a `rule_id`**, per §2 — not HTML prose. This also retires §7.5's substring
+   status derivation.
+
+**Why this is worth the rebuild rather than just streaming the response.** Streaming (mitigation 2) makes
+Margarita complete today and is the right first move if something must ship. It does not change that one
+call is doing four jobs, so it leaves the accuracy problem, the memory wall, and a hard stop somewhere
+around a 24 MB package. The pipeline above removes all of those at once, and three properties make it the
+long-term shape:
+
+- **The false positives go away structurally**, because the checks that generate most of them stop being
+  model judgment.
+- **It becomes testable.** Today there is no way to know whether an edit to a 4,000-word prompt made the
+  checker better or worse. Per-segment structured output is what makes the fixture set in §9 able to
+  measure a *rule* rather than a whole report — which item 1 needs and §7.7 currently blocks.
+- **Evidence review stops being bolted on**, because step 3 produces the forms/evidence boundary that §5
+  needs as a by-product.
+
+Cost is honest: this is a rebuild of proof-scan, not a patch. It substantially overlaps items 1-3 rather
+than competing with them — each gets easier under this shape and harder without it.
+
+### Staging it — mitigations roughly cheapest first
+
+The destination above is a rebuild; these are the increments that lead there, and each is independently
+shippable. Numbered so the architecture list can refer to them.
+
+1. **A file-size guard.** None exists today, so an oversized package fails opaquely — as it just did. A
+   clear "this package is too large, split it" beats a 524, and it stays useful even after the rebuild.
+2. **Stream the Anthropic response.** Keeps the connection alive and output flowing instead of a silent
+   multi-minute wait, and removes the truncation risk of a large non-streaming `max_tokens` (§7.6). This is
+   the smallest change that makes a 107-page package complete — take it first if something must ship
+   before the rebuild.
+3. **Split the package into multiple calls** — a forms pass and an evidence pass, then per-form chunks.
+   Steps 3-4 of the architecture; necessary anyway on page count and token budget for an AOS, and it lines
+   up with the forms/evidence split in §5.
+4. **Anthropic Files API** — upload once, reference by `file_id`, instead of inlining base64 on every
+   request. Only earns its keep once multiple passes read the same document.
+5. **Direct-to-R2 upload** from the browser, with the Worker fetching from R2. Consistent with the project
+   rule that files live in R2, and it removes the base64-through-JSON path entirely.
+6. **Make the scan an async job.** Queue it, return immediately, and use the email notification that
+   already exists as the completion signal. This makes the timeout question permanently moot at the cost of
+   a UX change.
+
+### Model IDs are hardcoded across the codebase
+
+Surfaced while measuring the above, and relevant to §7.6. There is no central model definition anywhere;
+six call sites pin a string each:
+
+```
+functions/api/analyze-document.js:70          claude-haiku-4-5-20251001
+functions/api/help-chat.js:53                 claude-haiku-4-5-20251001
+functions/utils/extract-entities.js:76        claude-haiku-4-5-20251001
+functions/api/package-builder-analyze.js:218  claude-sonnet-4-6
+functions/api/proof-scan.js:126               claude-sonnet-4-6
+functions/api/translation-process.js:136      claude-sonnet-4-6
+```
+
+Changing a model is six edits and a deploy, per client portal. There is also money on the table today:
+**`claude-sonnet-4-6` is both older and more expensive than `claude-sonnet-5`** ($3/$15 vs $2/$10 per
+MTok), so three of those sites pay roughly 50% over current rates for a previous-generation model. The
+Haiku pins use a dated snapshot where the plain `claude-haiku-4-5` alias is current.
+
+Two-part fix, independent of everything else in this document:
+
+- **One `functions/api/_models.js` keyed by job, not by model** — `MODELS.classify`, `MODELS.reason`,
+  `MODELS.judge`. Call sites declare what they need; the mapping lives in one place, with an optional
+  per-firm DB override so a client can be pinned or upgraded without a deploy.
+- **A monthly cron that flags newer models**, built on the pattern already running: the weekly
+  `process-form-edition-check.js` checks uscis.gov and emails a digest *only when something newly goes
+  bad*. Same shape — call `GET /v1/models`, compare `created_at` against what is pinned per role, email
+  when something newer appears in the same tier. **Caveat: the Models API returns capabilities and context
+  windows, not prices.** It can reliably say "newer exists"; it cannot confirm "cheaper." Build it as a
+  prompt for a human to check pricing, never as an auto-swap.
+
+Unrelated but found alongside: `wrangler.toml.example` omits the `0 15 * * 1` cron that the live
+`wrangler.toml` carries, so a new client portal spun up from the template silently loses the USCIS
+form-edition check (`_worker.js:398`). One-line fix.
 
 ---
 
@@ -268,7 +379,13 @@ Offered as a starting point — the sequencing rationale matters more than the s
 3. **Re-baseline.** Some "bad rules" may turn out to have been model or truncation failures. Worth knowing before rewriting any prose.
 4. **Close the world** (§2): rule IDs, structured output with a closed `rule_id` enum, explicit scope statement, evidence-citation requirement. This is the fix for the actual complaint — do it before adding rules, so new rules land in a system that can't drift.
 5. **Rules as data** (§2.2), then build the coverage matrix (§4): evaluate the existing nine against the checklist, edit what's wrong, add what's missing — each new rule landing with a fixture that must trip it and one that must not.
-6. **Platform re-tune** (§6). Run the largest-real-AOS measurement early — it's cheap, it's Max's call to make, and it gates how item 3 gets built. Ship the size guard regardless; take the rest of the mitigation ladder only as far as the measurement justifies.
+6. **Platform re-tune** (§6). **The measurement is done — 2026-08-27, and it failed:** a 107-page AOS
+   package 524s on the current architecture, so this is no longer optional and it does gate item 3. The
+   destination is the pipeline in §6 (R2 upload → async job → segment → per-segment map → reduce over
+   extracted fields); the staged ladder in §6 says how to get there incrementally. Two notes on
+   sequencing: the size guard is worth shipping immediately regardless of everything else, and the
+   pipeline's structured per-segment output is the same machinery step 4 needs to close the world — so
+   these two are better built together than in series.
 7. **Evidence checks** (§5) — last, because it depends on the closed-world machinery and on the platform work, and because it is the fastest way to undo the false-positive gains if built free-form.
 8. **Regression tests** so the next revamp starts from a harness instead of from scratch.
 

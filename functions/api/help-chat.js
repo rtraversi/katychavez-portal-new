@@ -5,6 +5,7 @@
 
 import { verifyAuth, json } from './_helpers.js';
 import { KNOWLEDGE_BASE } from './_kb/knowledge-base.js';
+import { modelFor, textFrom } from './_models.js';
 
 export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -50,7 +51,7 @@ export async function onRequest({ request, env }) {
       'content-type':      'application/json',
     },
     body: JSON.stringify({
-      model:      'claude-haiku-4-5-20251001',
+      model:      modelFor('chat', env),
       max_tokens: 1024,
       system:     KNOWLEDGE_BASE,
       messages,
@@ -64,6 +65,6 @@ export async function onRequest({ request, env }) {
   }
 
   const data = await claudeRes.json();
-  const reply = data.content?.[0]?.text ?? '';
+  const reply = textFrom(data);
   return json(200, { reply });
 }

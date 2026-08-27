@@ -6,6 +6,7 @@
 // Body: { file_base64: string, content_type: string, file_name: string }
 
 import { verifyAuth, json } from './_helpers.js';
+import { modelFor, textFrom } from './_models.js';
 
 const VALID_TYPES = ['pleading', 'agreement', 'correspondence', 'financial', 'id', 'court_order', 'other'];
 const EMPTY       = { doc_type: 'other', doc_name: '' };
@@ -67,7 +68,7 @@ Respond ONLY with the JSON. No explanation, no markdown fences.`;
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model:      'claude-haiku-4-5-20251001',
+        model:      modelFor('extract', env),
         max_tokens: 100,
         messages: [{
           role:    'user',
@@ -83,7 +84,7 @@ Respond ONLY with the JSON. No explanation, no markdown fences.`;
     }
 
     const data    = await res.json();
-    const rawText = (data.content?.[0]?.text || '{}').trim()
+    const rawText = (textFrom(data) || '{}').trim()
       .replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
 
     const result = JSON.parse(rawText);

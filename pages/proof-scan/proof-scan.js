@@ -9,6 +9,7 @@
   const chooseFileBtn   = document.getElementById('ps-choose-file-btn');
   const runBtn          = document.getElementById('ps-run-btn');
   const filenameEl      = document.getElementById('ps-filename');
+  const sizeNoteEl      = document.getElementById('ps-size-note');
 
   const rulesToggle     = document.getElementById('ps-rules-toggle');
   const rulesToggleLabel = document.getElementById('ps-rules-toggle-label');
@@ -93,10 +94,53 @@
     if (fileInput.files[0]) selectFile(fileInput.files[0]);
   });
 
+  // Mirrors MAX_PDF_BYTES in functions/api/proof-scan.js. The Worker is the
+  // authority — this copy exists so an oversized package is refused before the
+  // browser spends time turning 20 MB into a 27 MB base64 string it can't send.
+  const MAX_PDF_BYTES  = 23 * 1024 * 1024;
+  // Not a limit, a warning line. Packages this size have taken long enough that
+  // the edge gives up mid-scan; below it, scans have been completing.
+  const SLOW_PDF_BYTES = 8 * 1024 * 1024;
+  const mib = bytes => (bytes / 1024 / 1024).toFixed(1);
+
   function selectFile(file) {
-    selectedFile     = file;
     filenameEl.textContent = file.name;
-    runBtn.disabled  = false;
+
+    if (file.size > MAX_PDF_BYTES) {
+      selectedFile    = null;
+      runBtn.disabled = true;
+      showSizeNote(
+        `This package is ${mib(file.size)} MB, over the ${mib(MAX_PDF_BYTES)} MB a single scan can accept. `
+        + 'Split it — scanning the forms and the evidence separately works — and run each part.',
+        'danger',
+      );
+      return;
+    }
+
+    selectedFile    = file;
+    runBtn.disabled = false;
+
+    if (file.size > SLOW_PDF_BYTES) {
+      showSizeNote(
+        `${mib(file.size)} MB is a large package. The scan may take several minutes, and very large `
+        + 'packages can time out before finishing — if that happens, split the forms from the evidence '
+        + 'and scan each separately.',
+        'warn',
+      );
+    } else {
+      hideSizeNote();
+    }
+  }
+
+  function showSizeNote(text, tone) {
+    sizeNoteEl.textContent = text;
+    sizeNoteEl.style.color = tone === 'danger' ? 'var(--color-danger)' : 'var(--color-warning)';
+    sizeNoteEl.classList.remove('hidden');
+  }
+
+  function hideSizeNote() {
+    sizeNoteEl.classList.add('hidden');
+    sizeNoteEl.textContent = '';
   }
 
   // ── Run Proof Scan ───────────────────────────────────────────────────────────
@@ -127,8 +171,20 @@
         body: JSON.stringify({ file_base64, filename: selectedFile.name }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      // A timeout doesn't come back as JSON — Cloudflare returns an HTML error
+      // page, and calling res.json() on it used to throw a parse error that told
+      // the user nothing about what actually happened.
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (res.status === 524 || res.status === 504) {
+          throw new Error(
+            'The scan ran too long and the connection timed out before it finished. '
+            + 'Try splitting the forms from the evidence and scanning each separately.',
+          );
+        }
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      if (!data) throw new Error('The server returned an unreadable response.');
 
       // Show results
       resultsContent.innerHTML = themeResultHtml(data.html);

@@ -18,6 +18,7 @@
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 import { loadPackageTemplates } from './_fill-context.js';
+import { modelFor, textFrom } from './_models.js';
 
 // Claude can read PDFs (document block) and raster images (image block). TIFF
 // and anything else can't be sent — those pages are recorded as skipped.
@@ -215,8 +216,14 @@ async function handle(request, env) {
         'content-type':      'application/json',
       },
       body: JSON.stringify({
-        model:      'claude-sonnet-4-6',
+        model:      modelFor('reason', env),
         max_tokens: 4096,
+        // Sonnet 5 runs adaptive thinking when this is omitted, where Sonnet 4.6
+        // did not. This call is synchronous, on the request path, behind a
+        // multi-megabyte upload — so keep today's latency until it moves off
+        // the request path, then reconsider: footer routing is not the kind of
+        // work that needs deliberation.
+        thinking:   { type: 'disabled' },
         system:     SYSTEM_PROMPT,
         messages:   [{ role: 'user', content }],
       }),
@@ -228,7 +235,7 @@ async function handle(request, env) {
     return json(502, { error: 'The AI analysis could not be completed. Please try again.' });
   }
 
-  const rawText = claudeData?.content?.[0]?.text || '';
+  const rawText = textFrom(claudeData);
   let parsed;
   try { parsed = JSON.parse(stripFences(rawText)); }
   catch (err) {

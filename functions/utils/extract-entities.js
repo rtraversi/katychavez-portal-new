@@ -3,6 +3,11 @@
 // Fails open (returns empty array) so it never blocks a main translation/scan.
 //
 // docType: 'translation' | 'proof_scan'
+//
+// `env` is optional so the signature stays compatible for any caller that only
+// has an API key; without it the role falls back to the default in _models.js.
+
+import { modelFor, textFrom } from '../api/_models.js';
 
 const TRANSLATION_PROMPT = `You are analyzing an English translation of a Spanish civil document.
 
@@ -61,7 +66,7 @@ Respond with valid JSON only — no other text:
   ]
 }`;
 
-export async function extractEntities(content, apiKey, docType = 'translation') {
+export async function extractEntities(content, apiKey, docType = 'translation', env = undefined) {
   const prompt = docType === 'proof_scan' ? PROOF_SCAN_PROMPT : TRANSLATION_PROMPT;
 
   try {
@@ -73,7 +78,7 @@ export async function extractEntities(content, apiKey, docType = 'translation') 
         'content-type':      'application/json',
       },
       body: JSON.stringify({
-        model:      'claude-haiku-4-5-20251001',
+        model:      modelFor('extract', env),
         max_tokens: 1024,
         messages: [{
           role:    'user',
@@ -84,7 +89,7 @@ export async function extractEntities(content, apiKey, docType = 'translation') 
 
     if (!res.ok) return { people: [] };
     const claude = await res.json();
-    const text   = claude.content[0].text.trim()
+    const text   = textFrom(claude).trim()
       .replace(/^```json\n?/, '').replace(/\n?```$/, '');
     const parsed = JSON.parse(text);
     return { people: Array.isArray(parsed.people) ? parsed.people : [] };
