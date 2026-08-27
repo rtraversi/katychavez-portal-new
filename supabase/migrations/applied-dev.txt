@@ -152,3 +152,5 @@
 1600-n600.sql
 1625_form_template_edition_backfill.sql
 1626_package_builder.sql
+1301_proof_scan_notify_email.sql
+1302_proof_scan_async.sql

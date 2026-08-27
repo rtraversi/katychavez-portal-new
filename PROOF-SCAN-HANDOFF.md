@@ -400,9 +400,9 @@ Max owns the rules track (§2-§5). **Step 5 is where the two meet** — coordin
 |---|---|---|
 | 1 | Central model selection + response-shape fix | **Done 2026-08-27** — `3870633` |
 | 2 | Size guard + honest failure messages | **Done 2026-08-27** — `3870633` |
-| 3 | Direct-to-R2 upload for proof scan | next |
-| 4 | Async job — queue, poll, existing email as the completion signal | |
-| 5 | Extract the segmenter into a shared module | |
+| 3 | Direct-to-R2 upload for proof scan | **Done 2026-08-27** |
+| 4 | Async job — queue, poll, existing email as the completion signal | **Done 2026-08-27** |
+| 5 | Extract the segmenter into a shared module | next — **coordinate with Max** |
 
 **Done in steps 1-2** (`functions/api/_models.js`, `proof-scan.js`, `pages/proof-scan/*`): model ids are
 no longer hardcoded at six call sites — callers name a role (`chat` / `extract` / `reason` / `judge`) and
@@ -413,16 +413,71 @@ thinking (Sonnet 5 and Opus 5 do by default; Sonnet 4.6 did not). Proof scan got
 longer be stored as a clean PASS. The size guard refuses above 23 MiB with a reason, warns above 8 MB, and
 renders a 524 as a sentence instead of a JSON parse error.
 
-**`judge` is pinned to Sonnet 5, not Opus 5, on purpose.** The workload wants the stronger model, but the
-scan is still synchronous on the request path where Opus plus thinking pushes mid-size packages past the
-edge timeout. **Flip it to `claude-opus-5` in `_models.js` when step 4 lands** — that is the payoff for
-doing the async work, and it is the single line most likely to be forgotten.
+**`judge` is now `claude-opus-5`.** It was pinned to Sonnet 5 only while the scan was synchronous, where
+Opus plus thinking pushed mid-size packages past the edge timeout. Step 4 removed the thing it was waiting
+on, so the flip landed with it.
 
-**Step 3 — direct-to-R2 upload.** Browser PUTs to R2 through the presigned trio
-(`/api/get-upload-url` → presigned PUT → `/api/confirm-upload`); the Worker fetches bytes from R2 instead
-of receiving base64 in a JSON body. Removes the 128 MB isolate ceiling (today the UI builds a ~27 MB
-base64 string and the Worker holds two or three copies of it), and satisfies the project rule that files
-live in R2. Prerequisite for step 4, since a queued job cannot carry the file in its message.
+**Step 3 — direct-to-R2 upload. Done.** New `PUT /api/proof-scan-upload` takes the raw PDF as the
+request body and streams it into `proof-scan-tmp/<uuid>`, returning an `upload_id`; `POST /api/proof-scan`
+now takes `{ upload_id, filename }` and reads the bytes back out of R2. Nothing large travels in a JSON
+body any more, and the file lives in R2 as the project rule requires. A daily cron
+(`runProofScanTmpCleanup`, alongside the translation one) drops staged packages that were never scanned;
+a scan deletes its own object as soon as it has encoded it.
+
+**It does not reuse the `/api/get-upload-url` → `/api/confirm-upload` trio**, which this section had
+suggested. That trio is matter-scoped: it inserts a `documents` row and enforces matter ownership. A
+proof-scan package is not a matter document — it is a transient input that should leave nothing behind but
+the `proof_scans` row — so the new endpoint takes the same shape (browser PUTs bytes, Worker writes R2)
+without the documents table, the malware-scan step, or the placeholder-fulfilment paths.
+
+**Be precise about what this bought.** The wire is ~33% lighter and the browser no longer builds a 27 MB
+base64 string, but the Worker still base64-encodes for the Anthropic document block, so the isolate holds
+the raw bytes plus one encoded copy rather than the encoded file twice over. **The 128 MB ceiling is
+pushed back, not removed** — retiring base64 entirely is the Anthropic Files API (§6, mitigation 4), which
+earns its keep once step 4's pipeline reads the same document more than once. The size guard stays at
+23 MiB for exactly that reason and now sits in `proof-scan-upload.js`, enforced twice: on the declared
+`Content-Length` before a byte is stored, then on the stored object, since the header is a claim.
+
+**Step 4 — async job. Done.** The scan is a row, not a request. `POST /api/proof-scan` inserts a
+`proof_scans` row as `queued` and returns 202 with its id; the work runs in `_proof-scan-run.js`, reached
+two ways:
+
+| Starter | When | Why it exists |
+|---|---|---|
+| `POST /api/proof-scan-process` | fired by the browser immediately, not awaited | so the scan starts now rather than on the next cron tick |
+| `runProofScanSweep()` | `*/5 * * * *` cron | picks up anything that request never claimed, or that died mid-run |
+
+`GET /api/proof-scan-poll?id=` reports `queued` / `processing` / `completed` / `error`, and the page polls
+it every 2.5 s. Claiming is a conditional `queued → processing` UPDATE, so the two starters racing produce
+one winner — a package is never scanned, or billed, twice.
+
+**The tab can now be closed.** That is the difference between this and the translation module's
+start→process→poll pattern, which this otherwise follows: a translation dies with its tab, because only
+the held-open request can finish it. Here the sweeper requeues a scan whose runner has been gone longer
+than `STUCK_AFTER_MS` (12 min), up to `MAX_ATTEMPTS` (2, because a repeat costs a full Opus scan), and the
+result lands in Recent Scans and in the existing completion email. The page's 10-minute poll ceiling now
+says "still running, you'll get the email" instead of "timed out" — because it is true.
+
+**The Anthropic call streams** (§6, mitigation 2), which is what stops a 107-page package producing the
+524 in the first place, and makes `max_tokens: 32000` safe. `thinking: {type:'adaptive'}` and
+`output_config: {effort:'high'}` are now set explicitly per §7.6 — `high` is the API default, written out
+because it is the knob to raise if the rules revamp needs more depth than wording can buy. Note both
+require a 4.6-or-later model, so a portal overriding `MODEL_JUDGE` to something older gets a 400.
+
+**Migration `1302_proof_scan_async.sql`** makes `result_html` nullable (a queued scan has no report yet),
+widens the status check to `queued | processing | pass | needs_correction | error`, and adds `upload_id`,
+`error_detail`, `started_at`, `completed_at`, `attempts` plus a partial index on unfinished rows. **Not yet
+applied anywhere** — run it before deploying.
+
+**What step 4 did not do:** the scan is still one prompt over one PDF. Everything §6 says about the model
+being simultaneously segmenter, rule engine, cross-checker and formatter is untouched — that is step 5,
+and it is where this track meets Max's.
+
+**Step 5 — extract the segmenter.** `package-builder-analyze.js` already sends a PDF to Claude and asks,
+per page, which form and which page number the footer says it is. Lifting that into a shared module gives
+the scan its `(form, page-range)` map, which is what turns one 107-page prompt into per-segment calls that
+run in parallel and can be checked against `form_editions.pages`. **Coordinate with Max before touching
+it** — the per-segment structured output is the same machinery the closed-world work in §2 needs.
 
 ---
 
