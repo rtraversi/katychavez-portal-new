@@ -298,25 +298,14 @@ exact field list per form or don't ship the rule.
 
 ---
 
-### PS-202 — Signature date order ✅
+### PS-202 — Signature date order ❌ retired
 
 | | |
 |---|---|
-| **Applies to** | forms bearing both an applicant and an attorney/preparer signature |
-| **Engine** | **should be code** — this is date arithmetic, currently done by the model in prose (handoff §7.4) |
-| **Severity** | ☐ error ☐ warning ☐ advisory |
-| **FP risk** | Medium — arithmetic-by-prose is an FP generator; extract dates with the model, compare in code |
+| **Status** | Retired 2026-08-28 by product decision |
+| **Reason** | Do not assess or report attorney/applicant signature-date order. |
 
-**Condition:** The attorney must not sign before the applicant. Flag any form where the attorney's
-signature date precedes the applicant's.
-
-**Do NOT flag:**
-- **G-1450 / G-1650** — these do not require a date next to the signature at all, so there is no date to
-  compare. Do not flag the missing date, and do not flag the pair.
-
-**Fixtures:** must trip → ______________ · must not trip → package w/ undated G-1450 signature
-
-**Review:** ☐ keep ☐ edit ☐ retire — notes: ______________________________________________
+**Implementation:** Removed from the active scan prompt and output cross-check. This ID is retained only as a historical record and must not be reused.
 
 ---
 
@@ -607,7 +596,7 @@ structured JSON with the HTML rendered on our side.
 | OUT-1 | Valid HTML only — no Markdown | ✅ active |
 | OUT-2 | Summary section: overall status **PASS / NEEDS CORRECTION**, plus identified case type and the names of beneficiary and petitioner/sponsor where determinable | ✅ active |
 | OUT-3 | An HTML table: `Status \| Form/Document \| Issue \| Detail` | ⚠ the free-text `Issue` column is what makes invented findings expressible |
-| OUT-4 | A cross-check section: beneficiary name consistency, A-Number, address, signature date order | ✅ active |
+| OUT-4 | A cross-check section: beneficiary name consistency, A-Number, address | ✅ active |
 | OUT-5 | A Bank Validation section when a G-1650 is present: routing number, bank name on form, expected bank, match status | ✅ active |
 | OUT-6 | Every finding carries a `rule_id` from a closed enum | 🆕 proposed |
 | OUT-7 | Every finding cites page number + the quoted text it relied on — uncitable findings get filtered automatically | 🆕 proposed |
@@ -695,7 +684,7 @@ Everything blocking, in one place.
 | 4 | Who maintains evidence checklists — template defaults + firm overrides, or firm-authored? | Rob | ☐ open |
 | 5 | Do DACA/PIP specifics stay in the shared template prompt, or move to per-firm `custom_instructions`? | Rob + Max | ☐ open |
 | 6 | Severity model — adopt error/warning/advisory, or keep everything at one weight? | Rob + Max | ☐ open |
-| 7 | Which rules move from model to code (PS-202, PS-302, PS-401 are the candidates)? | Max | ☐ open |
+| 7 | Which rules move from model to code (PS-302 and PS-401 are the candidates; PS-202 was retired 2026-08-28) | Max | ☐ open |
 | 8 | Rules as data (`proof_scan_rules` table) vs. staying in the prompt string? | Max | ☐ open |
 | 9 | PS-203 (DACA items 6-8) needs an owner and a review date — it's a policy snapshot that will go stale | Rob | ☐ open |
 
@@ -707,13 +696,13 @@ Everything blocking, in one place.
 |---|---|---|---|
 | Scope / role (PS-0xx) | 2 | 1 | 3 |
 | Form integrity (PS-1xx) | 3 | 4 | 7 |
-| Signatures & dates (PS-2xx) | 3 | 1 | 4 |
+| Signatures & dates (PS-2xx) | 2 | 1 | 3 |
 | Cross-form consistency (PS-3xx) | 3 | 0 | 3 |
 | Fees & payment (PS-4xx) | 1 | 1 | 2 |
 | Representation (PS-5xx) | 0 (suppression only) | 1 | 1 |
 | Form-set completeness (PS-6xx) | 0 | 2+ | 2+ |
 | Evidence (PS-7xx) | 0 | TBD | TBD |
-| **Total** | **12** | **10+** | **22+** |
+| **Total** | **11** | **10+** | **21+** |
 
 Plus 8 output-contract requirements (5 active, 3 proposed) and 5 reference-data dependencies (3 live,
 2 nonexistent).

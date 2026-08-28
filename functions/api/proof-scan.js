@@ -26,11 +26,10 @@ CHECK FOR:
 2. Page counts — flag missing or extra pages for each form identified
 3. Blank or duplicate pages. Note: multiple G-1450 and/or G-1650 forms in a single package are normal and expected (one per filing fee) — do not flag them as duplicates.
 4. Required signatures — applicant and attorney/preparer on all applicable forms. Exception: the I-765WS does not require a signature — do not flag it.
-5. Signature dates — attorney must not sign before applicant
-6. Name consistency — BENEFICIARY name must match across all USCIS forms and beneficiary supporting documents. PETITIONER/SPONSOR documents in a different name are expected and should not be flagged.
-7. A-Number consistency — must match across all forms where present. A-Numbers may appear as A-XXXXXXXXX or XXX-XXX-XXX — treat these as equivalent formats and only flag if the underlying digits actually differ.
-8. Address consistency — mailing address must match across forms
-9. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
+5. Name consistency — BENEFICIARY name must match across all USCIS forms and beneficiary supporting documents. PETITIONER/SPONSOR documents in a different name are expected and should not be flagged.
+6. A-Number consistency — must match across all forms where present. A-Numbers may appear as A-XXXXXXXXX or XXX-XXX-XXX — treat these as equivalent formats and only flag if the underlying digits actually differ.
+7. Address consistency — mailing address must match across forms
+8. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
 
 USCIS FORM REFERENCE (current editions — updated daily from USCIS.gov):
 {{FORM_EDITIONS}}
@@ -39,7 +38,6 @@ BANK ROUTING REFERENCE (for G-1650 validation):
 021000021 JPMorgan Chase, 021000089 Citibank, 026009593 Bank of America, 021001208 Bank of America, 026012881 Bank of America, 021200339 Wells Fargo, 053000219 Wells Fargo, 021202337 JPMorgan Chase, 044000037 JPMorgan Chase, 071000013 JPMorgan Chase, 322271627 JPMorgan Chase, 083000108 PNC Bank, 041000124 PNC Bank, 054000030 PNC Bank, 031000053 PNC Bank, 021052053 Capital One, 056073502 Capital One, 051405515 Capital One, 065000090 Capital One, 031100649 TD Bank, 011103093 TD Bank, 267084131 TD Bank, 021300077 HSBC, 022000020 KeyBank, 041001039 KeyBank, 121122676 US Bank, 091000022 US Bank, 071904779 US Bank, 081000210 US Bank, 314972853 Navy Federal, 256074974 Navy Federal, 311079674 USAA, 114994196 USAA, 261271694 Truist, 053101121 Truist, 055002707 Truist, 042101706 Huntington, 044201847 Huntington, 011401533 Citizens Bank, 241070417 Citizens Bank
 
 NOTES:
-- G-1450 and G-1650 do NOT require a date next to the signature — do not flag this.
 - G-1450 is the credit card payment form; G-1650 is the ACH bank draft form. Multiple G-1450/G-1650 in one package are normal (separate fees per filing). Do not flag them as duplicates. Only G-1650 has a routing number to validate.
 - For DACA (I-821D) packages: the I-765WS is never listed on the G-28 attorney of record — do not flag its absence from the G-28.
 - I-765WS does not require a signature — do not flag it as unsigned.
@@ -49,7 +47,7 @@ NOTES:
 Format your response as:
 - A summary section (overall status: PASS / NEEDS CORRECTION), including the identified case type and the names of the beneficiary and petitioner/sponsor if determinable
 - An HTML table: Status | Form/Document | Issue | Detail
-- A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address, signature date order)
+- A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address)
 - If a G-1650 is found: a Bank Validation section showing routing number, bank name on form, expected bank, and match status. (G-1450 is credit card — no routing validation needed.)`;
 
 export async function onRequest({ request, env, ctx }) {
