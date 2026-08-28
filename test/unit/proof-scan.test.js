@@ -12,7 +12,8 @@
 // block wants, and the two decisions the job makes about its own outcome — is
 // this report a pass, and is this stalled scan worth retrying.
 import { describe, it, expect } from 'vitest';
-import { bytesToBase64, reportFrom, sweepVerdict } from '../../functions/api/_proof-scan-run.js';
+import { reportFrom, sweepVerdict } from '../../functions/api/_proof-scan-run.js';
+import { bytesToBase64 } from '../../functions/api/_segment-package.js';
 import { tmpKey, isUploadId, MAX_PDF_BYTES, tooLargeMessage } from '../../functions/api/proof-scan-upload.js';
 
 const bytesOf = str => new TextEncoder().encode(str);

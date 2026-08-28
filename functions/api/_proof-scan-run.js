@@ -23,6 +23,7 @@ import { notifyProofScanComplete } from './_notifications.js';
 import { readSseStream }          from '../utils/anthropic-stream.js';
 import { makeAdminClient }        from './_helpers.js';
 import { tmpKey, MAX_PDF_BYTES, tooLargeMessage } from './proof-scan-upload.js';
+import { segmentPackage, spansFrom, checkSpans, bytesToBase64, contentBlockFor } from './_segment-package.js';
 
 const FALLBACK_EDITIONS = 'G-1145|1p|09/26/14, G-1450|1p|06/03/25, G-1650|1p|06/03/25, G-28|4p|09/17/18, I-90|7p|01/20/25, I-130|12p|04/01/24, I-130A|6p|04/01/24, I-131|14p|01/20/25, I-485|24p|01/20/25, I-751|11p|04/01/24, I-765|7p|08/21/25, I-765WS|1p|08/21/25, I-821D|7p|01/20/25, I-864|12p|10/17/24, N-400|14p|01/20/25';
 
@@ -92,35 +93,25 @@ const QUEUED_GRACE_MS = 90_000;
 // succeeds on the retry, and a third pass has never been the difference.
 const MAX_ATTEMPTS = 2;
 
-// String.fromCharCode(...bytes) throws RangeError long before 20 MiB — the
-// argument list blows the call stack — so the binary string is built in chunks
-// and btoa runs once over the whole thing. Exported for tests: this is the one
-// transformation the entire Anthropic call depends on.
-export function bytesToBase64(bytes) {
-  let binary = '';
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
-}
-
 // ── Prompt assembly ───────────────────────────────────────────────────────────
 // The base rules, plus the editions table, plus whatever this firm added in the
 // UI. Both DB reads fail open: a scan against a stale editions list is worth
 // more than no scan at all.
 
-async function buildPrompt(admin) {
-  let formEditions = FALLBACK_EDITIONS;
+async function loadEditions(admin) {
   try {
     const { data: rows } = await admin
       .from('form_editions')
       .select('form_number, pages, edition_date')
       .order('form_number', { ascending: true });
-    if (rows?.length) {
-      formEditions = rows.map(r => `${r.form_number}|${r.pages}p|${r.edition_date}`).join(', ');
-    }
-  } catch { /* use fallback */ }
+    return rows?.length ? rows : null;
+  } catch { return null; }
+}
+
+async function buildPrompt(admin, editionRows) {
+  const formEditions = editionRows
+    ? editionRows.map(r => `${r.form_number}|${r.pages}p|${r.edition_date}`).join(', ')
+    : FALLBACK_EDITIONS;
 
   let customInstructions = '';
   try {
@@ -133,8 +124,71 @@ async function buildPrompt(admin) {
 
   const base = SYSTEM_PROMPT_BASE.replace('{{FORM_EDITIONS}}', formEditions);
   return customInstructions
-    ? `${base}\n\nADDITIONAL FIRM-SPECIFIC INSTRUCTIONS (take these into account alongside the base rules above):\n${customInstructions}`
+    ? `${base}
+
+ADDITIONAL FIRM-SPECIFIC INSTRUCTIONS (take these into account alongside the base rules above):
+${customInstructions}`
     : base;
+}
+
+// ── The page map ──────────────────────────────────────────────────────────────
+// Segment the filing into (form, page-range) spans and check those spans against
+// the page counts we already know. This is step 5 of the rebuild: the scan stops
+// being one prompt that has to hold 107 pages in its head and notice that a page
+// is missing, and starts having a map it can be checked against
+// (PROOF-SCAN-HANDOFF.md §6).
+//
+// Deliberately additive and fail-open. It does not touch the scan prompt or the
+// report the model writes — those are the rules track's to change (§2), and a
+// segmenter outage must never be the reason a package goes unscanned. What it
+// adds is a section of findings that involved no model judgment at all.
+async function pageMapSection(env, fileBase64, editionRows) {
+  if (!editionRows?.length) return '';
+  try {
+    const candidates = editionRows.map(r => ({
+      form_key:     String(r.form_number).toLowerCase(),
+      edition_date: r.edition_date,
+    }));
+    const expectedPages = {};
+    for (const r of editionRows) {
+      const n = Number(r.pages);
+      if (Number.isInteger(n)) expectedPages[String(r.form_number).toLowerCase()] = n;
+    }
+
+    const { pages } = await segmentPackage(env, {
+      documents:  [{ label: 'package', contentBlock: contentBlockFor('application/pdf', fileBase64) }],
+      candidates,
+      // Reading a footer is not reasoning. Run it cheap — the map is checked in
+      // code, so a stronger model buys nothing here.
+      role: 'extract',
+    });
+
+    const { spans, unrouted } = spansFrom(pages);
+    const findings = checkSpans(spans, expectedPages);
+    return renderPageMap(spans, unrouted, findings);
+  } catch (err) {
+    console.warn('[proof-scan] page map unavailable:', err.message);
+    return '';
+  }
+}
+
+export function renderPageMap(spans, unrouted, findings) {
+  if (!spans.length && !unrouted.length) return '';
+
+  const rows = spans.map(s => `<tr><td>${s.form_key.toUpperCase()}</td><td>pages ${s.start + 1}–${s.end + 1}</td><td>${s.seen.length} page${s.seen.length === 1 ? '' : 's'} identified</td></tr>`).join('');
+  const evidence = unrouted.length
+    ? `<p>${unrouted.length} page${unrouted.length === 1 ? '' : 's'} did not match any USCIS form — supporting evidence, or unreadable scans.</p>`
+    : '';
+  const issues = findings.length
+    ? `<ul>${findings.map(f => `<li><strong>${f.form_key.toUpperCase()}</strong> — ${f.detail}</li>`).join('')}</ul>`
+    : '<p>Every form found has all of its pages.</p>';
+
+  return `<h3>Page Map</h3>
+<p style="font-size:.9em">Read from the footers and checked against the current editions — no judgment involved.</p>
+<table><thead><tr><th>Form</th><th>Where</th><th>Pages</th></tr></thead><tbody>${rows}</tbody></table>
+${evidence}
+<h4>Page count check</h4>
+${issues}`;
 }
 
 // Sending the result email must never be able to fail a scan that already
@@ -243,7 +297,13 @@ export async function runProofScan(env, admin, scan) {
     return await fail(`The uploaded package could not be read: ${err.message}`);
   }
 
-  const systemPrompt = await buildPrompt(admin);
+  const editionRows  = await loadEditions(admin);
+  const systemPrompt = await buildPrompt(admin, editionRows);
+
+  // Segment first, in parallel with nothing — it is one cheap call and the
+  // scan below is the long pole. Its output is appended to the report, never
+  // fed to the scan prompt: the rules track owns what the model is told (§2).
+  const mapSection = await pageMapSection(env, fileBase64, editionRows);
 
   // ── The scan ────────────────────────────────────────────────────────────
   let acc;
@@ -311,7 +371,8 @@ export async function runProofScan(env, admin, scan) {
   const text = acc.text();
   if (!text) return await fail('Claude returned an empty report.');
 
-  const { html, status, truncated } = reportFrom(text, acc.stopReason());
+  const { html: scanHtml, status, truncated } = reportFrom(text, acc.stopReason());
+  const html = mapSection ? `${scanHtml}${mapSection}` : scanHtml;
   if (truncated) console.warn(`[proof-scan] ${scan.id} hit max_tokens — report truncated`);
 
   await finish({

@@ -18,48 +18,15 @@
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 import { loadPackageTemplates } from './_fill-context.js';
-import { modelFor, textFrom } from './_models.js';
-
-// Claude can read PDFs (document block) and raster images (image block). TIFF
-// and anything else can't be sent — those pages are recorded as skipped.
-const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+import { segmentPackage, bytesToBase64, contentBlockFor, IMAGE_TYPES } from './_segment-package.js';
 
 // Bound the Claude payload. USCIS packages returning signature pages are small;
 // a fat high-DPI combined scan is the risk. ~25MB total, 20 documents.
 const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
 const MAX_DOCS        = 20;
 
-const SYSTEM_PROMPT = `You are a document intake assistant for a US immigration law firm. The firm has sent a client a finalized USCIS form package to sign, and the client has scanned and returned signature pages — sometimes as one combined PDF, sometimes as individual page scans. Your job is to look at every page of every document provided and determine, for each page, which USCIS form it is a page of and which page number of that form it is.
-
-Every USCIS form page prints a footer containing: the form number and edition date (e.g. "Form I-765 08/21/25" or "I-765 08/21/25"), a "Page X of Y" marker, and a PDF417 barcode. Read that footer to identify the form and page number.
-
-You will be given the ONLY forms that belong to this matter's package (the CANDIDATE FORMS). A returned page belongs to exactly one of those forms, or to none of them (a supporting document, an unrelated page, or an unreadable scan). Never invent a form that is not in the candidate list — use null when a page does not clearly match one.
-
-For each page, also assess:
-- signed: is there a handwritten signature in a signature field on this page?
-- dated: is there a handwritten date next to that signature?
-- footer_visible: are ALL THREE of the footer elements (edition date, PDF417 barcode, and "Page X of Y") fully visible and not cut off?
-- edition_detected: the edition date string printed in the footer (e.g. "08/21/25"), or null if unreadable.
-
-Respond with VALID JSON ONLY — no markdown, no prose, no code fences. Shape:
-{
-  "pages": [
-    {
-      "source_document_index": <int, the DOCUMENT number you were given>,
-      "source_page_index": <int, 0-based page within that document>,
-      "form_key": <lowercased USCIS number like "i-765", or null>,
-      "form_page_number": <int, the "X" in "Page X of Y", or null>,
-      "form_total_pages": <int, the "Y", or null>,
-      "edition_detected": <string or null>,
-      "signed": <true|false>,
-      "dated": <true|false>,
-      "footer_visible": <true|false>,
-      "confidence": <number 0..1>,
-      "notes": <short string, one phrase>
-    }
-  ]
-}
-Return one entry for EVERY page of EVERY document, in order.`;
+// The segmenter prompt, the Claude call and the JSON contract now live in
+// _segment-package.js — proof scan needs the same page map (PROOF-SCAN-HANDOFF.md §12 step 5).
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -173,77 +140,35 @@ async function handle(request, env) {
     if (totalBytes > MAX_TOTAL_BYTES) {
       return json(413, { error: `These files are too large to analyze together (limit ${(MAX_TOTAL_BYTES / 1024 / 1024) | 0}MB). Try fewer or smaller files.` });
     }
-    const data = bytesToBase64(bytes);
     sources.push({
       doc,
-      contentBlock: isPdf
-        ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
-        : { type: 'image',    source: { type: 'base64', media_type: doc.content_type, data } },
+      contentBlock: contentBlockFor(doc.content_type, bytesToBase64(bytes)),
     });
-  }
+ }
 
   const analyzable = sources.filter(s => s.contentBlock);
   if (!analyzable.length) {
     return json(422, { error: 'None of these files are a PDF or image we can analyze.' });
   }
 
-  // ── Build the Claude message ──────────────────────────────────────────────
-  const candidateLines = candidates.map(t => {
-    const ed = editionByKey[t.form_key] ? ` — expected edition ${editionByKey[t.form_key]}` : '';
-    return `- ${t.form_key} (${t.label})${ed}`;
-  }).join('\n');
-
-  const content = [];
-  sources.forEach((s, idx) => {
-    if (!s.contentBlock) return;
-    content.push({ type: 'text', text: `=== DOCUMENT ${idx}: ${s.doc.name || s.doc.file_name || 'document'} ===` });
-    content.push(s.contentBlock);
-  });
-  content.push({
-    type: 'text',
-    text: `CANDIDATE FORMS (the only forms in this matter's package):\n${candidateLines}\n\nAnalyze every page of every document above and return the JSON described in the system prompt. Use the DOCUMENT number shown before each file as source_document_index.`,
-  });
-
-  // ── Call Claude (same model + pdfs beta as proof-scan) ────────────────────
-  let claudeData;
+  // ── Segment: which form is each page, and which page of it? ──────────────
+  // The call itself lives in _segment-package.js because proof scan needs the
+  // same page map over a whole filing (PROOF-SCAN-HANDOFF.md §12 step 5).
+  let segmented;
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key':         env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta':    'pdfs-2024-09-25',
-        'content-type':      'application/json',
-      },
-      body: JSON.stringify({
-        model:      modelFor('reason', env),
-        max_tokens: 4096,
-        // Sonnet 5 runs adaptive thinking when this is omitted, where Sonnet 4.6
-        // did not. This call is synchronous, on the request path, behind a
-        // multi-megabyte upload — so keep today's latency until it moves off
-        // the request path, then reconsider: footer routing is not the kind of
-        // work that needs deliberation.
-        thinking:   { type: 'disabled' },
-        system:     SYSTEM_PROMPT,
-        messages:   [{ role: 'user', content }],
-      }),
+    segmented = await segmentPackage(env, {
+      documents: sources.map(s => ({ label: s.doc.name || s.doc.file_name || 'document', contentBlock: s.contentBlock })),
+      candidates: candidates.map(t => ({ form_key: t.form_key, label: t.label, edition_date: editionByKey[t.form_key] })),
     });
-    if (!res.ok) throw new Error(`Claude API ${res.status}: ${await res.text()}`);
-    claudeData = await res.json();
   } catch (err) {
-    console.error('[package-builder-analyze] Claude error:', err.message);
-    return json(502, { error: 'The AI analysis could not be completed. Please try again.' });
+    console.error('[package-builder-analyze] segmenter error:', err.message);
+    return json(502, err.kind === 'parse'
+      ? { error: 'The AI returned an unexpected response. Please try again.' }
+      : { error: 'The AI analysis could not be completed. Please try again.' });
   }
 
-  const rawText = textFrom(claudeData);
-  let parsed;
-  try { parsed = JSON.parse(stripFences(rawText)); }
-  catch (err) {
-    console.error('[package-builder-analyze] JSON parse failed:', rawText.slice(0, 500));
-    return json(502, { error: 'The AI returned an unexpected response. Please try again.' });
-  }
-  const detected = Array.isArray(parsed?.pages) ? parsed.pages : [];
-  const tokensUsed = claudeData?.usage?.output_tokens ?? null;
+  const detected = segmented.pages;
+  const tokensUsed = segmented.usage?.output_tokens ?? null;
 
   // ── Turn detections into intake page rows ─────────────────────────────────
   const batchId = crypto.randomUUID();
@@ -409,16 +334,3 @@ function parseEdition(s) {
   return `${mm}${dd}${yy}`;
 }
 
-function stripFences(text) {
-  return String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-}
-
-// btoa over a large byte array blows the call stack — chunk it.
-function bytesToBase64(bytes) {
-  let binary = '';
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
-}
