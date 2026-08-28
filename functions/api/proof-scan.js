@@ -31,7 +31,10 @@ CHECK FOR:
 7. Address consistency — mailing address must match across forms
 8. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
 
-USCIS FORM REFERENCE (current editions — updated daily from USCIS.gov):
+USCIS FORM REFERENCE. One line per form: FORM|page count|the edition date we have on file.
+This list is re-checked against USCIS.gov weekly, and a line may carry an annotation:
+- "(OUT OF DATE: USCIS.gov now publishes <date>)" means our stored edition has been superseded. <date> is the real current edition. Judge the package against <date>, and flag any page still carrying our older stored edition.
+- "(UNVERIFIED: could not confirm against USCIS.gov)" means the check failed and we do not know the current edition. Do NOT raise an edition finding for that form. Say instead that its edition could not be verified.
 {{FORM_EDITIONS}}
 
 BANK ROUTING REFERENCE (for G-1650 validation):
@@ -45,10 +48,45 @@ NOTES:
 - When a supporting document (birth certificate, passport, military ID, etc.) is in a name different from the beneficiary, first determine whether it logically belongs to the petitioner or a third party before flagging it as an error.
 
 Format your response as:
+- FIRST LINE: an HTML comment carrying the overall status, exactly one of <!--STATUS:PASS--> or <!--STATUS:NEEDS CORRECTION-->
 - A summary section (overall status: PASS / NEEDS CORRECTION), including the identified case type and the names of the beneficiary and petitioner/sponsor if determinable
 - An HTML table: Status | Form/Document | Issue | Detail
 - A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address)
 - If a G-1650 is found: a Bank Validation section showing routing number, bank name on form, expected bank, and match status. (G-1450 is credit card — no routing validation needed.)`;
+
+// Render the form_editions rows for the prompt.
+//
+// The weekly cron (process-form-edition-check.js) stamps every row against
+// USCIS.gov. Pass its verdict through rather than presenting each stored edition
+// as fact: a known-superseded date sent as ground truth makes the model fail
+// packages that carry the CORRECT current form, which is a false positive we
+// manufacture ourselves.
+//
+// 'unknown' (never auto-checked) is deliberately left unannotated. We have no
+// verdict for those, and marking them unverified would mute the edition check
+// across the board until the first cron run.
+export function formatEditions(rows) {
+  return rows.map(r => {
+    const base = `${r.form_number}|${r.pages}p|${r.edition_date}`;
+    if (r.check_status === 'stale' && r.upstream_edition) {
+      return `${base} (OUT OF DATE: USCIS.gov now publishes ${r.upstream_edition})`;
+    }
+    if (r.check_status === 'error') {
+      return `${base} (UNVERIFIED: could not confirm against USCIS.gov)`;
+    }
+    return base;
+  }).join(', ');
+}
+
+// Overall pass/fail. The prompt asks for an explicit <!--STATUS:...--> marker;
+// the bare substring test is the fallback for a response that omits it. Without
+// the marker, the phrase appearing anywhere in a finding's prose flips the whole
+// scan's status.
+export function readStatus(html) {
+  const marker = html.match(/<!--\s*STATUS:\s*(PASS|NEEDS CORRECTION)\s*-->/i);
+  if (marker) return marker[1].toUpperCase() === 'PASS' ? 'pass' : 'needs_correction';
+  return html.includes('NEEDS CORRECTION') ? 'needs_correction' : 'pass';
+}
 
 export async function onRequest({ request, env, ctx }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -85,11 +123,9 @@ export async function onRequest({ request, env, ctx }) {
   try {
     const { data: rows } = await admin
       .from('form_editions')
-      .select('form_number, pages, edition_date')
+      .select('form_number, pages, edition_date, upstream_edition, check_status')
       .order('form_number', { ascending: true });
-    if (rows?.length) {
-      formEditions = rows.map(r => `${r.form_number}|${r.pages}p|${r.edition_date}`).join(', ');
-    }
+    if (rows?.length) formEditions = formatEditions(rows);
   } catch { /* use fallback */ }
 
   // Fetch custom instructions + notify email; fail-open
@@ -117,12 +153,11 @@ export async function onRequest({ request, env, ctx }) {
       headers: {
         'x-api-key':        env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta':   'pdfs-2024-09-25',
         'content-type':     'application/json',
       },
       body: JSON.stringify({
         model:      'claude-sonnet-4-6',
-        max_tokens: 4096,
+        max_tokens: 16000,
         system:     fullSystemPrompt,
         messages: [{
           role: 'user',
@@ -148,6 +183,14 @@ export async function onRequest({ request, env, ctx }) {
     if (!claudeData?.content?.[0]?.text) {
       throw new Error('Unexpected response from Claude API (no content)');
     }
+    // A report cut off mid-way has no 'NEEDS CORRECTION' in it and would other-
+    // wise be stored as a clean pass. Never save a partial scan.
+    if (claudeData.stop_reason === 'max_tokens') {
+      throw new Error('The proof report was cut off before it finished (output limit reached). Nothing was saved — rerun the scan, and if it keeps happening the package may need splitting.');
+    }
+    if (claudeData.stop_reason === 'refusal') {
+      throw new Error('The model declined to complete this scan. Nothing was saved.');
+    }
   } catch (err) {
     console.error('[proof-scan] Claude API error:', err.message);
     return json(500, { error: err.message });
@@ -155,7 +198,7 @@ export async function onRequest({ request, env, ctx }) {
 
   const html       = claudeData.content[0].text;
   const tokensUsed = claudeData.usage?.output_tokens ?? 0;
-  const status     = html.includes('NEEDS CORRECTION') ? 'needs_correction' : 'pass';
+  const status     = readStatus(html);
 
   // Save to proof_scans table
   let scanId;
