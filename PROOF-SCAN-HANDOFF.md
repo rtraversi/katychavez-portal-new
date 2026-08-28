@@ -402,7 +402,7 @@ Max owns the rules track (§2-§5). **Step 5 is where the two meet** — coordin
 | 2 | Size guard + honest failure messages | **Done 2026-08-27** — `3870633` |
 | 3 | Direct-to-R2 upload for proof scan | **Done 2026-08-27** |
 | 4 | Async job — queue, poll, existing email as the completion signal | **Done 2026-08-27** |
-| 5 | Extract the segmenter into a shared module | next — **coordinate with Max** |
+| 5 | Extract the segmenter into a shared module | **Done 2026-08-27** |
 
 **Done in steps 1-2** (`functions/api/_models.js`, `proof-scan.js`, `pages/proof-scan/*`): model ids are
 no longer hardcoded at six call sites — callers name a role (`chat` / `extract` / `reason` / `judge`) and
@@ -473,11 +473,66 @@ applied anywhere** — run it before deploying.
 being simultaneously segmenter, rule engine, cross-checker and formatter is untouched — that is step 5,
 and it is where this track meets Max's.
 
-**Step 5 — extract the segmenter.** `package-builder-analyze.js` already sends a PDF to Claude and asks,
-per page, which form and which page number the footer says it is. Lifting that into a shared module gives
-the scan its `(form, page-range)` map, which is what turns one 107-page prompt into per-segment calls that
-run in parallel and can be checked against `form_editions.pages`. **Coordinate with Max before touching
-it** — the per-segment structured output is the same machinery the closed-world work in §2 needs.
+**Step 5 — extract the segmenter. Done.** `package-builder-analyze.js` already had the call proof scan
+needed: send a PDF to Claude and ask, per page, which USCIS form the footer says it is and which page of
+that form. It now lives in `functions/api/_segment-package.js` with two callers. Package Builder is
+unchanged in behaviour and 88 lines lighter; the obsolete `pdfs-2024-09-25` header went with the move
+(§7.6), and `bytesToBase64` — four near-identical copies — has one home.
+
+Two properties made it worth sharing rather than rebuilding, and both matter to the rules track:
+
+- **Closed-world by construction.** The caller passes the only forms a page may belong to and the prompt
+  says answer `null` rather than invent one. Package Builder passes a matter's package; proof scan passes
+  the `form_editions` catalogue. Neither asks "what USCIS form is this?" openly. This is §2's argument,
+  already true in a piece of the pipeline.
+- **Self-checking.** `spansFrom()` collapses per-page rows into `(form, page-range)` spans; `checkSpans()`
+  compares them against `form_editions.pages` with no model involved, reporting missing pages, pages past
+  the end of a form, and a footer whose own "of Y" disagrees with the current edition. Both are pure and
+  tested (16 cases). **Two of those tests are about silence** — a form with no known page count, and a
+  form nobody filed, produce no findings at all. Guessing in either case is how invented findings start.
+
+**For proof scan the page map is deliberately additive.** It is appended to the report as its own section
+and is **never fed to the scan prompt** — what the model is told is this track's to decide (§2), and this
+landed before that work rather than on top of it. It fails open: a segmenter outage logs and the scan
+proceeds unchanged. It runs on the `extract` role, since reading a footer is not reasoning and the result
+is checked in code.
+
+Not stored anywhere yet: a `page_map` column was deliberately skipped, because §6 step 6 says findings
+become rows carrying a `rule_id`, and inventing schema now that the rules work would replace seemed worse
+than waiting.
+
+**What is left of §6, and it is the interesting half.** The scan is still one prompt over the whole PDF.
+Turning these spans into per-segment calls (§6 step 4), and the cross-document checks — rules 5, 6, 7, 8,
+where most reported false positives live — into **code comparing extracted fields** (§6 step 5), is the
+remaining work. It needs the structured per-segment output that the rules track defines, which is why it
+stops here. The forms/evidence boundary §5 needs already falls out of `spansFrom()` as `unrouted`.
+
+## 13. Where the code lives
+
+Two repos, one history, forked 2026-06-24:
+
+| Repo | Deploys | Supabase |
+|---|---|---|
+| `iurisiq-portal-template` | `iurisiq-sandbox` worker | `lqyihtfwfwvgfjccclgm` |
+| `katychavez-portal-new` | KCL production, branch `module/forms-page-reorg` | `syqpooenhygbkedfthwe` |
+
+**Build in the sandbox, then transplant to KCL.** They share a root commit, so a feature commit
+cherry-picks — `katychavez-portal-new` has the template wired as a `sandbox` remote. Step 5 was built and
+cherry-picked this way and hit exactly one conflict, in `package-builder-analyze.js`, which is the one
+file where the two repos genuinely differ on live code (comments only, as of today).
+
+Steps 3 and 4 were done the other way round — built in KCL, back-ported — which is why the sandbox needed
+a step 1 catch-up commit. Don't repeat that.
+
+**Caveat worth knowing before any bigger sync:** the repos have diverged on **408 files** since the fork.
+KCL carries work the sandbox does not (USCIS forms library, firm-authored case types, Package Builder
+signed-page routing) plus client-specific artifacts. A wholesale merge would roll those back. Per-feature
+cherry-picks work; a branch-level merge does not, and reconciling that is its own project.
+
+Migration `1302_proof_scan_async.sql` is applied and verified on **both** databases, and recorded in each
+repo's `applied-dev.txt`. Note that in `katychavez-portal-new`, `SUPABASE_DB_URL_DEV` is KCL **production**
+and `db-migrate.ps1 -Target dev` has no confirmation prompt.
+
 
 ---
 
