@@ -1,58 +1,192 @@
-// proof-scan.js — USCIS document proof checker (CF Worker port from Katy's Netlify function)
-// POST only. Body: { file_base64: string, filename: string }
+// proof-scan.js — structured USCIS package proof scan.
+// POST only. Body: { scan_profile, filename, file_base64 }.
+//
+// Batch 2 of the production integration. The model-authored HTML pipeline is gone:
+// staff select a scan profile explicitly, the Worker loads that versioned profile
+// from its own registry, Claude returns schema-constrained OBSERVATIONS for the
+// profile's IDs, and the server validates coverage, derives the report state, and
+// stores versioned JSON. Claude never chooses the profile, the profile version,
+// the filename, the scan time, severity, display order, the overall state, or any
+// HTML — see functions/api/proof-scan-contract.js for the ownership boundary.
+//
+// The front end is wired up in Batch 3 and deterministic email rendering lands in
+// Batch 4; this branch is not deployable between batches.
 
 import { verifyAuth, json, makeAdminClient } from './_helpers.js';
-import { notifyProofScanComplete } from './_notifications.js';
+import { validate, ProofScanSchema, PROOF_SCAN_MAX_PDF_BYTES } from './_schemas.js';
+import {
+  getSelectedScanProfile,
+  buildObservationJsonSchema,
+  parseAndComposeObservations,
+} from './proof-scan-contract.js';
+
+// Sonnet 4.6 supports output_config.format. Do not change the model or pricing
+// tier without explicit approval from the product owner.
+const PROOF_SCAN_MODEL = 'claude-sonnet-4-6';
+const PROOF_SCAN_MAX_TOKENS = 16000;
+const MAX_PDF_MB = Math.floor(PROOF_SCAN_MAX_PDF_BYTES / (1024 * 1024));
 
 const FALLBACK_EDITIONS = 'G-1145|1p|09/26/14, G-1450|1p|06/03/25, G-1650|1p|06/03/25, G-28|4p|09/17/18, I-90|7p|01/20/25, I-130|12p|04/01/24, I-130A|6p|04/01/24, I-131|14p|01/20/25, I-485|24p|01/20/25, I-751|11p|04/01/24, I-765|7p|08/21/25, I-765WS|1p|08/21/25, I-821D|7p|01/20/25, I-864|12p|10/17/24, N-400|14p|01/20/25';
 
-const SYSTEM_PROMPT_BASE = `You are a USCIS document proof checker for an immigration law firm. Review the uploaded PDF and check for the issues listed below. Your response must be valid HTML only — no Markdown.
+// ── PDF input guard ──────────────────────────────────────────────────────────
 
-PETITIONER vs. BENEFICIARY AWARENESS:
-Before checking name consistency, identify the case type and the roles of each party:
-- BENEFICIARY (applicant): the foreign national whose immigration benefit is being sought. Their name must match across all USCIS forms and their own supporting documents.
-- PETITIONER / SPONSOR: a separate person filing on behalf of the beneficiary (e.g., a US citizen spouse on I-130, a US lawful permanent resident sponsor on I-864, a US military service member on an I-131 PIP case). Supporting documents belonging to the PETITIONER (birth certificates, military IDs, military orders, naturalization certificates, passports, etc.) will be in the PETITIONER'S name — this is correct and must NOT be flagged as a name mismatch.
+const BASE64_HEADER_CHARS = 12; // 12 base64 chars decode to 9 bytes — enough for "%PDF-x.y".
 
-MILITARY PAROLE IN PLACE (PIP) — I-131 filed under 8 CFR 212.5(b) or INA 212(d)(5) for parents/spouses/children of active duty US military:
-- The US Service Member is the PETITIONER. Their documents (birth certificate, military ID, deployment orders, DD-214, etc.) will be in the service member's name, not the beneficiary's name. Do NOT flag this as a name inconsistency.
-- The beneficiary's name must still be consistent across all USCIS forms in the package.
-- G-28 attorney of record should cover the beneficiary.
+// Byte length without materialising the whole payload: base64 carries 3 bytes per
+// 4 characters, minus the padding.
+export function base64ByteLength(base64) {
+  const compact = base64.replace(/[\r\n]/g, '');
+  if (compact.length % 4 !== 0) return null;
+  const padding = (compact.match(/=+$/) || [''])[0].length;
+  return (compact.length / 4) * 3 - padding;
+}
 
-CHECK FOR:
-1. Form edition dates — check the edition date printed in the footer of EVERY page of EVERY form. Flag:
-   a. Any page whose footer edition date does not match the current USCIS published edition for that form (note the page number)
-   b. Any form where pages have inconsistent edition dates among themselves — this indicates a signature page or other page from an older edition was inserted into a current-edition package. Call out which page(s) carry the old date.
-   This per-page check is critical: it is common for applicants to submit a signature page from a previous edition mixed with current-edition pages. Each USCIS form page prints the edition date in its footer — read every one.
-2. Page counts — flag missing or extra pages for each form identified
-3. Blank or duplicate pages. Note: multiple G-1450 and/or G-1650 forms in a single package are normal and expected (one per filing fee) — do not flag them as duplicates.
-4. Required signatures — applicant and attorney/preparer on all applicable forms. Exception: the I-765WS does not require a signature — do not flag it.
-5. Signature dates — attorney must not sign before applicant
-6. Name consistency — BENEFICIARY name must match across all USCIS forms and beneficiary supporting documents. PETITIONER/SPONSOR documents in a different name are expected and should not be flagged.
-7. A-Number consistency — must match across all forms where present. A-Numbers may appear as A-XXXXXXXXX or XXX-XXX-XXX — treat these as equivalent formats and only flag if the underlying digits actually differ.
-8. Address consistency — mailing address must match across forms
-9. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
+// Rejects obvious non-PDF input before a multi-megabyte payload is sent upstream.
+// Returns null when the input looks like a PDF, or a user-facing error message.
+export function checkPdfInput(base64) {
+  const compact = base64.replace(/[\r\n]/g, '');
+  const byteLength = base64ByteLength(compact);
+  if (byteLength === null || byteLength <= 0) return 'file_base64 is not valid base64';
+  if (byteLength > PROOF_SCAN_MAX_PDF_BYTES) return `PDF is too large — the limit is ${MAX_PDF_MB} MB`;
 
-USCIS FORM REFERENCE (current editions — updated daily from USCIS.gov):
-{{FORM_EDITIONS}}
+  let header;
+  try {
+    header = atob(compact.slice(0, BASE64_HEADER_CHARS));
+  } catch {
+    return 'file_base64 is not valid base64';
+  }
+  if (!header.startsWith('%PDF-')) return 'file_base64 is not a PDF file';
+  return null;
+}
 
-BANK ROUTING REFERENCE (for G-1650 validation):
-021000021 JPMorgan Chase, 021000089 Citibank, 026009593 Bank of America, 021001208 Bank of America, 026012881 Bank of America, 021200339 Wells Fargo, 053000219 Wells Fargo, 021202337 JPMorgan Chase, 044000037 JPMorgan Chase, 071000013 JPMorgan Chase, 322271627 JPMorgan Chase, 083000108 PNC Bank, 041000124 PNC Bank, 054000030 PNC Bank, 031000053 PNC Bank, 021052053 Capital One, 056073502 Capital One, 051405515 Capital One, 065000090 Capital One, 031100649 TD Bank, 011103093 TD Bank, 267084131 TD Bank, 021300077 HSBC, 022000020 KeyBank, 041001039 KeyBank, 121122676 US Bank, 091000022 US Bank, 071904779 US Bank, 081000210 US Bank, 314972853 Navy Federal, 256074974 Navy Federal, 311079674 USAA, 114994196 USAA, 261271694 Truist, 053101121 Truist, 055002707 Truist, 042101706 Huntington, 044201847 Huntington, 011401533 Citizens Bank, 241070417 Citizens Bank
+// ── Model prompt ─────────────────────────────────────────────────────────────
 
-NOTES:
-- G-1450 and G-1650 do NOT require a date next to the signature — do not flag this.
-- G-1450 is the credit card payment form; G-1650 is the ACH bank draft form. Multiple G-1450/G-1650 in one package are normal (separate fees per filing). Do not flag them as duplicates. Only G-1650 has a routing number to validate.
-- For DACA (I-821D) packages: the I-765WS is never listed on the G-28 attorney of record — do not flag its absence from the G-28.
-- I-765WS does not require a signature — do not flag it as unsigned.
-- I-821D Items 6, 7, and 8 (education guideline, school name, graduation date) apply only to initial DACA submissions. The government is currently only accepting DACA renewals, not initial filings — do not flag these items as missing or incomplete.
-- When a supporting document (birth certificate, passport, military ID, etc.) is in a name different from the beneficiary, first determine whether it logically belongs to the petitioner or a third party before flagging it as an error.
+function describePackageItems(profile) {
+  return profile.package_items.map((item) => {
+    const instance = item.instance ? ` (${item.instance})` : '';
+    return `- ${item.item_id} — ${item.form}${instance}: ${item.label}, ${item.pages} page(s)`;
+  }).join('\n');
+}
 
-Format your response as:
-- A summary section (overall status: PASS / NEEDS CORRECTION), including the identified case type and the names of the beneficiary and petitioner/sponsor if determinable
-- An HTML table: Status | Form/Document | Issue | Detail
-- A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address, signature date order)
-- If a G-1650 is found: a Bank Validation section showing routing number, bank name on form, expected bank, and match status. (G-1450 is credit card — no routing validation needed.)`;
+function describeRules(profile) {
+  return profile.rules.map((rule) => {
+    const parts = [`- ${rule.rule_id} — ${rule.title}`];
+    if (rule.form) parts.push(`form: ${rule.form}`);
+    if (rule.page) parts.push(`page: ${rule.page}`);
+    if (rule.item) parts.push(`item: ${rule.item}`);
+    if (rule.expected) parts.push(`expected: ${rule.expected}`);
+    if (rule.note) parts.push(`note: ${rule.note}`);
+    if (rule.source_note) parts.push(`where to look: ${rule.source_note}`);
+    if (rule.applies_to_item_ids) parts.push(`depends on: ${rule.applies_to_item_ids.join(', ')}`);
+    return parts.join(' | ');
+  }).join('\n');
+}
 
-export async function onRequest({ request, env, ctx }) {
+export function buildSystemPrompt(profile, { formEditions, customInstructions }) {
+  const base = `You are reviewing a scanned USCIS filing package for an immigration law firm.
+
+The case type has already been chosen by the attorney's office: ${profile.label} (${profile.profile_id}). Do not infer, second-guess, or re-derive the case type from the filenames, the forms inside the package, or anything else. Review the package against the checks listed below and nothing else.
+
+You report OBSERVATIONS ONLY. You do not decide severity, wording, ordering, or any overall verdict — the portal does that from your observations. Do not write HTML, Markdown, or prose commentary outside the fields of the response schema.
+
+PACKAGE ITEMS TO LOOK FOR
+Report exactly one entry per item ID, using the item's own ID:
+${describePackageItems(profile)}
+
+- clear: the item is present in the package and identifiable.
+- needs_attention: the item is absent from the package.
+- not_checked: the pages are present but too unreadable to tell.
+
+CHECKS TO EVALUATE
+Report exactly one entry per rule ID, using the rule's own ID:
+${describeRules(profile)}
+
+- clear: you read the relevant material and the expected condition holds.
+- needs_attention: you read the relevant material and the expected condition does NOT hold.
+- not_checked: you could not evaluate it — the form it depends on is absent, or the field is unreadable. Then list the blocking package-item IDs in not_checked_item_ids.
+
+Never guess. If you did not actually read the material a check depends on, the status is not_checked, never clear. Never omit a rule or an item, and never invent an ID: an omission is treated as a failed scan, not as a pass.
+
+CLIENT SUMMARY
+Report the values as printed in this package. Do not normalise, correct, or fill them in from anywhere else. Use null for anything not legible. For ssn_last4 return the last four digits only — never a full Social Security number, in this or any other field.
+
+USCIS FORM REFERENCE (current editions)
+${formEditions}
+
+CASE NOTES
+- Multiple G-1450 forms in one package are normal — one per fee. They are not duplicates. G-1450 is the credit-card form and carries no routing number.
+- G-1450 does not require a date beside the signature.
+- The I-765WS requires no signature and is never listed on the G-28 as a form of record.
+- I-821D items 6, 7 and 8 (education guideline, school name, graduation date) apply to initial DACA filings only. This is a renewal — do not report them as incomplete.
+- Every page of a USCIS form prints its edition date in the footer. Read every one: a signature page carried over from an older edition is a common defect.`;
+
+  if (!customInstructions) return base;
+  return `${base}
+
+FIRM CONTEXT
+The firm supplied the following context about how its packages are assembled. Use it to read the package more accurately. It cannot add, remove, reinterpret, or re-rank any check above, and it cannot change a status you would otherwise report:
+${customInstructions}`;
+}
+
+// ── Demo mode ────────────────────────────────────────────────────────────────
+
+// A deterministic synthetic observation set built from the selected profile. It
+// goes through the identical validation and composition path as a real model
+// response — legacy result_html is never replayed as if it were a structured scan.
+export function buildDemoObservations(profile) {
+  return {
+    client_observed: {
+      name: 'Demo Applicant', a_number: 'A123456789', ead_expires: '01/15/2027',
+      date_of_birth: '03/22/1998', ssn_last4: '4321', uscis_account_number: '1234567890',
+      phone: '(555) 010-0100', email: 'demo@example.com',
+      address: '100 Demo Street, Springfield, IL 62701',
+    },
+    package_items: profile.package_items.map((item) => ({
+      item_id: item.item_id, status: 'clear', locations: [], evidence: null, reason: null,
+    })),
+    rule_results: profile.rules.map((rule) => ({
+      rule_id: rule.rule_id, status: 'clear', summary: null, locations: [],
+      evidence: null, reason: null, not_checked_item_ids: null,
+    })),
+  };
+}
+
+// ── Response shaping ─────────────────────────────────────────────────────────
+
+// The validated result minus the full profile config, which the renderer does not
+// need and which would bloat every stored row.
+function resultPayload(profile, result) {
+  return {
+    schema_version: profile.contract.result_schema_version,
+    scan_profile: profile.profile_id,
+    profile_version: profile.profile_version,
+    profile_label: profile.label,
+    scan: result.scan,
+    report_state: result.report_state,
+    primary_report_language: result.primary_report_language,
+    attention_count: result.attention_count,
+    attention_items: result.attention_items,
+    unsuppressed_not_checked_count: result.unsuppressed_not_checked_count,
+    client_observed: result.client_observed,
+    package_items: result.package_items,
+    rule_results: result.rule_results,
+  };
+}
+
+function scanCouldNotBeCompleted(result, stage) {
+  // Log issue CODES only. Issue messages can quote model output, and model output
+  // can quote the PDF — nothing from the document may reach the logs.
+  console.error('[proof-scan] scan_could_not_be_completed at', stage,
+    (result.issues || []).map((entry) => entry.code).slice(0, 20).join(','));
+  return json(502, {
+    error: 'The scan could not be completed. Nothing was saved. Please try again.',
+    report_state: 'scan_could_not_be_completed',
+  });
+}
+
+// ── Handler ──────────────────────────────────────────────────────────────────
+
+export async function onRequest({ request, env }) {
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
 
   const auth = await verifyAuth(request, env, 'write', 'proof_scan');
@@ -62,138 +196,172 @@ export async function onRequest({ request, env, ctx }) {
   try { body = await request.json(); }
   catch { return json(400, { error: 'Invalid JSON' }); }
 
-  const { file_base64, filename } = body;
-  if (!file_base64) return json(400, { error: 'No file provided' });
+  const v = validate(ProofScanSchema, body);
+  if (v.error) return v.error;
+  const { scan_profile, filename, file_base64 } = v.data;
+
+  const pdfError = checkPdfInput(file_base64);
+  if (pdfError) return json(400, { error: pdfError });
+
+  // Server-owned profile. Fail closed: an unknown or internally invalid profile
+  // never reaches the model, and no rule, item, severity or version is ever taken
+  // from the request body.
+  const profile = getSelectedScanProfile(scan_profile);
+  if (!profile) {
+    console.error('[proof-scan] scan profile failed to load or validate:', scan_profile);
+    return json(500, { error: 'The selected scan profile is unavailable. Nothing was scanned.' });
+  }
+
+  // Server-owned scan metadata. Neither the browser nor the model supplies these.
+  const scan = { filename, scanned_at: new Date().toISOString() };
 
   const admin = makeAdminClient(env);
 
-  // DEMO_MODE: skip Claude, return pre-seeded scan result
+  let observations;
+  let modelName = null;
+  let stopReason = null;
+  let inputTokens = null;
+  let outputTokens = null;
+
   if (env.DEMO_MODE === 'true') {
-    const { data: rows } = await admin.from('proof_scans')
-      .select('id, result_html, status')
-      .order('created_at', { ascending: false })
-      .limit(1);
-    const seed = rows?.[0];
-    return json(200, {
-      html:     seed?.result_html || '<div class="proof-result pass"><h3>✓ Form Verified — No Issues Found</h3><p>All fields complete. Package is ready to file.</p></div>',
-      scan_id:  seed?.id || null,
-      filename: filename || 'document.pdf',
-      status:   'success',
-    });
+    observations = buildDemoObservations(profile);
+    modelName = 'demo';
+    stopReason = 'end_turn';
+  } else {
+    let formEditions = FALLBACK_EDITIONS;
+    try {
+      const { data: rows } = await admin
+        .from('form_editions')
+        .select('form_number, pages, edition_date')
+        .order('form_number', { ascending: true });
+      if (rows?.length) {
+        formEditions = rows.map(r => `${r.form_number}|${r.pages}p|${r.edition_date}`).join(', ');
+      }
+    } catch { /* use fallback */ }
+
+    let customInstructions = '';
+    try {
+      const { data: rows } = await admin
+        .from('proof_scan_config')
+        .select('custom_instructions')
+        .limit(1);
+      customInstructions = rows?.[0]?.custom_instructions?.trim() || '';
+    } catch { /* fail-open */ }
+
+    const outputSchema = buildObservationJsonSchema(profile);
+    if (!outputSchema) {
+      console.error('[proof-scan] could not build an output schema for profile:', scan_profile);
+      return json(500, { error: 'The selected scan profile is unavailable. Nothing was scanned.' });
+    }
+
+    let claudeData;
+    try {
+      // PDF input and structured outputs are both GA — no anthropic-beta header.
+      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key':         env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type':      'application/json',
+        },
+        body: JSON.stringify({
+          model:      PROOF_SCAN_MODEL,
+          max_tokens: PROOF_SCAN_MAX_TOKENS,
+          system:     buildSystemPrompt(profile, { formEditions, customInstructions }),
+          output_config: { format: { type: 'json_schema', schema: outputSchema } },
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type:   'document',
+                source: { type: 'base64', media_type: 'application/pdf', data: file_base64 },
+              },
+              {
+                type: 'text',
+                text: 'Review this package against the listed package items and checks. Return one entry for every listed ID.',
+              },
+            ],
+          }],
+        }),
+      });
+
+      if (!claudeRes.ok) throw new Error(`Claude API ${claudeRes.status}`);
+      claudeData = await claudeRes.json();
+    } catch (err) {
+      console.error('[proof-scan] Claude API error:', err.message);
+      return json(502, { error: 'The document checker is unavailable right now. Please try again.' });
+    }
+
+    modelName = claudeData?.model || PROOF_SCAN_MODEL;
+    stopReason = claudeData?.stop_reason || null;
+    inputTokens = claudeData?.usage?.input_tokens ?? null;
+    outputTokens = claudeData?.usage?.output_tokens ?? null;
+
+    // A truncated or refused turn cannot carry a complete observation set. Treat it
+    // as a failed scan rather than validating a partial response.
+    if (stopReason !== 'end_turn') {
+      return scanCouldNotBeCompleted(
+        { issues: [{ code: 'model_stop_reason_' + (stopReason || 'missing') }] },
+        'completion',
+      );
+    }
+
+    const text = claudeData?.content?.find((block) => block?.type === 'text')?.text;
+    if (typeof text !== 'string') {
+      return scanCouldNotBeCompleted({ issues: [{ code: 'model_response_missing_text' }] }, 'completion');
+    }
+    observations = text;
   }
 
-  // Fetch form editions from DB; fall back to hardcoded string
-  let formEditions = FALLBACK_EDITIONS;
+  // Strict validation and composition. There is no prose or HTML fallback path:
+  // anything that fails here is a failed scan, stored nowhere and emailed to nobody.
+  const result = parseAndComposeObservations(profile, observations, scan);
+  if (!result.ok) return scanCouldNotBeCompleted(result, 'validation');
+
+  const payload = resultPayload(profile, result);
+
+  let scanId = null;
+  let stored = false;
   try {
-    const { data: rows } = await admin
-      .from('form_editions')
-      .select('form_number, pages, edition_date')
-      .order('form_number', { ascending: true });
-    if (rows?.length) {
-      formEditions = rows.map(r => `${r.form_number}|${r.pages}p|${r.edition_date}`).join(', ');
-    }
-  } catch { /* use fallback */ }
-
-  // Fetch custom instructions + notify email; fail-open
-  let customInstructions = '';
-  let notifyEmail = '';
-  try {
-    const { data: rows } = await admin
-      .from('proof_scan_config')
-      .select('custom_instructions, notify_email')
-      .limit(1);
-    customInstructions = rows?.[0]?.custom_instructions?.trim() || '';
-    notifyEmail        = rows?.[0]?.notify_email?.trim()        || '';
-  } catch { /* fail-open */ }
-
-  const basePrompt = SYSTEM_PROMPT_BASE.replace('{{FORM_EDITIONS}}', formEditions);
-  const fullSystemPrompt = customInstructions
-    ? `${basePrompt}\n\nADDITIONAL FIRM-SPECIFIC INSTRUCTIONS (take these into account alongside the base rules above):\n${customInstructions}`
-    : basePrompt;
-
-  // Call Anthropic API
-  let claudeData;
-  try {
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key':        env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta':   'pdfs-2024-09-25',
-        'content-type':     'application/json',
-      },
-      body: JSON.stringify({
-        model:      'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system:     fullSystemPrompt,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type:   'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: file_base64 },
-            },
-            {
-              type: 'text',
-              text: 'Please run the proof check on this document. Respond in valid HTML only.',
-            },
-          ],
-        }],
-      }),
-    });
-
-    if (!claudeRes.ok) {
-      const errText = await claudeRes.text();
-      throw new Error(`Claude API ${claudeRes.status}: ${errText}`);
-    }
-    claudeData = await claudeRes.json();
-    if (!claudeData?.content?.[0]?.text) {
-      throw new Error('Unexpected response from Claude API (no content)');
-    }
-  } catch (err) {
-    console.error('[proof-scan] Claude API error:', err.message);
-    return json(500, { error: err.message });
-  }
-
-  const html       = claudeData.content[0].text;
-  const tokensUsed = claudeData.usage?.output_tokens ?? 0;
-  const status     = html.includes('NEEDS CORRECTION') ? 'needs_correction' : 'pass';
-
-  // Save to proof_scans table
-  let scanId;
-  try {
-    const { data: rows } = await admin
+    const { data: rows, error } = await admin
       .from('proof_scans')
       .insert({
-        filename:    filename || 'document.pdf',
-        result_html: html,
-        status,
-        tokens_used: tokensUsed,
-        scanned_by:  auth.profile.id,
+        filename:              scan.filename,
+        result_json:           payload,
+        result_schema_version: payload.schema_version,
+        scan_profile:          profile.profile_id,
+        profile_version:       profile.profile_version,
+        report_state:          result.report_state,
+        model:                 modelName,
+        model_stop_reason:     stopReason,
+        input_tokens:          inputTokens,
+        output_tokens:         outputTokens,
+        tokens_used:           outputTokens ?? 0,
+        // Legacy compatibility column. Structured rows are never 'pass': the
+        // application contract reads report_state, and migration 1302 documents
+        // why the neutral sentinel is written here instead.
+        status:                'structured',
+        scanned_by:            auth.profile.id,
       })
       .select('id');
-    scanId = rows?.[0]?.id;
+    if (error) throw new Error(error.message);
+    scanId = rows?.[0]?.id ?? null;
+    stored = scanId !== null;
   } catch (err) {
     console.error('[proof-scan] DB save error:', err.message);
-    // Don't block response if DB save fails
   }
 
-  // Send email notification — use ctx.waitUntil so the Worker stays alive after returning the response
-  if (notifyEmail) {
-    ctx.waitUntil(
-      notifyProofScanComplete(env, {
-        toEmail:    notifyEmail,
-        filename:   filename || 'document.pdf',
-        status,
-        resultHtml: html,
-      }).catch(err => console.error('[proof-scan] notify error:', err.message))
-    );
-  }
+  // Email is deliberately not sent for the structured path. Batch 4 supplies a
+  // deterministic escaped renderer; until then nothing goes to the old raw-HTML
+  // email function and no model output is passed to notifyProofScanComplete. The
+  // configured notify_email row is left untouched, and no success is implied.
+  if (!stored) console.warn('[proof-scan] result not persisted; returning it unstored');
 
   return json(200, {
-    html,
-    scan_id:  scanId,
-    filename: filename || 'document.pdf',
-    status:   'success',
+    ...payload,
+    scan_id: scanId,
+    stored,
+    storage_error: stored ? null : 'The scan completed but could not be saved to history.',
+    notification_sent: false,
   });
 }

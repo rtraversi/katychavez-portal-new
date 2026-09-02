@@ -12,7 +12,9 @@ import missingBiometrics from '../fixtures/proof-scan/missing-biometrics-g1450-s
 import unreadableG1450 from '../fixtures/proof-scan/unreadable-g1450-field.json';
 import {
   getSelectedScanProfile,
+  parseAndComposeObservations,
   parseAndComposeScanResult,
+  validateAndComposeObservations,
   validateAndComposeScanResult,
   validateScanProfile,
 } from '../../functions/api/proof-scan-contract.js';
@@ -220,5 +222,120 @@ describe('Proof Scan strict response validation', () => {
     const result = validateAndComposeScanResult(profile, response);
     expect(result.ok).toBe(false);
     expect(issueCodes(result)).toContain('profile_version_mismatch');
+  });
+});
+
+describe('Proof Scan report language', () => {
+  // One missing form is the most common real result, so the singular case is the
+  // one staff read most often. It must agree: "1 item needs attention".
+  it('uses singular agreement for exactly one attention item', () => {
+    const result = validateAndComposeScanResult(profile, materializeFixture(missingBiometrics));
+    expect(result.ok).toBe(true);
+    expect(result.attention_count).toBe(1);
+    expect(result.primary_report_language).toBe('1 item needs attention');
+  });
+
+  it('uses plural agreement beyond one attention item', () => {
+    const result = validateAndComposeScanResult(profile, attention.model_response);
+    expect(result.attention_count).toBeGreaterThan(1);
+    expect(result.primary_report_language)
+      .toBe(`${result.attention_count} items need attention`);
+  });
+
+  it('never emits a pass, approved, correct or ready-to-file verdict', () => {
+    for (const fixture of [completed, attention, unreadable]) {
+      const language = validateAndComposeScanResult(profile, fixture.model_response)
+        .primary_report_language;
+      expect(language).not.toMatch(/pass|approved|correct|ready to file/i);
+    }
+  });
+});
+
+// Batch 2 refactor guard. Structured output cannot omit a property, so a rule that
+// identifies nothing now sends null instead of leaving the key out. Absent, null
+// and [] must stay equivalent — and the Batch 1 invariant they sit next to (only a
+// not-checked rule may name unevaluated items) must still hold.
+describe('Proof Scan not_checked_item_ids null/absent equivalence', () => {
+  it.each([
+    ['absent', (rule) => { delete rule.not_checked_item_ids; }],
+    ['null',   (rule) => { rule.not_checked_item_ids = null; }],
+    ['empty',  (rule) => { rule.not_checked_item_ids = []; }],
+  ])('treats %s as identifying nothing on a clear rule', (_label, mutate) => {
+    const response = clone(completed.model_response);
+    for (const rule of response.rule_results) mutate(rule);
+
+    const result = validateAndComposeScanResult(profile, response);
+    expect(result.ok).toBe(true);
+    expect(result.report_state).toBe('no_issues_found');
+    expect(result.rule_results.every((rule) => Array.isArray(rule.not_checked_item_ids))).toBe(true);
+  });
+
+  it('still refuses an evaluated rule that names unevaluated package items', () => {
+    const response = clone(completed.model_response);
+    response.rule_results.find((rule) => rule.rule_id === 'DACA-G1450-002')
+      .not_checked_item_ids = ['DACA-COMP-G1450-FILING-FEE'];
+
+    const result = validateAndComposeScanResult(profile, response);
+    expect(result.ok).toBe(false);
+    expect(issueCodes(result)).toContain('not_checked_item_ids_on_evaluated_rule');
+  });
+
+  it.each([null, []])('still refuses a targeted not-checked rule that names %s', (value) => {
+    const response = clone(completed.model_response);
+    const rule = response.rule_results.find((entry) => entry.rule_id === 'DACA-G1450-002');
+    rule.status = 'not_checked';
+    rule.reason = 'Unreadable.';
+    rule.not_checked_item_ids = value;
+
+    const result = validateAndComposeScanResult(profile, response);
+    expect(result.ok).toBe(false);
+    expect(issueCodes(result)).toContain('not_checked_rule_missing_target_item_ids');
+  });
+});
+
+// The observation boundary: Claude supplies three keys and the server owns the rest.
+describe('Proof Scan observation boundary', () => {
+  const observationsOf = (fixture) => ({
+    client_observed: fixture.client_observed,
+    package_items: fixture.package_items,
+    rule_results: fixture.rule_results,
+  });
+  const scan = { filename: 'server-owned.pdf', scanned_at: '2026-09-02T12:00:00Z' };
+
+  it('composes the same result as the full envelope, with server-owned metadata', () => {
+    const result = validateAndComposeObservations(
+      profile, observationsOf(completed.model_response), scan,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.report_state).toBe('no_issues_found');
+    expect(result.scan).toEqual(scan);
+    expect(result.profile.profile_version).toBe(profile.profile_version);
+  });
+
+  it.each(['scan_profile', 'profile_version', 'schema_version', 'scan'])(
+    'refuses observations carrying a server-owned %s',
+    (field) => {
+      const observations = observationsOf(clone(completed.model_response));
+      observations[field] = field === 'scan' ? { filename: 'm.pdf', scanned_at: scan.scanned_at } : 1;
+
+      const result = validateAndComposeObservations(profile, observations, scan);
+      expect(result.ok).toBe(false);
+      expect(result.report_state).toBe('scan_could_not_be_completed');
+    },
+  );
+
+  it('refuses a server-created scan time that is not a real timestamp', () => {
+    const result = validateAndComposeObservations(
+      profile, observationsOf(completed.model_response), { filename: 'a.pdf', scanned_at: 'yesterday' },
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it('refuses model prose or HTML instead of JSON', () => {
+    for (const raw of ['<div class="pass">All good</div>', 'Everything looks fine.']) {
+      const result = parseAndComposeObservations(profile, raw, scan);
+      expect(result.ok).toBe(false);
+      expect(issueCodes(result)).toContain('invalid_json');
+    }
   });
 });

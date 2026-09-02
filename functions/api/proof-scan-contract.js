@@ -88,7 +88,10 @@ const RuleObservationSchema = z.object({
   locations: LocationsSchema,
   evidence: NullableTextSchema,
   reason: NullableTextSchema,
-  not_checked_item_ids: z.array(z.string().min(1).max(120)).min(1).optional(),
+  // Structured output cannot omit a property, so a rule that identifies nothing
+  // sends null. Absent, null and [] are all "identified nothing" — the rule loop
+  // below compares lengths, never truthiness, so the three stay equivalent.
+  not_checked_item_ids: z.array(z.string().min(1).max(120)).max(50).nullish(),
 }).strict();
 
 export const ModelResponseSchema = z.object({
@@ -221,6 +224,7 @@ export function validateAndComposeScanResult(profile, modelResponse) {
   for (const rule of selectedProfile.rules) {
     const observation = ruleObservations.get(rule.rule_id);
     const targetIds = rule.applies_to_item_ids || [];
+    const notCheckedItemIds = observation.not_checked_item_ids || [];
     const unavailableTargetIds = targetIds.filter((itemId) => packageObservations.get(itemId).status !== 'clear');
     if (observation.status === 'clear' && unavailableTargetIds.length) {
       issues.push(issue(
@@ -230,7 +234,6 @@ export function validateAndComposeScanResult(profile, modelResponse) {
       ));
     }
     if (observation.status === 'not_checked' && targetIds.length) {
-      const notCheckedItemIds = observation.not_checked_item_ids || [];
       if (!notCheckedItemIds.length) {
         issues.push(issue(
           'not_checked_rule_missing_target_item_ids',
@@ -247,7 +250,7 @@ export function validateAndComposeScanResult(profile, modelResponse) {
           ));
         }
       }
-    } else if (observation.not_checked_item_ids) {
+    } else if (notCheckedItemIds.length) {
       issues.push(issue(
         'not_checked_item_ids_on_evaluated_rule',
         ['rule_results', rule.rule_id, 'not_checked_item_ids'],
@@ -278,6 +281,7 @@ export function validateAndComposeScanResult(profile, modelResponse) {
     return {
       ...config,
       ...observation,
+      not_checked_item_ids,
       blocked_by_missing_package_item_ids,
       independently_unchecked_item_ids,
       suppressed_by_package_item_ids,
@@ -305,7 +309,7 @@ export function validateAndComposeScanResult(profile, modelResponse) {
       ? 'review_incomplete'
       : 'no_issues_found';
   const primary_report_language = report_state === 'items_need_attention'
-    ? String(attention_items.length) + ' ' + (attention_items.length === 1 ? 'item' : 'items') + ' need attention'
+    ? String(attention_items.length) + (attention_items.length === 1 ? ' item needs' : ' items need') + ' attention'
     : report_state === 'review_incomplete'
       ? 'Review incomplete'
       : 'No issues found';
@@ -322,5 +326,165 @@ export function validateAndComposeScanResult(profile, modelResponse) {
     client_observed: response.client_observed,
     package_items,
     rule_results,
+  };
+}
+
+// ── Observation boundary ─────────────────────────────────────────────────────
+//
+// Claude returns observations ONLY: client_observed, package_items, rule_results.
+// It never authors — and cannot author — the profile ID, the profile version, the
+// result schema version, the filename, or the scan time. The server owns all five
+// and wraps them around the validated observations here, so a model that tries to
+// supply any of them is rejected by ModelObservationsSchema's strictness before it
+// can reach composition.
+
+export const ModelObservationsSchema = z.object({
+  client_observed: ClientObservedSchema,
+  package_items: z.array(PackageItemObservationSchema),
+  rule_results: z.array(RuleObservationSchema),
+}).strict();
+
+export function assembleScanEnvelope(profile, observations, scan) {
+  return {
+    schema_version: profile.contract.result_schema_version,
+    scan_profile: profile.profile_id,
+    profile_version: profile.profile_version,
+    scan,
+    client_observed: observations.client_observed,
+    package_items: observations.package_items,
+    rule_results: observations.rule_results,
+  };
+}
+
+// scan is the server-created { filename, scanned_at } pair, never model output.
+export function validateAndComposeObservations(profile, rawObservations, scan) {
+  const profileResult = validateScanProfile(profile);
+  if (!profileResult.ok) return invalid(profileResult.issues);
+
+  const scanResult = ScanSchema.safeParse(scan);
+  if (!scanResult.success) return invalid(zodIssues(scanResult.error));
+
+  const observationsResult = ModelObservationsSchema.safeParse(rawObservations);
+  if (!observationsResult.success) return invalid(zodIssues(observationsResult.error));
+
+  return validateAndComposeScanResult(
+    profileResult.data,
+    assembleScanEnvelope(profileResult.data, observationsResult.data, scanResult.data),
+  );
+}
+
+export function parseAndComposeObservations(profile, rawObservations, scan) {
+  if (typeof rawObservations === 'string') {
+    let parsed;
+    try {
+      parsed = JSON.parse(rawObservations);
+    } catch {
+      return invalid([issue('invalid_json', [], 'Model response is not valid JSON.')]);
+    }
+    return validateAndComposeObservations(profile, parsed, scan);
+  }
+  return validateAndComposeObservations(profile, rawObservations, scan);
+}
+
+// ── Model-facing JSON Schema ─────────────────────────────────────────────────
+//
+// Built from the selected profile so the allowed rule and package-item IDs are
+// closed enums the model cannot step outside. Deliberately carries no severity,
+// title, display order, overall status, timestamp, filename, profile identity, or
+// HTML — those are the profile's and the server's, not Claude's. Anthropic's
+// structured-output subset has no minLength/maxLength/minItems/pattern support, so
+// bounds and formats (including ssn_last4's four digits) are enforced by the Zod
+// layer above rather than declared here.
+
+const nullableString = (description) => ({
+  anyOf: [{ type: 'string' }, { type: 'null' }],
+  description,
+});
+
+export function buildObservationJsonSchema(profile) {
+  const validated = validateScanProfile(profile);
+  if (!validated.ok) return null;
+
+  const data = validated.data;
+  const itemIds = data.package_items.map((item) => item.item_id);
+  const ruleIds = data.rules.map((rule) => rule.rule_id);
+  const statuses = [...data.contract.allowed_statuses];
+  const locations = {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Where in the PDF this was observed, e.g. "I-765 page 3". Empty when not applicable.',
+  };
+
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['client_observed', 'package_items', 'rule_results'],
+    properties: {
+      client_observed: {
+        type: 'object',
+        additionalProperties: false,
+        description: 'Values read from the uploaded PDF. Use null for anything not legible in the package.',
+        required: [
+          'name', 'a_number', 'ead_expires', 'date_of_birth',
+          'ssn_last4', 'uscis_account_number', 'phone', 'email', 'address',
+        ],
+        properties: {
+          name: nullableString('Applicant name exactly as printed.'),
+          a_number: nullableString('A-Number exactly as printed.'),
+          ead_expires: nullableString('EAD expiry date exactly as printed.'),
+          date_of_birth: nullableString('Date of birth exactly as printed.'),
+          ssn_last4: nullableString('The LAST FOUR DIGITS ONLY of the SSN, as four digits. Never return a full SSN.'),
+          uscis_account_number: nullableString('USCIS online account number exactly as printed.'),
+          phone: nullableString('Phone number exactly as printed.'),
+          email: nullableString('Email address exactly as printed.'),
+          address: nullableString('Mailing address exactly as printed.'),
+        },
+      },
+      package_items: {
+        type: 'array',
+        description: 'Exactly one entry for every listed item ID — no more, no fewer.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['item_id', 'status', 'locations', 'evidence', 'reason'],
+          properties: {
+            item_id: { type: 'string', enum: itemIds },
+            status: {
+              type: 'string',
+              enum: statuses,
+              description: 'clear = present and identifiable; needs_attention = missing; not_checked = could not determine.',
+            },
+            locations,
+            evidence: nullableString('Short quoted text supporting the status, or null.'),
+            reason: nullableString('Why the item is not clear. Required whenever status is not clear.'),
+          },
+        },
+      },
+      rule_results: {
+        type: 'array',
+        description: 'Exactly one entry for every listed rule ID — no more, no fewer.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['rule_id', 'status', 'summary', 'locations', 'evidence', 'reason', 'not_checked_item_ids'],
+          properties: {
+            rule_id: { type: 'string', enum: ruleIds },
+            status: {
+              type: 'string',
+              enum: statuses,
+              description: 'clear = the expected condition holds; needs_attention = it does not; not_checked = it could not be evaluated.',
+            },
+            summary: nullableString('One short sentence describing what was observed, or null.'),
+            locations,
+            evidence: nullableString('Short quoted text supporting the status, or null.'),
+            reason: nullableString('Why the rule is not clear. Required whenever status is not clear.'),
+            not_checked_item_ids: {
+              anyOf: [{ type: 'array', items: { type: 'string', enum: itemIds } }, { type: 'null' }],
+              description: 'When status is not_checked on a rule tied to package items, list the item IDs that blocked it. Otherwise null.',
+            },
+          },
+        },
+      },
+    },
   };
 }
