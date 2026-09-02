@@ -1,0 +1,700 @@
+{
+  "schema_version": 1,
+  "profile_id": "daca_renewal",
+  "profile_version": 1,
+  "label": "DACA renewal",
+  "case_type_mapping": {
+    "portal_case_type": "daca"
+  },
+  "source": "Approved DACA/base checklist data from the Proof Scan UI Lab; copied for Batch 0 contract freeze without legal reinterpretation.",
+  "package_items": [
+    {
+      "item_id": "DACA-COMP-G1450-FILING-FEE",
+      "form": "G-1450",
+      "instance": "$520",
+      "label": "Credit card authorization",
+      "pages": 1
+    },
+    {
+      "item_id": "DACA-COMP-G1450-BIOMETRICS-FEE",
+      "form": "G-1450",
+      "instance": "$85",
+      "label": "Credit card authorization",
+      "pages": 1
+    },
+    {
+      "item_id": "DACA-COMP-G1145",
+      "form": "G-1145",
+      "label": "E-notification",
+      "pages": 1
+    },
+    {
+      "item_id": "DACA-COMP-G28",
+      "form": "G-28",
+      "label": "Notice of entry of appearance",
+      "pages": 4
+    },
+    {
+      "item_id": "DACA-COMP-I821D",
+      "form": "I-821D",
+      "label": "Consideration of DACA",
+      "pages": 7
+    },
+    {
+      "item_id": "DACA-COMP-I765",
+      "form": "I-765",
+      "label": "Application for employment authorization",
+      "pages": 7
+    },
+    {
+      "item_id": "DACA-COMP-I765WS",
+      "form": "I-765WS",
+      "label": "Worksheet",
+      "pages": 1
+    },
+    {
+      "item_id": "DACA-COMP-EAD-CARD",
+      "form": "EAD card",
+      "label": "Copy, front and back, enlarged colour",
+      "pages": 1
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "PS-101",
+      "title": "Edition date is current on every page.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "base",
+      "pass_text": "Edition dates current.",
+      "note": "Also flags a page from an older edition mixed into a current package.",
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "PS-102",
+      "title": "Page count matches the current edition.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "base",
+      "pass_text": "Page count correct.",
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "PS-201",
+      "title": "Required signatures are present.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "base",
+      "pass_text": "Signed where required.",
+      "note": "I-765WS requires no signature.",
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "PS-103",
+      "title": "No blank or duplicate pages.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "base",
+      "pass_text": "No blank or duplicate pages.",
+      "note": "Multiple G-1450/G-1650 are normal, one per filing fee, and are not duplicates.",
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "PS-301",
+      "title": "Beneficiary name is consistent across the package.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "base",
+      "pass_text": "Beneficiary name consistent.",
+      "note": "Petitioner/sponsor documents in another name are expected and are not a mismatch.",
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "PS-302",
+      "title": "A-Number is consistent across the package.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "base",
+      "pass_text": "A-Number consistent.",
+      "note": "A-XXXXXXXXX and XXX-XXX-XXX are the same number. Format alone is never a finding (N-016).",
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "PS-303",
+      "title": "Mailing address is consistent across the package.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "base",
+      "pass_text": "Mailing address consistent.",
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G1145-001",
+      "title": "Name, Email and Phone",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "G-1145",
+      "page": 1,
+      "pass_text": "G-1145 contact details complete.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-G1145"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G28-001",
+      "title": "Forms I-821d, I-765",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "G-28",
+      "page": 2,
+      "item": "1.b",
+      "expected": "I-821D and I-765 ONLY",
+      "pass_text": "G-28 discloses I-821D and I-765 only.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-G28"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G28-002",
+      "title": "Applicant Checkbox",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "G-28",
+      "page": 2,
+      "item": "5",
+      "pass_text": "G-28 applicant checkbox marked.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-G28"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G28-003",
+      "title": "Verify if EAD home or office",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "G-28",
+      "page": 3,
+      "pass_text": "G-28 EAD address verified.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-G28"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G28-004",
+      "title": "Applicant & attorney signatures, dated",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "G-28",
+      "page": 3,
+      "pass_text": "G-28 signed and dated.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-G28"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-001",
+      "title": "Renewal checkbox, Exp. Date",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": 1,
+      "item": "2",
+      "pass_text": "I-821D renewal checkbox and expiry set.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-002",
+      "title": "Name",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": 1,
+      "pass_text": "I-821D name present.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-003",
+      "title": "Mailing address",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": 1,
+      "pass_text": "I-821D mailing address present.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-004",
+      "title": "Removal proceedings (NO)",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": 1,
+      "item": "5",
+      "expected": "NO",
+      "pass_text": "I-821D removal proceedings answered NO.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-005",
+      "title": "Continuously residing in US (YES)",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": 2,
+      "item": "1",
+      "expected": "YES",
+      "pass_text": "I-821D continuous residence answered YES.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-006",
+      "title": "Date of Birth",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": 2,
+      "item": "9",
+      "pass_text": "I-821D date of birth present.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-007",
+      "title": "Departures (Only if applicable)",
+      "severity": "warning",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": 3,
+      "item": "6.c",
+      "pass_text": "I-821D departures section consistent.",
+      "note": "Conditional. Only applies when the applicant has departures to report.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-008",
+      "title": "Criminal checkboxes, ALL NO",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": 4,
+      "item": "1-7",
+      "expected": "ALL NO",
+      "pass_text": "I-821D criminal questions all answered NO.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-009",
+      "title": "Read/Understand English (YES)",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": 5,
+      "expected": "YES",
+      "pass_text": "I-821D English question answered YES.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-821D-010",
+      "title": "Applicant & attorney signatures, dated",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-821D",
+      "page": "5,6",
+      "pass_text": "I-821D signed and dated.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I821D"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765-001",
+      "title": "Renewal checkbox",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765",
+      "page": 1,
+      "item": "1.c",
+      "pass_text": "I-765 renewal checkbox marked.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765-002",
+      "title": "Name",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765",
+      "page": 1,
+      "pass_text": "I-765 name present.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765-003",
+      "title": "Physical address, same (YES)",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765",
+      "page": 2,
+      "item": "6",
+      "expected": "YES",
+      "pass_text": "I-765 physical address answered YES.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765-004",
+      "title": "Questions 12,13,14",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765",
+      "page": 2,
+      "item": "12-14",
+      "pass_text": "I-765 questions 12 to 14 answered.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765-005",
+      "title": "Date of Birth",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765",
+      "page": 3,
+      "item": "20",
+      "pass_text": "I-765 date of birth present.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765-006",
+      "title": "“DACA”",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765",
+      "page": 3,
+      "item": "25",
+      "expected": "DACA",
+      "pass_text": "I-765 item 25 reads DACA.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765-007",
+      "title": "Eligibility category C 33 (Zoom in)",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765",
+      "page": 3,
+      "item": "27",
+      "expected": "C33",
+      "pass_text": "I-765 eligibility category is C33.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765-008",
+      "title": "Read/Understand English (YES)",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765",
+      "page": 4,
+      "item": "1.a",
+      "expected": "YES",
+      "pass_text": "I-765 English question answered YES.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765-009",
+      "title": "Applicant & attorney signatures, dates",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765",
+      "page": "4,6",
+      "pass_text": "I-765 signed and dated.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-765WS-001",
+      "title": "Applicant name & numbers, “living expenses”",
+      "severity": "fatal",
+      "check": "pdf",
+      "form": "I-765WS",
+      "page": 1,
+      "pass_text": "I-765WS complete.",
+      "scope": "case",
+      "applies_to_item_ids": [
+        "DACA-COMP-I765WS"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-ASM-001",
+      "title": "All pages in order",
+      "severity": "fatal",
+      "check": "pdf",
+      "pass_text": "All pages in order.",
+      "scope": "case",
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G1450-001",
+      "title": "Name, Email and Phone #",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "case",
+      "form": "G-1450",
+      "page": 1,
+      "pass_text": "Contact details complete.",
+      "applies_to_item_ids": [
+        "DACA-COMP-G1450-FILING-FEE",
+        "DACA-COMP-G1450-BIOMETRICS-FEE"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G1450-002",
+      "title": "One G-1450 authorises $520.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "case",
+      "form": "G-1450",
+      "page": 1,
+      "expected": "$520",
+      "pass_text": "$520 filing fee authorised.",
+      "source_note": "AuthorizedPaymentAmt on the filing-fee form.",
+      "applies_to_item_ids": [
+        "DACA-COMP-G1450-FILING-FEE"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G1450-003",
+      "title": "One G-1450 authorises $85.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "case",
+      "form": "G-1450",
+      "page": 1,
+      "expected": "$85",
+      "pass_text": "$85 biometrics fee authorised.",
+      "source_note": "AuthorizedPaymentAmt on the biometrics form.",
+      "applies_to_item_ids": [
+        "DACA-COMP-G1450-BIOMETRICS-FEE"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G1450-004",
+      "title": "Card number, card type and expiration date are complete.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "case",
+      "form": "G-1450",
+      "page": 1,
+      "pass_text": "Card details complete.",
+      "source_note": "Fields CreditCardNumber_1 to _4, CreditCardTypeChBx, ExpirationDate. Verified against the repo's 1600-g1450.sql field map.",
+      "applies_to_item_ids": [
+        "DACA-COMP-G1450-FILING-FEE",
+        "DACA-COMP-G1450-BIOMETRICS-FEE"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G1450-005",
+      "title": "Cardholder name and billing address are complete.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "case",
+      "form": "G-1450",
+      "page": 1,
+      "pass_text": "Cardholder details complete.",
+      "source_note": "CCHolderGivenName/FamilyName and the CCHolder address block.",
+      "applies_to_item_ids": [
+        "DACA-COMP-G1450-FILING-FEE",
+        "DACA-COMP-G1450-BIOMETRICS-FEE"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    },
+    {
+      "rule_id": "DACA-G1450-006",
+      "title": "Signed by the applicant.",
+      "severity": "fatal",
+      "check": "pdf",
+      "scope": "case",
+      "form": "G-1450",
+      "page": 1,
+      "pass_text": "Signed.",
+      "source_note": "SignatureOfApplicant. Added by Max 2026-08-31; not on the original checklist.",
+      "applies_to_item_ids": [
+        "DACA-COMP-G1450-FILING-FEE",
+        "DACA-COMP-G1450-BIOMETRICS-FEE"
+      ],
+      "applicability": {
+        "pdf_scan": true
+      }
+    }
+  ],
+  "contract": {
+    "result_schema_version": 1,
+    "allowed_statuses": [
+      "clear",
+      "needs_attention",
+      "not_checked"
+    ],
+    "overall_pass_field_forbidden": true,
+    "full_ssn_forbidden": true,
+    "profile_rule_count": 39
+  }
+}

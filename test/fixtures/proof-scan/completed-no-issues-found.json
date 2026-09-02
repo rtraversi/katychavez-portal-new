@@ -1,0 +1,402 @@
+{
+  "fixture_schema_version": 1,
+  "fixture_id": "completed-no-issues-found",
+  "description": "Complete fictional DACA renewal observation response with every applicable rule and package item evaluated clear.",
+  "expected": {
+    "valid": true,
+    "report_state": "no_issues_found",
+    "primary_report_language": "No issues found"
+  },
+  "model_response": {
+    "schema_version": 1,
+    "scan_profile": "daca_renewal",
+    "profile_version": 1,
+    "scan": {
+      "filename": "sample-daca-renewal.pdf",
+      "scanned_at": "2026-09-02T00:00:00Z"
+    },
+    "client_observed": {
+      "name": null,
+      "a_number": null,
+      "ead_expires": null,
+      "date_of_birth": null,
+      "ssn_last4": null,
+      "uscis_account_number": null,
+      "phone": null,
+      "email": null,
+      "address": null
+    },
+    "package_items": [
+      {
+        "item_id": "DACA-COMP-G1450-FILING-FEE",
+        "status": "clear",
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "item_id": "DACA-COMP-G1450-BIOMETRICS-FEE",
+        "status": "clear",
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "item_id": "DACA-COMP-G1145",
+        "status": "clear",
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "item_id": "DACA-COMP-G28",
+        "status": "clear",
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "item_id": "DACA-COMP-I821D",
+        "status": "clear",
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "item_id": "DACA-COMP-I765",
+        "status": "clear",
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "item_id": "DACA-COMP-I765WS",
+        "status": "clear",
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "item_id": "DACA-COMP-EAD-CARD",
+        "status": "clear",
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      }
+    ],
+    "rule_results": [
+      {
+        "rule_id": "PS-101",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "PS-102",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "PS-201",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "PS-103",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "PS-301",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "PS-302",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "PS-303",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G1145-001",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G28-001",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G28-002",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G28-003",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G28-004",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-001",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-002",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-003",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-004",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-005",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-006",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-007",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-008",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-009",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-821D-010",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765-001",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765-002",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765-003",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765-004",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765-005",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765-006",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765-007",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765-008",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765-009",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-765WS-001",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-ASM-001",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G1450-001",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G1450-002",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G1450-003",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G1450-004",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G1450-005",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      },
+      {
+        "rule_id": "DACA-G1450-006",
+        "status": "clear",
+        "summary": null,
+        "locations": [],
+        "evidence": null,
+        "reason": null
+      }
+    ]
+  }
+}
