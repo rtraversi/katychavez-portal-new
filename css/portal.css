@@ -2646,3 +2646,56 @@ body.help-drawer-lock { overflow: hidden; }
   .psr-notice-body, .psr-fold-body { transition: none; }
   .psr-notice-head::after { transition: none; }
 }
+
+/* ── Proof Scan history rows (Batch 4) ───────────────────────────────────────
+   A row wears the deterministic phrase the server composed. There is no "pass"
+   tone here: the calm neutral is "no issues found", which is not an approval. */
+
+.ps-history-item { align-items: center; gap: var(--space-3); }
+.ps-history-item:focus-visible { outline: 2px solid var(--daily); outline-offset: -2px; }
+.ps-history-name {
+  font-size: 14.5px; display: block;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.ps-history-tag {
+  display: inline-flex; align-items: center; flex: 0 0 auto;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+}
+.ps-history-tag--attention   { background: var(--color-warning-bg); color: var(--color-warning); }
+.ps-history-tag--incomplete  { background: var(--paper-deep); color: var(--ink-soft); border: 1px solid var(--line); }
+.ps-history-tag--clear       { background: var(--color-success-bg); color: var(--color-success); }
+.ps-history-tag--legacy      { background: var(--paper-deep); color: var(--ink-faint); border: 1px solid var(--line); }
+.ps-history-tag--unavailable { background: var(--color-danger-bg); color: var(--color-danger); }
+
+/* ── Legacy scan view ────────────────────────────────────────────────────────
+   Pre-structured result_html, displayed as inert, wrapped source text by
+   legacy-html.js. No stored markup is parsed or applied to the page. */
+
+.psr-verdict--legacy { color: var(--ink-faint); }
+
+.psr-legacy-note {
+  margin: 0 0 var(--space-4); padding: var(--space-3);
+  border-radius: var(--radius-md); border: 1px solid var(--line);
+  background: var(--paper-deep);
+  font-size: var(--text-sm); line-height: 1.5; color: var(--ink-soft);
+}
+
+.psr-legacy {
+  font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.6;
+  color: var(--ink); overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+/* ── Unavailable stored result ───────────────────────────────────────────────
+   Deliberately reads as a problem, never as a quiet clean scan. */
+
+.psr-unavailable {
+  padding: var(--space-4); border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 32%, transparent);
+}
+.psr-unavailable-head {
+  font-family: var(--font-serif); font-weight: 600; font-size: 15px;
+  color: var(--color-danger); margin-bottom: var(--space-1);
+}
+.psr-unavailable-body { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--ink); }

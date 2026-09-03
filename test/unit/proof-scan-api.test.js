@@ -21,7 +21,7 @@ const helpersMock = vi.hoisted(() => ({
 vi.mock('../../functions/api/_helpers.js', () => helpersMock);
 
 const notificationsMock = vi.hoisted(() => ({
-  notifyProofScanComplete: vi.fn(),
+  notifyStructuredProofScan: vi.fn(async () => true),
 }));
 vi.mock('../../functions/api/_notifications.js', () => notificationsMock);
 
@@ -516,7 +516,6 @@ describe('/api/proof-scan — invalid model output fails closed', () => {
     expect(body.rule_results).toBeUndefined();
     expect(body.html).toBeUndefined();
     expect(admin.writes.filter((w) => w.table === 'proof_scans')).toHaveLength(0);
-    expect(notificationsMock.notifyProofScanComplete).not.toHaveBeenCalled();
   });
 
   it('never turns an omitted rule into a clear one', async () => {
@@ -560,21 +559,121 @@ describe('/api/proof-scan — invalid model output fails closed', () => {
   });
 });
 
-// ── Email ─────────────────────────────────────────────────────────────────────
+// ── Email (Batch 4) ───────────────────────────────────────────────────────────
+//
+// Email becomes eligible at exactly one point: after the observations validated
+// AND the row landed in proof_scans. Both, in that order, every time.
 
-describe('/api/proof-scan — email is not sent in Batch 2', () => {
-  it('sends no scan-completion email on a valid structured scan', async () => {
-    const admin = makeAdmin({ rows: { proof_scan_config: [{ notify_email: 'staff@firm.test' }] } });
+const notifiable = () => makeAdmin({ rows: { proof_scan_config: [{ notify_email: 'staff@firm.test' }] } });
+
+describe('/api/proof-scan — email eligibility', () => {
+  it('sends the deterministic structured email once a valid scan is stored', async () => {
+    const admin = notifiable();
     const { body } = await run({}, { text: JSON.stringify(validObservations()) }, { admin });
 
-    expect(notificationsMock.notifyProofScanComplete).not.toHaveBeenCalled();
+    expect(body.stored).toBe(true);
+    expect(body.notification_sent).toBe(true);
+    expect(notificationsMock.notifyStructuredProofScan).toHaveBeenCalledTimes(1);
+
+    const [, args] = notificationsMock.notifyStructuredProofScan.mock.calls[0];
+    expect(args.toEmail).toBe('staff@firm.test');
+    // It receives the SERVER-composed result, not the model's response.
+    expect(args.result.report_state).toBe('no_issues_found');
+    expect(args.result.primary_report_language).toBe('No issues found');
+    expect(args.result.rule_results).toHaveLength(profile.rules.length);
+  });
+
+  it('never passes model-authored HTML or a raw model response to the notifier', async () => {
+    const admin = notifiable();
+    await run({}, { text: JSON.stringify(validObservations()) }, { admin });
+    const [, args] = notificationsMock.notifyStructuredProofScan.mock.calls[0];
+
+    expect(Object.keys(args).sort()).toEqual(['result', 'toEmail']);
+    expect(args.result.result_html).toBeUndefined();
+    expect(args.result.html).toBeUndefined();
+    // The legacy raw-HTML notifier is never reached from the structured path.
+  });
+
+  it('does not notify when the result could not be persisted', async () => {
+    // A completed scan that never landed has no history row for the email to
+    // point at, so it notifies nobody and says it was not saved.
+    const admin = makeAdmin({
+      insertError: 'connection reset',
+      rows: { proof_scan_config: [{ notify_email: 'staff@firm.test' }] },
+    });
+    const { body } = await run({}, { text: JSON.stringify(validObservations()) }, { admin });
+
+    expect(body.stored).toBe(false);
+    expect(body.storage_error).toMatch(/could not be saved/i);
+    expect(body.notification_sent).toBe(false);
+    expect(notificationsMock.notifyStructuredProofScan).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an unknown rule id',   (o) => { o.rule_results[0].rule_id = 'PS-999'; }],
+    ['a duplicated rule id', (o) => { o.rule_results[1].rule_id = o.rule_results[0].rule_id; }],
+    ['an omitted rule',      (o) => { o.rule_results.pop(); }],
+    ['a full SSN',           (o) => { o.client_observed.ssn_last4 = '123-45-6789'; }],
+  ])('never notifies on %s', async (_label, mutate) => {
+    const observations = validObservations();
+    mutate(observations);
+    const admin = notifiable();
+    const { res } = await run({}, { text: JSON.stringify(observations) }, { admin });
+
+    expect(res.status).toBe(502);
+    expect(notificationsMock.notifyStructuredProofScan).not.toHaveBeenCalled();
+    expect(admin.writes.filter((w) => w.table === 'proof_scans')).toHaveLength(0);
+  });
+
+  it('never notifies on malformed model output', async () => {
+    const admin = notifiable();
+    const { res } = await run({}, { text: 'PASS — everything looks fine' }, { admin });
+    expect(res.status).toBe(502);
+    expect(notificationsMock.notifyStructuredProofScan).not.toHaveBeenCalled();
+  });
+
+  it('stores the scan without notifying when no notify_email is configured', async () => {
+    const admin = makeAdmin({ rows: { proof_scan_config: [{ notify_email: '   ' }] } });
+    const { body } = await run({}, { text: JSON.stringify(validObservations()) }, { admin });
+    expect(body.stored).toBe(true);
+    expect(body.notification_sent).toBe(false);
+    expect(notificationsMock.notifyStructuredProofScan).not.toHaveBeenCalled();
+  });
+
+  it('reports the scan as complete even if the notifier throws', async () => {
+    notificationsMock.notifyStructuredProofScan.mockRejectedValueOnce(new Error('resend down'));
+    const { res, body } = await run({}, { text: JSON.stringify(validObservations()) }, { admin: notifiable() });
+    expect(res.status).toBe(200);
+    expect(body.stored).toBe(true);
+    expect(body.notification_sent).toBe(false);
+  });
+
+  it('reports notification_sent false when the notifier reports non-delivery', async () => {
+    notificationsMock.notifyStructuredProofScan.mockResolvedValueOnce(false);
+    const { res, body } = await run({}, { text: JSON.stringify(validObservations()) }, { admin: notifiable() });
+    expect(res.status).toBe(200);
+    expect(body.stored).toBe(true);
     expect(body.notification_sent).toBe(false);
   });
 
   it('leaves the configured notify_email row untouched', async () => {
-    const admin = makeAdmin({ rows: { proof_scan_config: [{ notify_email: 'staff@firm.test' }] } });
+    const admin = notifiable();
     await run({}, { text: JSON.stringify(validObservations()) }, { admin });
     expect(admin.writes.filter((w) => w.table === 'proof_scan_config')).toHaveLength(0);
+  });
+
+  it('stores the attention count the history list reads', async () => {
+    const observations = validObservations();
+    observations.rule_results[0].status = 'needs_attention';
+    observations.rule_results[0].summary = 'The G-28 is not signed.';
+    const admin = notifiable();
+    await run({}, { text: JSON.stringify(observations) }, { admin });
+
+    const [write] = admin.writes.filter((w) => w.table === 'proof_scans');
+    expect(write.payload.attention_count).toBe(1);
+    expect(write.payload.report_state).toBe('items_need_attention');
+    // The legacy status column stays the neutral sentinel, never 'pass'.
+    expect(write.payload.status).toBe('structured');
   });
 });
 

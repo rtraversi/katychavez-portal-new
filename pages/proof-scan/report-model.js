@@ -271,3 +271,45 @@ export function buildReportModel(result) {
     not_checked: notChecked,
   };
 }
+
+// ── History rows ─────────────────────────────────────────────────────────────
+//
+// One pure function decides what a history row says and how it is toned, so the
+// list cannot drift from the report it opens.
+//
+// The server composes `report_language` from the stored state and count with the
+// same reportStateLanguage() the report and the email use. This function never
+// composes a phrase of its own — it either shows the server's, or says the result
+// is unavailable. There is deliberately no branch that turns missing metadata
+// into a clean-looking row.
+
+export const LEGACY_ROW_LABEL = 'Legacy scan';
+export const UNAVAILABLE_ROW_LABEL = 'Result unavailable';
+
+const ROW_TONE = {
+  items_need_attention: 'attention',
+  review_incomplete: 'incomplete',
+  no_issues_found: 'clear',
+};
+
+export function historyRowModel(row) {
+  const base = {
+    id: typeof row?.id === 'string' ? row.id : '',
+    filename: text(row?.filename) || 'Untitled package',
+    created_at: row?.created_at || null,
+  };
+
+  if (row?.kind === 'legacy') {
+    return { ...base, kind: 'legacy', label: LEGACY_ROW_LABEL, tone: 'legacy' };
+  }
+
+  // Structured only when the server sent BOTH a language it composed and a state
+  // that maps to a tone. Anything else is unavailable — never clear.
+  const tone = ROW_TONE[row?.report_state];
+  const label = text(row?.report_language);
+  if (row?.kind === 'structured' && tone && label) {
+    return { ...base, kind: 'structured', label, tone };
+  }
+
+  return { ...base, kind: 'unavailable', label: UNAVAILABLE_ROW_LABEL, tone: 'unavailable' };
+}

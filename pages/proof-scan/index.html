@@ -126,6 +126,7 @@
       <h3 id="ps-modal-title" style="font-family:var(--font-serif);font-size:18px;font-weight:600;margin:0;color:var(--ink)">Scan Result</h3>
       <button id="ps-modal-close" class="btn btn--ghost" style="padding:var(--space-1) var(--space-2)">&#x2715;</button>
     </div>
-    <div id="ps-modal-body" style="padding:var(--space-4);overflow-y:auto;flex:1;font-size:var(--text-sm);line-height:1.6"></div>
+    <!-- report.js and legacy-html.js build this subtree from DOM nodes only. -->
+    <div id="ps-modal-body" class="ps-report" style="padding:var(--space-4);overflow-y:auto;flex:1;font-size:var(--text-sm);line-height:1.6"></div>
   </div>
 </div>

@@ -104,6 +104,34 @@ export const ModelResponseSchema = z.object({
   rule_results: z.array(RuleObservationSchema),
 }).strict();
 
+// ── Report-state language ────────────────────────────────────────────────────
+//
+// The ONE place that turns a derived report state into words. A fresh scan, a
+// history row, and an email all read from here, so the three can never disagree
+// and no caller can invent a fourth phrase.
+//
+// The allowed vocabulary is closed on purpose. "Pass", "Approved", "Correct",
+// "Ready to file" and "Needs Correction" are not report states and have no
+// spelling here — a scan does not decide whether a filing may go out.
+
+export const REPORT_STATES = ['items_need_attention', 'review_incomplete', 'no_issues_found'];
+
+// Shown under every report, in every state. "No issues found" is not approval.
+export const STAFF_REVIEW_REMINDER = 'Staff review is still required before filing.';
+
+// Returns null — never a reassuring phrase — for an unknown state, or for
+// items_need_attention without a usable count. A caller that gets null must show
+// a neutral unavailable message; it must never fall through to a clean result.
+export function reportStateLanguage(reportState, attentionCount) {
+  if (reportState === 'items_need_attention') {
+    if (!Number.isInteger(attentionCount) || attentionCount < 1) return null;
+    return `${attentionCount} ${attentionCount === 1 ? 'item needs' : 'items need'} attention`;
+  }
+  if (reportState === 'review_incomplete') return 'Review incomplete';
+  if (reportState === 'no_issues_found') return 'No issues found';
+  return null;
+}
+
 function issue(code, path, message) {
   return { code, path, message };
 }
@@ -308,11 +336,7 @@ export function validateAndComposeScanResult(profile, modelResponse) {
     : unsuppressed_not_checked.length
       ? 'review_incomplete'
       : 'no_issues_found';
-  const primary_report_language = report_state === 'items_need_attention'
-    ? String(attention_items.length) + (attention_items.length === 1 ? ' item needs' : ' items need') + ' attention'
-    : report_state === 'review_incomplete'
-      ? 'Review incomplete'
-      : 'No issues found';
+  const primary_report_language = reportStateLanguage(report_state, attention_items.length);
 
   return {
     ok: true,
@@ -487,4 +511,134 @@ export function buildObservationJsonSchema(profile) {
       },
     },
   };
+}
+
+// ── Stored result boundary ───────────────────────────────────────────────────
+//
+// A structured result read back out of `proof_scans.result_json` is treated as
+// untrusted input, exactly like a model response. It may have been written by an
+// older build, hand-edited, truncated by a failed write, or corrupted in transit.
+//
+// So it is re-validated in full before anything renders it, and the report state
+// is RECOMPUTED from the stored items rather than believed. A stored row whose
+// `report_state` says "no_issues_found" while its items say otherwise is rejected
+// as inconsistent — never shown, and never quietly downgraded to a clean result.
+
+export const SUPPORTED_RESULT_SCHEMA_VERSION = 1;
+
+const StoredPackageItemSchema = PackageItemSchema.merge(PackageItemObservationSchema);
+
+const StoredRuleResultSchema = ProfileRuleSchema
+  .merge(RuleObservationSchema)
+  .extend({
+    // Server-derived at composition time; re-checked below, never trusted as-is.
+    blocked_by_missing_package_item_ids: z.array(z.string().min(1).max(120)).max(50),
+    independently_unchecked_item_ids: z.array(z.string().min(1).max(120)).max(50),
+    suppressed_by_package_item_ids: z.array(z.string().min(1).max(120)).max(50),
+  });
+
+const AttentionItemSchema = z.object({
+  type: z.enum(['package_item', 'rule']),
+  id: z.string().min(1).max(120),
+}).strict();
+
+export const StoredScanResultSchema = z.object({
+  schema_version: z.literal(SUPPORTED_RESULT_SCHEMA_VERSION),
+  scan_profile: z.string().min(1).max(120),
+  profile_version: z.number().int().positive(),
+  profile_label: z.string().min(1).max(300),
+  scan: ScanSchema,
+  report_state: z.enum(['items_need_attention', 'review_incomplete', 'no_issues_found']),
+  primary_report_language: z.string().min(1).max(200),
+  attention_count: z.number().int().nonnegative(),
+  attention_items: z.array(AttentionItemSchema).max(500),
+  unsuppressed_not_checked_count: z.number().int().nonnegative(),
+  client_observed: ClientObservedSchema,
+  package_items: z.array(StoredPackageItemSchema).min(1),
+  rule_results: z.array(StoredRuleResultSchema).min(1),
+}).strict();
+
+// Recomputes state from the stored items. Deliberately mirrors composition rather
+// than sharing a branch with it, so a stored row can be checked against the rule
+// even if it was written by a different build of this file.
+function derivedStateOf(stored) {
+  const attentionCount =
+    stored.package_items.filter((item) => item.status === 'needs_attention').length
+    + stored.rule_results.filter((rule) => rule.status === 'needs_attention').length;
+  const unsuppressedNotChecked =
+    stored.package_items.filter((item) => item.status === 'not_checked').length
+    + stored.rule_results.filter((rule) =>
+      rule.status === 'not_checked' && !rule.suppressed_by_package_item_ids.length).length;
+  const reportState = attentionCount
+    ? 'items_need_attention'
+    : unsuppressedNotChecked ? 'review_incomplete' : 'no_issues_found';
+  return { attentionCount, unsuppressedNotChecked, reportState };
+}
+
+// Returns { ok: true, data } or { ok: false, issues }. Callers turn a failure into
+// a neutral "this result cannot be displayed" message — never into a clean one.
+export function validateStoredScanResult(stored) {
+  const parsed = StoredScanResultSchema.safeParse(stored);
+  if (!parsed.success) return { ok: false, issues: zodIssues(parsed.error) };
+
+  const data = parsed.data;
+  const issues = [];
+
+  // The profile must still be configured, at the version that produced this row.
+  //
+  // Coverage is the reason. A stored result carries its own titles and severities,
+  // so it could in principle be rendered without the profile — but then a row that
+  // lost rules to a truncated write would validate as internally consistent and
+  // present as clean, because the checks it is missing are simply not there to
+  // contradict it. The profile is what says how many there should have been.
+  //
+  const storedProfile = loadScanProfile(data.scan_profile, data.profile_version);
+  if (!storedProfile) {
+    issues.push(issue('unsupported_profile_version', ['profile_version'],
+      'This result was produced by a scan profile version this build cannot verify.'));
+  } else {
+    // Exact coverage, the same rule a fresh scan is held to: every configured
+    // rule and package item exactly once, nothing unknown, nothing missing.
+    issues.push(...findIdentifierIssues(
+      data.package_items, storedProfile.package_items.map((item) => item.item_id),
+      'item_id', 'package_item',
+    ));
+    issues.push(...findIdentifierIssues(
+      data.rule_results, storedProfile.rules.map((rule) => rule.rule_id),
+      'rule_id', 'rule',
+    ));
+  }
+
+  const itemIds = data.package_items.map((item) => item.item_id);
+  const ruleIds = data.rule_results.map((rule) => rule.rule_id);
+  if (new Set(itemIds).size !== itemIds.length) {
+    issues.push(issue('duplicate_stored_package_item_id', ['package_items'], 'Stored package-item IDs must be unique.'));
+  }
+  if (new Set(ruleIds).size !== ruleIds.length) {
+    issues.push(issue('duplicate_stored_rule_id', ['rule_results'], 'Stored rule IDs must be unique.'));
+  }
+
+  const derived = derivedStateOf(data);
+  if (derived.reportState !== data.report_state) {
+    issues.push(issue('stored_report_state_mismatch', ['report_state'],
+      'Stored report state does not match the stored items.'));
+  }
+  if (derived.attentionCount !== data.attention_count) {
+    issues.push(issue('stored_attention_count_mismatch', ['attention_count'],
+      'Stored attention count does not match the stored items.'));
+  }
+  if (derived.unsuppressedNotChecked !== data.unsuppressed_not_checked_count) {
+    issues.push(issue('stored_not_checked_count_mismatch', ['unsuppressed_not_checked_count'],
+      'Stored not-checked count does not match the stored items.'));
+  }
+  if (data.attention_items.length !== data.attention_count) {
+    issues.push(issue('stored_attention_items_mismatch', ['attention_items'],
+      'Stored attention items do not match the stored attention count.'));
+  }
+  if (data.primary_report_language !== reportStateLanguage(data.report_state, data.attention_count)) {
+    issues.push(issue('stored_report_language_mismatch', ['primary_report_language'],
+      'Stored report language does not match the stored report state.'));
+  }
+
+  return issues.length ? { ok: false, issues } : { ok: true, data };
 }

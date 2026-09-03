@@ -9,10 +9,12 @@
 // the filename, the scan time, severity, display order, the overall state, or any
 // HTML — see functions/api/proof-scan-contract.js for the ownership boundary.
 //
-// The front end is wired up in Batch 3 and deterministic email rendering lands in
-// Batch 4; this branch is not deployable between batches.
+// Batch 3 wired the front end to this endpoint. Batch 4 added the deterministic
+// escaped email below and the authenticated history detail path in
+// proof-scan-history.js.
 
 import { verifyAuth, json, makeAdminClient } from './_helpers.js';
+import { notifyStructuredProofScan } from './_notifications.js';
 import { validate, ProofScanSchema, PROOF_SCAN_MAX_PDF_BYTES } from './_schemas.js';
 import {
   getSelectedScanProfile,
@@ -332,6 +334,10 @@ export async function onRequest({ request, env }) {
         scan_profile:          profile.profile_id,
         profile_version:       profile.profile_version,
         report_state:          result.report_state,
+        // Denormalised for the history list (migration 1303). The list prints a
+        // phrase for ten rows; reading ten 21 KB result_json blobs to do it is
+        // the wrong trade. Opening a scan still re-validates the full JSON.
+        attention_count:       result.attention_count,
         model:                 modelName,
         model_stop_reason:     stopReason,
         input_tokens:          inputTokens,
@@ -351,17 +357,46 @@ export async function onRequest({ request, env }) {
     console.error('[proof-scan] DB save error:', err.message);
   }
 
-  // Email is deliberately not sent for the structured path. Batch 4 supplies a
-  // deterministic escaped renderer; until then nothing goes to the old raw-HTML
-  // email function and no model output is passed to notifyProofScanComplete. The
-  // configured notify_email row is left untouched, and no success is implied.
-  if (!stored) console.warn('[proof-scan] result not persisted; returning it unstored');
+  // ── Notification ───────────────────────────────────────────────────────────
+  //
+  // Email becomes eligible at exactly one point: AFTER parseAndComposeObservations
+  // returned ok AND the row landed in proof_scans with an id. Both are required.
+  //
+  // Validation first, because an email must never describe observations the server
+  // rejected — every failure above returns before reaching this line, so there is
+  // no branch that can notify on unknown, duplicate, omitted or malformed IDs.
+  //
+  // Persistence second, so every email refers to a report staff can actually open.
+  // A scan that could not be saved is reported to the browser as unstored and
+  // notifies nobody: an email whose "Open the full report" link leads to a row
+  // that does not exist is worse than no email.
+  //
+  // notifyStructuredProofScan re-validates the result a third time and builds the
+  // body itself. Nothing model-authored is passed to it.
+  let notification_sent = false;
+  if (!stored) {
+    console.warn('[proof-scan] result not persisted; returning it unstored and notifying nobody');
+  } else {
+    try {
+      const { data: rows } = await admin
+        .from('proof_scan_config')
+        .select('notify_email')
+        .limit(1);
+      const toEmail = rows?.[0]?.notify_email?.trim() || '';
+      if (toEmail) {
+        notification_sent = await notifyStructuredProofScan(env, { toEmail, result: payload });
+      }
+    } catch (err) {
+      // A completed, stored scan is still a good scan. Say the email did not go.
+      console.error('[proof-scan] notification failed:', err.message);
+    }
+  }
 
   return json(200, {
     ...payload,
     scan_id: scanId,
     stored,
     storage_error: stored ? null : 'The scan completed but could not be saved to history.',
-    notification_sent: false,
+    notification_sent,
   });
 }

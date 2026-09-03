@@ -291,3 +291,63 @@ export function renderReport(d, mount) {
   // ── 7. The reminder, on every report, in every state ───────────────────────
   mount.appendChild(el('p', 'psr-standing-note', STAFF_REVIEW_REMINDER));
 }
+
+// ── Legacy scans ─────────────────────────────────────────────────────────────
+//
+// A pre-Batch-2 row stores HTML that Claude wrote. It stays openable so old work
+// is not lost, but it is labelled for what it is and shown as plain source text
+// by legacy-html.js — never parsed or injected. It has no report state, no
+// severities, and no coverage guarantee, so nothing here invents one.
+
+const LEGACY_EXPLANATION =
+  'This scan predates the structured checker. It was written as free-form text by '
+  + 'the old pipeline, so it has no verified check coverage, no report state, and '
+  + 'no severities. It is shown for reference only.';
+
+export function renderLegacyReport(d, mount, sanitize) {
+  mount.textContent = '';
+
+  const head = el('div', 'psr-head');
+  const left = el('div');
+  left.appendChild(el('div', 'psr-file', d.filename || 'Untitled package'));
+  left.appendChild(el('div', 'psr-casetype', 'Legacy scan'));
+  head.appendChild(left);
+
+  const right = el('div', 'psr-head-right');
+  if (d.created_at) {
+    const when = new Date(d.created_at);
+    if (!Number.isNaN(when.valueOf())) {
+      right.appendChild(el('div', 'psr-scanned',
+        when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })));
+    }
+  }
+  right.appendChild(el('div', 'psr-verdict psr-verdict--legacy', 'Legacy scan'));
+  head.appendChild(right);
+  mount.appendChild(head);
+
+  mount.appendChild(el('p', 'psr-legacy-note', LEGACY_EXPLANATION));
+
+  // The only place stored legacy HTML reaches the page, and it arrives as a
+  // fragment containing one inert text node.
+  const body = el('div', 'psr-legacy');
+  body.appendChild(sanitize(d.result_html));
+  mount.appendChild(body);
+
+  mount.appendChild(el('p', 'psr-standing-note', STAFF_REVIEW_REMINDER));
+}
+
+// ── Unavailable ──────────────────────────────────────────────────────────────
+//
+// Corrupt, truncated, unknown-version, or unsupported-profile stored results land
+// here. Neutral by design: it says the result cannot be shown, and it never
+// resembles a clean scan.
+
+export function renderUnavailable(message, mount) {
+  mount.textContent = '';
+  const box = el('div', 'psr-unavailable');
+  box.appendChild(el('div', 'psr-unavailable-head', 'This result cannot be displayed'));
+  box.appendChild(el('p', 'psr-unavailable-body',
+    message || 'This saved scan cannot be displayed. Run the package again to get a current report.'));
+  mount.appendChild(box);
+  mount.appendChild(el('p', 'psr-standing-note', STAFF_REVIEW_REMINDER));
+}

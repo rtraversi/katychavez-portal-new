@@ -2,20 +2,20 @@
 
 // Proof Scan page controller.
 //
-// Batch 3 connects the approved lab experience to the structured API. The flow:
+// Batch 3 connected the approved lab experience to the structured API. The flow:
 // staff pick a scan type explicitly, choose a PDF, and press Run Proof Scan. The
 // request goes to the authenticated /api/proof-scan, which loads the profile,
 // asks Claude for observations, validates them, and returns composed data. This
 // file hands that data to report.js, which draws it with text nodes only.
 //
-// There is no path here that puts model output into innerHTML. themeResultHtml()
-// survives for one purpose only — opening a LEGACY result_html row from history —
-// and is never reachable from a new scan.
+// Batch 4 finished history. Both the list and every result body now come from the
+// authenticated /api/proof-scan-history endpoint; the browser no longer queries
+// Supabase for scan content. Reopening a structured scan runs the SAME report
+// model and renderer a fresh scan uses, against a result the server re-validated.
+// Legacy result_html rows open labelled as legacy and displayed as one inert
+// text node by legacy-html.js — the stored markup is never parsed or injected.
 //
-// History still shows legacy rows and new structured rows side by side with the
-// old renderer. Batch 4 owns structured history, the authenticated detail
-// endpoint, and email. See the History section below for what is deliberately
-// unfinished.
+// There is no assignment to innerHTML anywhere in this file.
 
 (async function ProofScanPage() {
 
@@ -71,11 +71,18 @@
   let reportModules = null;
   async function loadReport() {
     if (!reportModules) {
-      const [model, view] = await Promise.all([
+      const [model, view, legacy] = await Promise.all([
         import(`/pages/proof-scan/report-model.js?v=${v}`),
         import(`/pages/proof-scan/report.js?v=${v}`),
+        import(`/pages/proof-scan/legacy-html.js?v=${v}`),
       ]);
-      reportModules = { ...model, renderReport: view.renderReport };
+      reportModules = {
+        ...model,
+        renderReport:       view.renderReport,
+        renderLegacyReport: view.renderLegacyReport,
+        renderUnavailable:  view.renderUnavailable,
+        sanitizeLegacyHtml: legacy.sanitizeLegacyHtml,
+      };
     }
     return reportModules;
   }
@@ -440,133 +447,147 @@
 
   // ── History ──────────────────────────────────────────────────────────────────
   //
-  // BATCH 4 OWNS THIS. What is deliberately unfinished:
-  //   - Structured rows list with a neutral "Structured scan" tag because the
-  //     history endpoint returns only id/filename/status/created_at. It has no
-  //     report_state yet, and inventing "Pass" or "Needs Correction" for a
-  //     structured row is exactly the verdict language this project forbids.
-  //   - Opening a structured row shows a placeholder instead of a report. Its
-  //     result_html is NULL by design, so the legacy modal path would render
-  //     nothing; Batch 4 adds the authenticated structured detail endpoint and
-  //     renders it with report.js.
-  //   - Legacy result_html rows still open through themeResultHtml() below, which
-  //     is the only remaining caller and is never reached by a new scan.
-  // This branch is not deployable until Batch 4 lands.
+  // Batch 4. The list and every result body now come from the authenticated
+  // /api/proof-scan-history endpoint. The browser no longer touches Supabase for
+  // scan content — there is no window.db query left in this file.
+  //
+  // A row shows the deterministic language the server composed from the stored
+  // report state ("N items need attention", "Review incomplete", "No issues
+  // found"), a legacy label, or "Result unavailable". Nothing here composes a
+  // phrase, and a row with missing or unusable metadata is never drawn as clean.
 
-  const STRUCTURED_STATUS = 'structured';
+  function renderHistoryEmpty(message, danger) {
+    historyList.textContent = '';
+    const box = document.createElement('div');
+    box.className = 'dk-empty';
+    if (danger) box.style.color = 'var(--color-danger)';
+    box.textContent = message;
+    historyList.appendChild(box);
+  }
+
+  // Built with DOM nodes rather than an HTML string so a filename or a stored
+  // phrase can never be parsed as markup on its way into the list.
+  function historyRowEl(model) {
+    const el = document.createElement('div');
+    el.className = 'dk-reg-row ps-history-item';
+    el.dataset.scanId = model.id;
+    el.dataset.scanKind = model.kind;
+    el.style.cursor = 'pointer';
+    el.tabIndex = 0;
+    el.setAttribute('role', 'button');
+
+    const left = document.createElement('div');
+    left.style.minWidth = '0';
+    const title = document.createElement('div');
+    title.className = 'dk-reg-title ps-history-name';
+    title.textContent = model.filename;
+    const meta = document.createElement('div');
+    meta.className = 'dk-reg-meta';
+    meta.textContent = formatDate(model.created_at);
+    left.appendChild(title);
+    left.appendChild(meta);
+    el.appendChild(left);
+
+    const tag = document.createElement('span');
+    tag.className = `ps-history-tag ps-history-tag--${model.tone}`;
+    tag.textContent = model.label;
+    el.appendChild(tag);
+
+    const open = () => openScan(model);
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+    return el;
+  }
 
   async function loadHistory() {
-    historyList.innerHTML = '<div class="dk-empty">Loading…</div>';
+    renderHistoryEmpty('Loading…');
     try {
+      const { historyRowModel } = await loadReport();
       const session = await getSession();
       const res = await fetch('/api/proof-scan-history', {
         method:  'POST',
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({}),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error || 'Could not load recent scans.');
 
-      const scans = data.scans || [];
-      if (!scans.length) {
-        historyList.innerHTML = '<div class="dk-empty">No scans yet.</div>';
-        return;
-      }
+      const scans = Array.isArray(data.scans) ? data.scans : [];
+      if (!scans.length) { renderHistoryEmpty('No scans yet.'); return; }
 
-      const rows = scans.map(s => {
-        const structured = s.status === STRUCTURED_STATUS;
-        // Legacy rows keep their old label. Structured rows get a neutral one —
-        // no verdict is derivable from what this endpoint returns yet.
-        const kind  = structured ? 'mut' : s.status === 'pass' ? 'ok' : 'warn';
-        const label = structured ? 'Structured scan'
-          : s.status === 'pass' ? 'Pass' : 'Needs Correction';
-        return `
-          <div class="dk-reg-row ps-history-item" data-scan-id="${escHtml(s.id)}"
-               data-scan-structured="${structured ? '1' : ''}"
-               data-scan-filename="${escHtml(s.filename)}" style="cursor:pointer">
-            <div style="min-width:0">
-              <div class="dk-reg-title" style="font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">
-                ${escHtml(s.filename)}
-              </div>
-              <div class="dk-reg-meta">${formatDate(s.created_at)}</div>
-            </div>
-            ${DK.tag(label, kind)}
-          </div>`;
-      }).join('');
-      historyList.innerHTML = `<div class="dk-register">${rows}</div>`;
-
-      historyList.querySelectorAll('.ps-history-item').forEach(el => {
-        el.addEventListener('click', () => loadScanResult(el.dataset.scanId, el));
-      });
+      historyList.textContent = '';
+      const register = document.createElement('div');
+      register.className = 'dk-register';
+      for (const row of scans) register.appendChild(historyRowEl(historyRowModel(row)));
+      historyList.appendChild(register);
 
     } catch (err) {
-      historyList.innerHTML = `<div class="dk-empty" style="color:var(--color-danger)">${escHtml(err.message)}</div>`;
+      renderHistoryEmpty(err.message || 'Could not load recent scans.', true);
     }
   }
 
-  async function loadScanResult(scanId, rowEl) {
-    const filename = rowEl.dataset.scanFilename || '';
-    modalTitle.textContent = filename;
+  // ── Opening a saved scan ─────────────────────────────────────────────────────
+  //
+  // Three outcomes, decided by the server, never by this file:
+  //
+  //   structured  re-validated stored result_json, drawn by the SAME report model
+  //               and renderer a fresh scan uses. Reopening a scan cannot show
+  //               anything a fresh scan could not.
+  //   legacy      pre-structured result_html, labelled, and displayed as inert
+  //               source text by legacy-html.js. It is never parsed as HTML.
+  //   unavailable corrupt, truncated, unknown schema version, or a profile this
+  //               build does not configure — a neutral message, never a result.
+
+  async function openScan(model) {
+    modalTitle.textContent = model.filename;
+    modalBody.textContent = 'Loading…';
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 
-    // A structured row has no result_html to show. Batch 4 adds the detail
-    // endpoint; until then say so rather than opening an empty modal.
-    if (rowEl.dataset.scanStructured) {
-      modalBody.textContent =
-        'Opening a saved structured scan is not available yet. Run the package again to see its report.';
-      return;
-    }
-
-    modalBody.innerHTML = '<p style="color:var(--ink-soft)">Loading…</p>';
     try {
-      const { data: rows } = await window.db
-        .from('proof_scans')
-        .select('result_html, filename, status')
-        .eq('id', scanId)
-        .limit(1);
+      const report = await loadReport();
+      const session = await getSession();
+      const res = await fetch('/api/proof-scan-history', {
+        method:  'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({ scan_id: model.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load that scan.');
 
-      if (!rows?.length) throw new Error('Scan not found');
-      if (!rows[0].result_html) throw new Error('This scan has no legacy result to show.');
-      modalBody.innerHTML = themeResultHtml(rows[0].result_html);
+      if (data.kind === 'structured') {
+        report.renderReport(report.buildReportModel(data.result), modalBody);
+        return;
+      }
+
+      if (data.kind === 'legacy') {
+        report.renderLegacyReport(
+          { filename: model.filename, created_at: data.created_at, result_html: data.result_html },
+          modalBody,
+          // Turned into one text node. The stored string is never parsed or
+          // assigned to an HTML insertion sink.
+          (raw) => report.sanitizeLegacyHtml(raw),
+        );
+        return;
+      }
+
+      report.renderUnavailable(data.message, modalBody);
+
     } catch (err) {
-      modalBody.innerHTML = `<p style="color:var(--color-danger)">Could not load result: ${escHtml(err.message)}</p>`;
+      const box = document.createElement('p');
+      box.style.color = 'var(--color-danger)';
+      box.textContent = 'Could not load result: ' + (err.message || 'unknown error');
+      modalBody.textContent = '';
+      modalBody.appendChild(box);
     }
-  }
-
-  // LEGACY ONLY. Neutralizes light-mode colors baked into result HTML written by
-  // the pre-Batch-2 pipeline, so old stored scans stay readable in dark mode.
-  // New scans never reach this function — they are structured data, drawn by
-  // report.js as text nodes.
-  function themeResultHtml(raw) {
-    const tpl = document.createElement('template');
-    tpl.innerHTML = String(raw || '');
-
-    tpl.content.querySelectorAll('[style]').forEach(el => {
-      const kept = el.getAttribute('style')
-        .split(';')
-        .filter(d => d.trim() && !/^\s*(color|background(-color)?)\s*:/i.test(d))
-        .join(';');
-      if (kept.trim()) el.setAttribute('style', kept);
-      else el.removeAttribute('style');
-    });
-
-    tpl.content.querySelectorAll('tr').forEach(tr => {
-      const cell = tr.querySelector('td, th');
-      if (!cell) return;
-      const t = (cell.textContent || '').trim().toUpperCase();
-      if (/\bPASS\b/.test(t)) cell.classList.add('ps-status', 'ps-pass');
-      else if (/NEEDS CORRECTION|\bFAIL\b|\bERROR\b|✗|✕/.test(t)) cell.classList.add('ps-status', 'ps-fail');
-    });
-
-    return tpl.innerHTML;
-  }
-
-  function escHtml(s) {
-    return String(s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
   }
 
   // ── Modal close ──────────────────────────────────────────────────────────────

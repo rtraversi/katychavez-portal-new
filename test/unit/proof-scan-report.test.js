@@ -19,9 +19,12 @@ import {
   maskSsn,
   primaryClientFacts,
   secondaryClientFacts,
+  historyRowModel,
   MAX_PDF_BYTES,
   SCAN_TYPES,
   PACKAGE_GROUP_LABEL,
+  LEGACY_ROW_LABEL,
+  UNAVAILABLE_ROW_LABEL,
 } from '../../pages/proof-scan/report-model.js';
 import {
   getSelectedScanProfile,
@@ -424,15 +427,14 @@ describe('proof-scan page source', () => {
     expect(codeOf('report-model.js')).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML/);
   });
 
-  it('keeps the legacy HTML themer off every new-scan path', () => {
+  it('has no innerHTML path and no legacy HTML themer left in the controller', () => {
     const controller = codeOf('proof-scan.js');
-    // Only the legacy history modal may call it: one definition, one call.
-    const calls = controller.match(/themeResultHtml\(/g) || [];
-    expect(calls).toHaveLength(2);
-    expect(controller).toMatch(/modalBody\.innerHTML = themeResultHtml\(rows\[0\]\.result_html\)/);
-    // The new-scan branch renders structured data instead.
+    // Batch 4 deleted themeResultHtml() outright: stripping colours was never a
+    // security boundary, and legacy HTML now goes through legacy-html.js instead.
+    expect(controller).not.toMatch(/themeResultHtml/);
+    expect(controller).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+    // The new-scan branch renders structured data.
     expect(controller).toMatch(/renderReport\(buildReportModel\(data\), resultsContent\)/);
-    expect(controller).not.toMatch(/resultsContent\.innerHTML/);
   });
 
   it('sends the scan type explicitly and never infers it', () => {
@@ -554,3 +556,150 @@ describe('proof-scan page source', () => {
 // string for portal.css under the workers pool, so any assertion against it would
 // pass vacuously. It is verified by `grep` in the batch's verification commands and
 // by the light/dark screenshots instead.
+
+// ── History rows (Batch 4) ────────────────────────────────────────────────────
+//
+// The list must show the server's deterministic phrase, or say the result is
+// unavailable. There is no third option and no phrase composed on this side.
+
+describe('history row model', () => {
+  const row = (over = {}) => ({
+    id: 'ec7d5e2e-0000-4000-8000-000000000001',
+    filename: 'daca-renewal-package.pdf',
+    created_at: '2026-09-02T12:00:00Z',
+    ...over,
+  });
+
+  it.each([
+    ['items_need_attention', '3 items need attention', 'attention'],
+    ['review_incomplete',    'Review incomplete',      'incomplete'],
+    ['no_issues_found',      'No issues found',        'clear'],
+  ])('shows the stored language for %s', (report_state, report_language, tone) => {
+    expect(historyRowModel(row({ kind: 'structured', report_state, report_language })))
+      .toMatchObject({ kind: 'structured', label: report_language, tone });
+  });
+
+  it('labels a legacy row and gives it no report language', () => {
+    expect(historyRowModel(row({ kind: 'legacy', report_state: null, report_language: null })))
+      .toMatchObject({ kind: 'legacy', label: LEGACY_ROW_LABEL, tone: 'legacy' });
+  });
+
+  it.each([
+    ['the server marked it unavailable', { kind: 'unavailable', report_state: null, report_language: null }],
+    ['the language is missing',          { kind: 'structured', report_state: 'no_issues_found', report_language: null }],
+    ['the language is blank',            { kind: 'structured', report_state: 'no_issues_found', report_language: '   ' }],
+    ['the state is missing',             { kind: 'structured', report_state: null, report_language: 'No issues found' }],
+    ['the state is unknown',             { kind: 'structured', report_state: 'passed', report_language: 'Pass' }],
+    ['the state is a forbidden verdict', { kind: 'structured', report_state: 'pass', report_language: 'Pass' }],
+    ['the row is empty',                 {}],
+  ])('never renders a clean row when %s', (_name, over) => {
+    const model = historyRowModel(row(over));
+    expect(model.kind).toBe('unavailable');
+    expect(model.label).toBe(UNAVAILABLE_ROW_LABEL);
+    expect(model.tone).toBe('unavailable');
+  });
+
+  it('never composes a phrase of its own', () => {
+    // A state with no language attached does NOT get one invented for it.
+    const model = historyRowModel(row({ kind: 'structured', report_state: 'items_need_attention', report_language: null }));
+    expect(model.label).toBe(UNAVAILABLE_ROW_LABEL);
+  });
+
+  it('falls back to a readable name rather than an empty row', () => {
+    expect(historyRowModel(row({ kind: 'legacy', filename: '' })).filename).toBe('Untitled package');
+  });
+});
+
+// ── Forbidden verdict language ────────────────────────────────────────────────
+
+describe('no verdict language anywhere in the page', () => {
+  const files = ['report.js', 'report-model.js', 'proof-scan.js', 'legacy-html.js'];
+
+  it.each(['Ready to file', 'Needs Correction', 'Approved'])(
+    'never ships the phrase "%s" as display copy',
+    (phrase) => {
+      for (const name of files) {
+        expect(codeOf(name)).not.toMatch(new RegExp(phrase, 'i'));
+      }
+      expect(markup).not.toMatch(new RegExp(phrase, 'i'));
+    },
+  );
+
+  it('has no "Pass" or "Review complete" label left in the page', () => {
+    for (const name of files) {
+      const code = codeOf(name);
+      expect(code).not.toMatch(/Review complete/);
+      expect(code).not.toMatch(/'Pass'|"Pass"|>Pass</);
+    }
+    expect(markup).not.toMatch(/Review complete|>Pass</);
+  });
+
+  it('reads report language from the server rather than composing one', () => {
+    // The three approved phrases appear as data the server sent, never as string
+    // literals the page assembles.
+    const model = codeOf('report-model.js');
+    expect(model).toMatch(/result\?\.primary_report_language/);
+    expect(model).not.toMatch(/items need attention/);
+    expect(codeOf('report.js')).not.toMatch(/No issues found|Review incomplete|items need attention/);
+  });
+});
+
+// ── History and legacy wiring (Batch 4) ───────────────────────────────────────
+
+describe('history and legacy source', () => {
+  it('reads history only through the authenticated endpoint', () => {
+    const controller = codeOf('proof-scan.js');
+    // The direct browser-to-Supabase read for scan bodies is gone.
+    expect(controller).not.toMatch(/window\.db/);
+    expect(controller).not.toMatch(/from\('proof_scans'\)/);
+    // Both the list and the detail go through the same authenticated route.
+    expect(controller).toMatch(/fetch\('\/api\/proof-scan-history'/);
+    expect(controller).toMatch(/JSON\.stringify\(\{ scan_id: model\.id \}\)/);
+    // With a bearer token on every call.
+    const calls = controller.match(/fetch\('\/api\/proof-scan-history'/g) || [];
+    expect(calls).toHaveLength(2);
+    const authHeaders = controller.match(/'Authorization': `Bearer \$\{session\.access_token\}`/g) || [];
+    expect(authHeaders.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('reopens a structured scan through the SAME model and renderer a fresh scan uses', () => {
+    const controller = codeOf('proof-scan.js');
+    expect(controller).toMatch(/report\.renderReport\(report\.buildReportModel\(data\.result\), modalBody\)/);
+  });
+
+  it('routes the three detail kinds to three different renderers', () => {
+    const controller = codeOf('proof-scan.js');
+    expect(controller).toMatch(/data\.kind === 'structured'/);
+    expect(controller).toMatch(/data\.kind === 'legacy'/);
+    expect(controller).toMatch(/report\.renderLegacyReport\(/);
+    expect(controller).toMatch(/report\.renderUnavailable\(data\.message, modalBody\)/);
+  });
+
+  it('sanitises legacy HTML instead of inserting it', () => {
+    const controller = codeOf('proof-scan.js');
+    expect(controller).toMatch(/report\.sanitizeLegacyHtml\(raw\)/);
+    expect(controller).not.toMatch(/innerHTML/);
+    // The renderer appends the rebuilt fragment; it never receives a raw string
+    // it could insert.
+    expect(codeOf('report.js')).toMatch(/body\.appendChild\(sanitize\(d\.result_html\)\)/);
+  });
+
+  it('labels a legacy view and explains what it is', () => {
+    const view = src('report.js');
+    expect(view).toMatch(/'Legacy scan'/);
+    expect(view).toMatch(/predates the structured checker/);
+    // Still carries the standing reminder.
+    expect(view).toMatch(/renderLegacyReport[\s\S]*?STAFF_REVIEW_REMINDER/);
+  });
+
+  it('keeps the standing reminder on the unavailable view too', () => {
+    expect(src('report.js')).toMatch(/renderUnavailable[\s\S]*?STAFF_REVIEW_REMINDER/);
+  });
+
+  it('builds history rows from DOM nodes, not an HTML string', () => {
+    const controller = codeOf('proof-scan.js');
+    expect(controller).toMatch(/title\.textContent = model\.filename/);
+    expect(controller).toMatch(/tag\.textContent = model\.label/);
+    expect(controller).not.toMatch(/historyList\.innerHTML/);
+  });
+});
