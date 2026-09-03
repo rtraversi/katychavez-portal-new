@@ -1,14 +1,35 @@
 'use strict';
 
+// Proof Scan page controller.
+//
+// Batch 3 connects the approved lab experience to the structured API. The flow:
+// staff pick a scan type explicitly, choose a PDF, and press Run Proof Scan. The
+// request goes to the authenticated /api/proof-scan, which loads the profile,
+// asks Claude for observations, validates them, and returns composed data. This
+// file hands that data to report.js, which draws it with text nodes only.
+//
+// There is no path here that puts model output into innerHTML. themeResultHtml()
+// survives for one purpose only — opening a LEGACY result_html row from history —
+// and is never reachable from a new scan.
+//
+// History still shows legacy rows and new structured rows side by side with the
+// old renderer. Batch 4 owns structured history, the authenticated detail
+// endpoint, and email. See the History section below for what is deliberately
+// unfinished.
+
 (async function ProofScanPage() {
 
   // ── DOM refs ─────────────────────────────────────────────────────────────────
 
+  const scanTypeSelect  = document.getElementById('ps-scan-type');
   const dropZone        = document.getElementById('ps-drop-zone');
+  const dropTitle       = document.getElementById('ps-drop-title');
+  const dropMeta        = document.getElementById('ps-drop-meta');
   const fileInput       = document.getElementById('ps-file-input');
   const chooseFileBtn   = document.getElementById('ps-choose-file-btn');
   const runBtn          = document.getElementById('ps-run-btn');
   const filenameEl      = document.getElementById('ps-filename');
+  const scanStatus      = document.getElementById('ps-scan-status');
 
   const rulesToggle     = document.getElementById('ps-rules-toggle');
   const rulesToggleLabel = document.getElementById('ps-rules-toggle-label');
@@ -22,6 +43,7 @@
 
   const resultsWrap     = document.getElementById('ps-results-wrap');
   const resultsContent  = document.getElementById('ps-results-content');
+  const storageWarning  = document.getElementById('ps-storage-warning');
   const clearResultsBtn = document.getElementById('ps-clear-results');
 
   const historyList     = document.getElementById('ps-history-list');
@@ -31,15 +53,44 @@
   const modalBody       = document.getElementById('ps-modal-body');
   const modalClose      = document.getElementById('ps-modal-close');
 
+  // Listeners on nodes inside #page-content die with the nodes when the SPA swaps
+  // routes. Document-level ones do not, so they hang off an AbortController that
+  // the next run of this script aborts before wiring its own.
+  window.__psAbort?.abort();
+  const pageAbort = new AbortController();
+  window.__psAbort = pageAbort;
+  const onDocument = (type, fn) =>
+    document.addEventListener(type, fn, { signal: pageAbort.signal });
+
+  // ── Report modules ───────────────────────────────────────────────────────────
+  //
+  // Loaded on demand, both stamped with the deploy version so a released build can
+  // never pair a new renderer with a cached model (or the reverse).
+
+  const v = window.APP_CONFIG?.deployVersion || '';
+  let reportModules = null;
+  async function loadReport() {
+    if (!reportModules) {
+      const [model, view] = await Promise.all([
+        import(`/pages/proof-scan/report-model.js?v=${v}`),
+        import(`/pages/proof-scan/report.js?v=${v}`),
+      ]);
+      reportModules = { ...model, renderReport: view.renderReport };
+    }
+    return reportModules;
+  }
+
   // ── State ────────────────────────────────────────────────────────────────────
 
   let selectedFile        = null;
+  let scanning            = false;
   let rulesOpen           = false;
   let rulesOriginal       = '';
   let notifyEmailOriginal = '';
   let rulesChanged        = false;
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
+  const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const announce = (msg) => { if (scanStatus) scanStatus.textContent = msg; };
 
   async function getSession() {
     return Auth.getSession();
@@ -62,30 +113,112 @@
     rulesFeedback.textContent = msg;
   }
 
-  // ── Drop zone / file input ───────────────────────────────────────────────────
+  // ── Scan type gate ───────────────────────────────────────────────────────────
+  //
+  // The only thing that unlocks upload. Nothing infers it — not the filename, not
+  // the forms in the package, not the model.
 
-  chooseFileBtn.addEventListener('click', () => fileInput.click());
+  function scanTypeValue() {
+    return scanTypeSelect?.value || '';
+  }
 
-  dropZone.addEventListener('keydown', e => {
+  function applyScanTypeGate() {
+    const chosen = Boolean(scanTypeValue());
+    dropZone.classList.toggle('is-locked', !chosen);
+    dropZone.setAttribute('aria-disabled', String(!chosen));
+    dropZone.tabIndex = chosen ? 0 : -1;
+    chooseFileBtn.disabled = !chosen;
+    dropZone.setAttribute('aria-label', chosen
+      ? 'Drop a PDF here to scan'
+      : 'Choose a scan type before adding a PDF');
+    if (!chosen) resetDropZone('Choose a scan type first', 'PDF packages only, up to 12 MB');
+  }
+
+  function resetDropZone(title, meta) {
+    dropZone.classList.remove('is-ready', 'is-dragover');
+    dropTitle.textContent = title;
+    dropMeta.textContent  = meta;
+    chooseFileBtn.textContent = 'Choose PDF';
+  }
+
+  // Changing or clearing the scan type drops the file and the report with it: a
+  // report always belongs to the scan type that produced it.
+  scanTypeSelect.addEventListener('change', () => {
+    clearSelectedFile();
+    clearResults();
+    applyScanTypeGate();
+    if (scanTypeValue()) {
+      resetDropZone('Drop a PDF here', 'PDF packages only, up to 12 MB');
+    }
+  });
+
+  // ── File selection ───────────────────────────────────────────────────────────
+
+  function clearSelectedFile() {
+    selectedFile = null;
+    fileInput.value = '';
+    filenameEl.textContent = '';
+    runBtn.disabled = true;
+    runBtn.classList.remove('is-scanning', 'is-complete');
+    runBtn.textContent = 'Run Proof Scan';
+  }
+
+  async function selectFile(file) {
+    if (!scanTypeValue()) return;
+    const { checkSelectedFile } = await loadReport();
+
+    // A courtesy check so staff hear about an obviously wrong file before a
+    // multi-megabyte base64 read. The server re-checks all of it and is the
+    // authority — this never widens what the API will accept.
+    const problem = checkSelectedFile(file);
+    if (problem) {
+      clearSelectedFile();
+      resetDropZone('Drop a PDF here', problem);
+      dropMeta.style.color = 'var(--color-danger)';
+      Utils.toast(problem, 'error');
+      announce(problem);
+      return;
+    }
+
+    dropMeta.style.color = '';
+    selectedFile = file;
+    dropZone.classList.remove('is-dragover');
+    dropZone.classList.add('is-ready');
+    dropTitle.textContent = 'Package ready';
+    dropMeta.textContent  = `${file.name} · ${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+    chooseFileBtn.textContent = 'Choose another PDF';
+    filenameEl.textContent = 'Ready for review';
+    runBtn.disabled = false;
+    runBtn.classList.remove('is-complete');
+    runBtn.textContent = 'Run Proof Scan';
+    announce(`${file.name} ready for review.`);
+  }
+
+  chooseFileBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (scanTypeValue()) fileInput.click();
+  });
+
+  dropZone.addEventListener('click', () => { if (scanTypeValue()) fileInput.click(); });
+
+  dropZone.addEventListener('keydown', (e) => {
+    if (!scanTypeValue()) return;
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
   });
 
-  dropZone.addEventListener('dragover', e => {
+  dropZone.addEventListener('dragover', (e) => {
+    if (!scanTypeValue()) return;
     e.preventDefault();
-    dropZone.style.borderColor = 'var(--daily)';
-    dropZone.style.background  = 'var(--daily-tint)';
+    dropZone.classList.add('is-dragover');
   });
 
-  dropZone.addEventListener('dragleave', () => {
-    dropZone.style.borderColor = '';
-    dropZone.style.background  = '';
-  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('is-dragover'));
 
-  dropZone.addEventListener('drop', e => {
+  dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
-    dropZone.style.borderColor = '';
-    dropZone.style.background  = '';
-    const file = e.dataTransfer.files[0];
+    dropZone.classList.remove('is-dragover');
+    if (!scanTypeValue()) return;
+    const file = e.dataTransfer?.files?.[0];
     if (file) selectFile(file);
   });
 
@@ -93,68 +226,131 @@
     if (fileInput.files[0]) selectFile(fileInput.files[0]);
   });
 
-  function selectFile(file) {
-    selectedFile     = file;
-    filenameEl.textContent = file.name;
-    runBtn.disabled  = false;
-  }
-
   // ── Run Proof Scan ───────────────────────────────────────────────────────────
 
-  runBtn.addEventListener('click', async () => {
-    if (!selectedFile) return;
+  function scanFailed(message) {
+    runBtn.classList.remove('is-scanning', 'is-complete');
+    runBtn.removeAttribute('aria-busy');
+    runBtn.textContent = 'Run Proof Scan';
+    runBtn.disabled = !selectedFile;
+    filenameEl.textContent = selectedFile ? 'Ready for review' : '';
+    Utils.toast(message, 'error');
+    announce(message);
+  }
 
-    runBtn.disabled    = true;
-    runBtn.textContent = 'Scanning…';
+  runBtn.addEventListener('click', async () => {
+    if (!selectedFile || scanning) return;
+    const scanProfile = scanTypeValue();
+    if (!scanProfile) return;
+
+    const { renderReport, buildReportModel, scanErrorMessage } = await loadReport();
+
+    scanning = true;
+    runBtn.disabled = true;
+    runBtn.classList.remove('is-complete');
+    runBtn.classList.add('is-scanning');          // sweeps for as long as the request runs
+    runBtn.setAttribute('aria-busy', 'true');
+    runBtn.textContent = 'Reviewing package…';
     filenameEl.textContent = selectedFile.name;
+    announce('Reviewing package. This can take a minute.');
 
     try {
-      // Read file as base64
       const file_base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload  = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
+        reader.onload  = () => resolve(String(reader.result).split(',')[1]);
+        reader.onerror = () => reject(new Error('That file could not be read.'));
         reader.readAsDataURL(selectedFile);
       });
 
       const session = await getSession();
-      const res = await fetch('/api/proof-scan', {
-        method:  'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type':  'application/json',
-        },
-        body: JSON.stringify({ file_base64, filename: selectedFile.name }),
+      let res;
+      try {
+        res = await fetch('/api/proof-scan', {
+          method:  'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type':  'application/json',
+          },
+          // The scan type is sent explicitly. It is never derived from the file.
+          body: JSON.stringify({
+            scan_profile: scanProfile,
+            filename:     selectedFile.name,
+            file_base64,
+          }),
+        });
+      } catch {
+        throw new Error('Could not reach the portal. Check your connection and try again.');
+      }
+
+      let data = null;
+      try { data = await res.json(); } catch { data = null; }
+
+      // 400 request errors, 500 unavailable profile, 502 model/validation failure —
+      // all end here. A failed scan is never rendered as a result.
+      if (!res.ok) throw new Error(scanErrorMessage(res.status, data));
+
+      renderReport(buildReportModel(data), resultsContent);
+
+      // A completed scan that did not persist is still a real report. Say so
+      // plainly, and never claim Recent Scans has it.
+      if (data.stored === false) {
+        storageWarning.textContent = data.storage_error
+          || 'This scan completed but could not be saved. It will not appear in Recent Scans — keep this page open or run it again.';
+        storageWarning.classList.remove('hidden');
+      } else {
+        storageWarning.classList.add('hidden');
+        storageWarning.textContent = '';
+      }
+
+      resultsWrap.classList.remove('hidden', 'ps-results-reveal');
+      void resultsWrap.offsetWidth;                 // restart the reveal animation
+      resultsWrap.classList.add('ps-results-reveal');
+
+      runBtn.classList.remove('is-scanning');
+      runBtn.classList.add('is-complete');
+      runBtn.removeAttribute('aria-busy');
+      runBtn.textContent = 'Scan complete';
+      filenameEl.textContent = selectedFile.name;
+      announce(data.primary_report_language || 'Scan complete.');
+
+      resultsWrap.scrollIntoView({
+        block: 'start',
+        behavior: reduceMotion() ? 'auto' : 'smooth',
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-
-      // Show results
-      resultsContent.innerHTML = themeResultHtml(data.html);
-      resultsWrap.classList.remove('hidden');
-      resultsWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-      // Refresh history
-      await loadHistory();
+      if (data.stored !== false) await loadHistory();
 
     } catch (err) {
-      Utils.toast('Scan failed: ' + err.message, 'error');
-      console.error('[proof-scan] run:', err);
+      console.error('[proof-scan] run failed');
+      scanFailed(err.message || 'The scan failed. Nothing was saved.');
     } finally {
-      runBtn.disabled    = false;
-      runBtn.textContent = 'Run Proof Scan';
+      scanning = false;
+      runBtn.disabled = !selectedFile;
     }
   });
 
   // ── Clear results ────────────────────────────────────────────────────────────
+  //
+  // Removes the rendered nodes and the unsaved warning. The chosen scan type
+  // survives — only the user changes that — and so does the selected PDF, so the
+  // same package can be re-run without picking it again.
 
-  clearResultsBtn.addEventListener('click', () => {
+  function clearResults() {
     resultsWrap.classList.add('hidden');
-    resultsContent.innerHTML = '';
-  });
+    resultsWrap.classList.remove('ps-results-reveal');
+    resultsContent.textContent = '';
+    storageWarning.classList.add('hidden');
+    storageWarning.textContent = '';
+    runBtn.classList.remove('is-complete');
+    if (!scanning) runBtn.textContent = 'Run Proof Scan';
+  }
+
+  clearResultsBtn.addEventListener('click', clearResults);
 
   // ── Rules toggle ─────────────────────────────────────────────────────────────
+  //
+  // Unchanged from before this batch. The API already limits this free text to
+  // context: it cannot create a rule ID, a severity, or a report section.
 
   rulesToggle.addEventListener('click', async () => {
     rulesOpen = !rulesOpen;
@@ -243,6 +439,21 @@
   });
 
   // ── History ──────────────────────────────────────────────────────────────────
+  //
+  // BATCH 4 OWNS THIS. What is deliberately unfinished:
+  //   - Structured rows list with a neutral "Structured scan" tag because the
+  //     history endpoint returns only id/filename/status/created_at. It has no
+  //     report_state yet, and inventing "Pass" or "Needs Correction" for a
+  //     structured row is exactly the verdict language this project forbids.
+  //   - Opening a structured row shows a placeholder instead of a report. Its
+  //     result_html is NULL by design, so the legacy modal path would render
+  //     nothing; Batch 4 adds the authenticated structured detail endpoint and
+  //     renders it with report.js.
+  //   - Legacy result_html rows still open through themeResultHtml() below, which
+  //     is the only remaining caller and is never reached by a new scan.
+  // This branch is not deployable until Batch 4 lands.
+
+  const STRUCTURED_STATUS = 'structured';
 
   async function loadHistory() {
     historyList.innerHTML = '<div class="dk-empty">Loading…</div>';
@@ -262,11 +473,15 @@
       }
 
       const rows = scans.map(s => {
-        // pass → ok (green), anything else (needs correction) → warn (amber)
-        const kind  = s.status === 'pass' ? 'ok' : 'warn';
-        const label = s.status === 'pass' ? 'Pass' : 'Needs Correction';
+        const structured = s.status === STRUCTURED_STATUS;
+        // Legacy rows keep their old label. Structured rows get a neutral one —
+        // no verdict is derivable from what this endpoint returns yet.
+        const kind  = structured ? 'mut' : s.status === 'pass' ? 'ok' : 'warn';
+        const label = structured ? 'Structured scan'
+          : s.status === 'pass' ? 'Pass' : 'Needs Correction';
         return `
-          <div class="dk-reg-row ps-history-item" data-scan-id="${s.id}"
+          <div class="dk-reg-row ps-history-item" data-scan-id="${escHtml(s.id)}"
+               data-scan-structured="${structured ? '1' : ''}"
                data-scan-filename="${escHtml(s.filename)}" style="cursor:pointer">
             <div style="min-width:0">
               <div class="dk-reg-title" style="font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">
@@ -279,7 +494,6 @@
       }).join('');
       historyList.innerHTML = `<div class="dk-register">${rows}</div>`;
 
-      // Attach click handlers to load full result
       historyList.querySelectorAll('.ps-history-item').forEach(el => {
         el.addEventListener('click', () => loadScanResult(el.dataset.scanId, el));
       });
@@ -289,29 +503,22 @@
     }
   }
 
-  // Load a past scan result into the results area (we'd need a get-scan-by-id endpoint,
-  // but since we have the result in the history row's data attribute we use the modal with
-  // a re-fetch or show a note directing user to re-run if full HTML not cached).
-  // We show the result_html if available via re-fetch of a dedicated endpoint, OR display
-  // the results in the main results area. For MVP: show a modal with the scan summary.
   async function loadScanResult(scanId, rowEl) {
-    // Fetch full scan result — we'll use a direct Supabase query via the existing client
-    // or we can store result temporarily. Since we need the full HTML, we show it from
-    // the most recent scan in-memory, or we create a lightweight fetch here.
-    // For this implementation, when the user clicks history, we re-display using modal.
-    // The result_html is not returned by the history endpoint (only metadata).
-    // We need to fetch it — add a simple mechanism using the history row.
-
     const filename = rowEl.dataset.scanFilename || '';
     modalTitle.textContent = filename;
-    modalBody.innerHTML    = '<p style="color:var(--ink-soft)">Loading…</p>';
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 
+    // A structured row has no result_html to show. Batch 4 adds the detail
+    // endpoint; until then say so rather than opening an empty modal.
+    if (rowEl.dataset.scanStructured) {
+      modalBody.textContent =
+        'Opening a saved structured scan is not available yet. Run the package again to see its report.';
+      return;
+    }
+
+    modalBody.innerHTML = '<p style="color:var(--ink-soft)">Loading…</p>';
     try {
-      const session = await getSession();
-      // Re-fetch from proof_scans by id using a simple POST to a generic query endpoint
-      // Since we don't have a dedicated get-scan-by-id, use the supabase client directly
       const { data: rows } = await window.db
         .from('proof_scans')
         .select('result_html, filename, status')
@@ -319,20 +526,21 @@
         .limit(1);
 
       if (!rows?.length) throw new Error('Scan not found');
+      if (!rows[0].result_html) throw new Error('This scan has no legacy result to show.');
       modalBody.innerHTML = themeResultHtml(rows[0].result_html);
     } catch (err) {
       modalBody.innerHTML = `<p style="color:var(--color-danger)">Could not load result: ${escHtml(err.message)}</p>`;
     }
   }
 
-  // Neutralize light-mode colors baked into AI-generated result HTML so it inherits
-  // the theme tokens (readable in dark mode), and tag the status column so Pass /
-  // Needs-Correction keep a theme-aware green/red. Also fixes older stored scans.
+  // LEGACY ONLY. Neutralizes light-mode colors baked into result HTML written by
+  // the pre-Batch-2 pipeline, so old stored scans stay readable in dark mode.
+  // New scans never reach this function — they are structured data, drawn by
+  // report.js as text nodes.
   function themeResultHtml(raw) {
     const tpl = document.createElement('template');
     tpl.innerHTML = String(raw || '');
 
-    // Drop hardcoded color / background declarations from inline styles.
     tpl.content.querySelectorAll('[style]').forEach(el => {
       const kept = el.getAttribute('style')
         .split(';')
@@ -342,7 +550,6 @@
       else el.removeAttribute('style');
     });
 
-    // Tag the status column (first cell of each row) for theme-aware recoloring.
     tpl.content.querySelectorAll('tr').forEach(tr => {
       const cell = tr.querySelector('td, th');
       if (!cell) return;
@@ -355,7 +562,7 @@
   }
 
   function escHtml(s) {
-    return String(s)
+    return String(s ?? '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -366,16 +573,19 @@
 
   modalClose.addEventListener('click', closeModal);
   modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal(); });
+  onDocument('keydown', e => {
+    if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+  });
 
   function closeModal() {
     modal.classList.add('hidden');
     document.body.style.overflow = '';
-    modalBody.innerHTML = '';
+    modalBody.textContent = '';
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 
+  applyScanTypeGate();
   await loadHistory();
 
 })();

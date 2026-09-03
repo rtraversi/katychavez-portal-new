@@ -2328,3 +2328,321 @@ body.help-drawer-lock { overflow: hidden; }
 .help-table th { text-align: left; background: var(--paper-deep); color: var(--ink-faint); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 9px 12px; border-bottom: 1px solid var(--line); }
 .help-table td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .help-table tr:last-child td { border-bottom: 0; }
+
+/* ═══ Proof Scan (pages/proof-scan) ══════════════════════════════════════════
+   Ported from the approved UI Lab. Portal tokens only — nothing here invents a
+   colour, a font, or a scale. The lab's own shell (.ps-lab-*), fixture picker,
+   theme toggle and diagnostic styling deliberately did not come across.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ps-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ── Scan type: the explicit choice that unlocks everything below it ───────── */
+.ps-scantype { margin: 0 0 var(--space-4); max-width: 430px; }
+.ps-scantype label { display: block; font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); }
+.ps-scantype p { color: var(--ink-soft); font-size: var(--text-sm); margin: var(--space-2) 0 0; }
+.ps-select {
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  color: var(--ink); font: inherit; padding: var(--space-2) var(--space-3); width: 100%;
+}
+.ps-select:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+/* ── The drop zone. A package lands like a document placed on a review desk:
+      one clear response to the user's action. ─────────────────────────────── */
+.ps-drop {
+  position: relative; text-align: center; cursor: pointer;
+  background: var(--surface); border: 2px dashed var(--line-strong);
+  border-radius: var(--radius-md); padding: var(--space-8) var(--space-4);
+  margin-bottom: var(--space-4);
+  transition: border-color .16s ease, background-color .16s ease, transform .16s cubic-bezier(.2,.8,.2,1);
+}
+.ps-drop-icon { width: 40px; height: 40px; margin: 0 auto var(--space-3); color: var(--ink-faint); display: block; }
+.ps-drop-title { font-family: var(--font-serif); font-weight: 600; font-size: 15.5px; margin: 0 0 var(--space-1); color: var(--ink); }
+.ps-drop-meta { font-size: var(--text-sm); color: var(--ink-soft); margin: 0 0 var(--space-3); overflow-wrap: anywhere; }
+
+.ps-drop:not(.is-locked):hover,
+.ps-drop.is-dragover { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 5%, var(--surface)); }
+.ps-drop.is-dragover { transform: scale(1.006); }
+.ps-drop:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+
+/* Locked until a scan type is chosen — visibly unavailable, not merely inert. */
+.ps-drop.is-locked { cursor: not-allowed; opacity: .55; border-style: dashed; }
+.ps-drop.is-locked .btn:disabled { cursor: not-allowed; }
+
+.ps-drop.is-ready {
+  border-color: var(--color-success); border-style: solid;
+  animation: ps-file-land .34s cubic-bezier(.34,1.56,.64,1) both;
+}
+.ps-drop.is-ready .ps-drop-icon { color: var(--color-success); }
+.ps-drop.is-ready::after {
+  content: '✓'; position: absolute; top: var(--space-3); right: var(--space-3);
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--color-success); color: #fff; border: 3px solid var(--surface);
+  font-size: 12px; font-weight: 700;
+}
+@keyframes ps-file-land {
+  0% { transform: scale(.992); } 65% { transform: scale(1.003); } 100% { transform: scale(1); }
+}
+
+/* ── The scan moment. A short sweep reads as a deliberate review rather than an
+      indefinite spinner; the completed state stays put so the click concludes. */
+.ps-scan-btn {
+  position: relative; isolation: isolate; overflow: hidden; transform: translateY(0);
+  transition: transform .12s ease, box-shadow .12s ease, background-color .18s ease;
+}
+.ps-scan-btn:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 25%, transparent);
+}
+.ps-scan-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.ps-scan-btn::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: color-mix(in srgb, white 24%, transparent); transform: translateX(-105%);
+}
+/* Loops for as long as the real request runs — no fixed timer. */
+.ps-scan-btn.is-scanning::before { animation: ps-scan-sweep 1.1s cubic-bezier(.4,0,.6,1) infinite; }
+.ps-scan-btn.is-complete { background: var(--color-success); }
+.ps-scan-btn.is-complete::after { content: '✓'; margin-left: var(--space-2); }
+@keyframes ps-scan-sweep { from { transform: translateX(-105%); } to { transform: translateX(105%); } }
+
+.ps-runmeta { font-size: var(--text-sm); color: var(--ink-soft); }
+
+/* ── The report opens like a reviewed page being unsealed. ─────────────────── */
+.ps-results-reveal #ps-results-content { animation: ps-report-unseal .42s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes ps-report-unseal {
+  from { clip-path: inset(0 0 100% 0); opacity: .65; } to { clip-path: inset(0); opacity: 1; }
+}
+
+/* Stored-but-unsaved: prominent, never destructive. The report below it is real. */
+.ps-storage-warning {
+  display: flex; gap: var(--space-2); align-items: flex-start;
+  margin-bottom: var(--space-3); padding: var(--space-3);
+  border-radius: var(--radius-md); font-size: var(--text-sm); line-height: 1.5;
+  background: var(--color-warning-bg); color: var(--color-warning);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 32%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-drop, .ps-scan-btn { transition: none; }
+  .ps-drop.is-ready { animation: none; }
+  .ps-scan-btn.is-scanning::before { animation: none; }
+  .ps-results-reveal #ps-results-content { animation: none; }
+}
+
+/* ── Structured report renderer (pages/proof-scan/report.js) ──────────────── */
+
+.psr-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4);
+  padding-bottom: var(--space-3); margin-bottom: var(--space-4); border-bottom: 1px solid var(--line);
+}
+.psr-file     { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.psr-casetype { font-size: var(--text-sm); color: var(--ink-soft); margin-top: 2px; }
+.psr-head-right { text-align: right; flex: 0 0 auto; }
+.psr-scanned  { font-size: var(--text-sm); color: var(--ink-faint); }
+.psr-verdict  { font-weight: 600; margin-top: 2px; }
+.psr-verdict--attention  { color: var(--color-warning); }
+.psr-verdict--incomplete { color: var(--ink-soft); }
+.psr-verdict--clear      { color: var(--color-success); }
+
+.psr-toggle-all {
+  background: none; border: none; padding: 2px 0; margin-top: 4px; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--color-primary);
+}
+.psr-toggle-all:hover { text-decoration: underline; }
+
+.psr-block { margin-bottom: var(--space-4); animation: psr-in .3s ease both; }
+.psr-block:nth-of-type(1) { animation-delay: .02s; }
+.psr-block:nth-of-type(2) { animation-delay: .07s; }
+.psr-block:nth-of-type(3) { animation-delay: .12s; }
+@keyframes psr-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.psr-block-head {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm); font-weight: 600; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--ink-soft); margin: 0 0 var(--space-2);
+}
+.psr-count {
+  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px;
+  background: var(--line); color: var(--ink-soft); text-transform: none; letter-spacing: 0;
+}
+
+.psr-sev {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: 1px 6px; border-radius: 99px;
+}
+.psr-sev--fatal    { background: var(--color-danger-bg);  color: var(--color-danger); }
+.psr-sev--warning  { background: var(--color-warning-bg); color: var(--color-warning); }
+.psr-sev--advisory { background: var(--line);             color: var(--ink-soft); }
+
+.psr-evidence {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  color: var(--ink-soft); background: var(--line); border-radius: 4px;
+  padding: 4px 8px; margin-top: 6px; display: inline-block; overflow-wrap: anywhere;
+}
+
+/* ── Client summary: identity first, contact facts as a quiet ledger ───────── */
+.psr-summary-strip {
+  display: grid; gap: var(--space-3); padding: var(--space-3) 0;
+  grid-template-columns: minmax(190px, 1.35fr) repeat(3, minmax(125px, 1fr));
+}
+.psr-fact-k { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.psr-fact-v { color: var(--ink); font-size: var(--text-sm); font-weight: 600; margin-top: 1px; overflow-wrap: anywhere; }
+.psr-client-details {
+  display: grid; gap: var(--space-3); grid-template-columns: repeat(12, minmax(0, 1fr));
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  padding: var(--space-3) 0; margin-bottom: var(--space-3);
+}
+.psr-detail--dob     { grid-column: span 3; }
+.psr-detail--ssn     { grid-column: span 2; }
+.psr-detail--uscis   { grid-column: span 4; }
+.psr-detail--phone   { grid-column: span 3; }
+.psr-detail--email   { grid-column: span 5; }
+.psr-detail--address { grid-column: span 7; }
+
+/* ── Included-in-the-scan table ───────────────────────────────────────────── */
+.psr-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.psr-table td { padding: 2px 0; vertical-align: baseline; font-size: 12px; }
+.psr-table td.psr-td-form  { font-weight: 500; color: var(--ink-soft); white-space: nowrap; padding-right: var(--space-5); }
+.psr-table td.psr-td-label { color: var(--ink-faint); width: 100%; }
+.psr-td-tick { color: var(--color-success); text-align: right; width: 1em; font-weight: 700; }
+.psr-tr--bad .psr-td-tick { color: var(--color-warning); }
+.psr-instance { font-weight: 400; font-size: 11px; color: var(--ink-faint); margin-left: 2px; }
+
+/* ── Form groups ──────────────────────────────────────────────────────────── */
+.psr-fold { border-top: 1px solid var(--line); }
+.psr-fold:last-child { border-bottom: 1px solid var(--line); }
+.psr-fold-head { display: flex; align-items: baseline; gap: var(--space-2); padding: 6px 0; cursor: pointer; list-style: none; }
+.psr-fold-head::-webkit-details-marker { display: none; }
+.psr-fold-head::before { content: '▸'; color: var(--ink-faint); font-size: 10px; }
+.psr-fold[open] > .psr-fold-head::before { content: '▾'; }
+.psr-fold-head:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+.psr-fold-form { font-weight: 600; color: var(--ink); font-size: var(--text-sm); }
+.psr-fold-meta { margin-left: auto; font-size: 12px; }
+.psr-fold-meta--ok    { color: var(--ink-faint); }
+.psr-fold-meta--bad   { color: var(--color-warning); font-weight: 600; }
+.psr-fold-meta--muted { margin-left: auto; font-size: 12px; color: var(--ink-faint); }
+.psr-fold-body { padding: 2px 0 8px var(--space-4); }
+.psr-fold-head:hover .psr-fold-form { color: var(--color-primary); }
+
+.psr-fold--clean > .psr-fold-head .psr-fold-form { color: var(--color-success); }
+.psr-fold--clean > .psr-fold-head .psr-fold-meta--ok { color: var(--color-success); }
+.psr-fold--clean > .psr-fold-head::before { color: var(--color-success); }
+.psr-fold--clean > .psr-fold-head {
+  background: linear-gradient(90deg, var(--color-success-bg), transparent 60%); border-radius: 5px;
+}
+.psr-fold--bad > .psr-fold-head .psr-fold-form { color: var(--color-warning); }
+.psr-fold--muted > .psr-fold-head .psr-fold-form { color: var(--ink-soft); font-weight: 500; }
+
+/* A thin cleared/total bar, so a column can be scanned without reading counts. */
+.psr-bar { height: 2px; background: var(--line); border-radius: 2px; margin: 0 0 6px var(--space-4); overflow: hidden; }
+.psr-bar-fill { display: block; height: 100%; transform-origin: left center; animation: psr-sweep .55s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes psr-sweep { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.psr-bar-fill--ok  { background: var(--color-success); }
+.psr-bar-fill--bad { background: var(--color-warning); }
+
+/* Closed, the fold names what is outstanding. Open, the rows below say it. */
+.psr-outstanding { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 8px var(--space-4); }
+.psr-fold[open] > .psr-outstanding { display: none; }
+.psr-out { display: inline-flex; align-items: baseline; gap: 5px; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.psr-out--needs_attention { background: color-mix(in srgb, var(--color-warning-bg) 60%, transparent); color: var(--color-warning); }
+.psr-out--not_checked     { background: var(--line); color: var(--ink-soft); }
+.psr-out-mark { font-weight: 700; }
+
+/* ── One row shape for every check ────────────────────────────────────────── */
+.psr-check {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  font-size: var(--text-sm); padding: 3px var(--space-2);
+  border-radius: 999px; color: var(--ink-soft); animation: psr-tick .22s ease both;
+}
+.psr-check-mark { width: 1em; flex: 0 0 auto; font-weight: 700; font-size: 11px; }
+.psr-check-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.psr-check-text strong { font-weight: 600; }
+.psr-rest { font-weight: 400; opacity: .9; }
+.psr-where { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
+.psr-check--clear .psr-check-mark { color: var(--color-success); animation: psr-pop .26s cubic-bezier(.34,1.56,.64,1) both; }
+.psr-check--needs_attention {
+  background: color-mix(in srgb, var(--color-warning-bg) 60%, transparent);
+  color: var(--color-warning); font-weight: 600;
+}
+.psr-check--needs_attention .psr-check-mark,
+.psr-check--needs_attention .psr-where { color: var(--color-warning); }
+.psr-check--not_checked { background: color-mix(in srgb, var(--ink-faint) 8%, transparent); color: var(--ink); }
+.psr-check--not_checked .psr-check-mark { color: var(--ink-faint); }
+.psr-check:nth-child(1) { animation-delay: 0s; }
+.psr-check:nth-child(2) { animation-delay: .03s; }
+.psr-check:nth-child(3) { animation-delay: .06s; }
+.psr-check:nth-child(4) { animation-delay: .09s; }
+.psr-check:nth-child(5) { animation-delay: .12s; }
+.psr-check:nth-child(6) { animation-delay: .15s; }
+.psr-check:nth-child(7) { animation-delay: .18s; }
+.psr-check:nth-child(8) { animation-delay: .21s; }
+.psr-check:nth-child(n+9) { animation-delay: .24s; }
+@keyframes psr-tick { from { opacity: 0; transform: translateX(-3px); } to { opacity: 1; transform: none; } }
+@keyframes psr-pop {
+  from { transform: scale(.4); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* ── A notice: one line, opens to the detail ──────────────────────────────── */
+.psr-notice { border-radius: 999px; margin-bottom: 4px; }
+.psr-notice[open] { border-radius: 16px; }
+.psr-notice--needs_attention { background: color-mix(in srgb, var(--color-warning-bg) 60%, transparent); }
+.psr-notice--not_checked     { background: color-mix(in srgb, var(--ink-faint) 8%, transparent); }
+.psr-notice-head {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  padding: 6px var(--space-3); cursor: pointer; list-style: none; border-radius: 999px;
+  font-size: var(--text-sm); font-weight: 400; color: var(--color-warning);
+}
+.psr-notice--not_checked .psr-notice-head { color: var(--ink); }
+.psr-notice-head::-webkit-details-marker { display: none; }
+.psr-notice-head::after { content: '⌄'; margin-left: auto; opacity: .5; transition: transform .18s; }
+.psr-notice[open] > .psr-notice-head::after { transform: rotate(180deg); }
+.psr-notice-head:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.psr-notice-body { padding: 0 var(--space-3) 10px calc(var(--space-3) + 1em + var(--space-2)); }
+.psr-nf { display: flex; gap: var(--space-2); font-size: 12px; padding: 1px 0; }
+.psr-nf-k { color: var(--ink-faint); min-width: 150px; flex: 0 0 auto; }
+.psr-nf-v { color: var(--ink); overflow-wrap: anywhere; }
+
+/* Checks a missing form blocked. Quiet, and only inside that form's own entry. */
+.psr-blocked-head { font-size: 12px; color: var(--ink-faint); margin-top: 6px; }
+.psr-blocked { margin: 2px 0 0; padding-left: var(--space-4); font-size: 12px; color: var(--ink-soft); }
+.psr-blocked li { padding: 1px 0; }
+
+/* Disclosure bodies animate open. Heights are set inline by report.js. */
+.psr-notice-body, .psr-fold-body {
+  overflow: hidden; transition: height .22s cubic-bezier(.2,.8,.2,1), opacity .18s ease;
+}
+
+/* The standing reminder. Present on every report, in every state, never loud. */
+.psr-standing-note {
+  margin: var(--space-5) 0 0; padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm); color: var(--ink-faint);
+}
+
+@media (max-width: 800px) {
+  .psr-summary-strip  { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .psr-client-details { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .psr-client-details > .psr-fact { grid-column: span 3; }
+  .psr-detail--email, .psr-detail--address { grid-column: span 6; }
+  .psr-head { flex-direction: column; gap: var(--space-2); }
+  .psr-head-right { text-align: left; }
+  .psr-nf { flex-direction: column; gap: 0; }
+  .psr-nf-k { min-width: 0; }
+}
+@media (max-width: 520px) {
+  .psr-summary-strip, .psr-client-details { grid-template-columns: 1fr; }
+  .psr-client-details > .psr-fact { grid-column: 1; }
+  .psr-where { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .psr-block, .psr-check, .psr-bar-fill, .psr-check--clear .psr-check-mark { animation: none; }
+  .psr-notice-body, .psr-fold-body { transition: none; }
+  .psr-notice-head::after { transition: none; }
+}
