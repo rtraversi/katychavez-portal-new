@@ -47,20 +47,21 @@ CHECK FOR:
 2. Page counts — flag missing or extra pages for each form identified
 3. Blank or duplicate pages. Note: multiple G-1450 and/or G-1650 forms in a single package are normal and expected (one per filing fee) — do not flag them as duplicates.
 4. Required signatures — applicant and attorney/preparer on all applicable forms. Exception: the I-765WS does not require a signature — do not flag it.
-5. Signature dates — attorney must not sign before applicant
-6. Name consistency — BENEFICIARY name must match across all USCIS forms and beneficiary supporting documents. PETITIONER/SPONSOR documents in a different name are expected and should not be flagged.
-7. A-Number consistency — must match across all forms where present. A-Numbers may appear as A-XXXXXXXXX or XXX-XXX-XXX — treat these as equivalent formats and only flag if the underlying digits actually differ.
-8. Address consistency — mailing address must match across forms
-9. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
+5. Name consistency — BENEFICIARY name must match across all USCIS forms and beneficiary supporting documents. PETITIONER/SPONSOR documents in a different name are expected and should not be flagged.
+6. A-Number consistency — must match across all forms where present. A-Numbers may appear as A-XXXXXXXXX or XXX-XXX-XXX — treat these as equivalent formats and only flag if the underlying digits actually differ.
+7. Address consistency — mailing address must match across forms
+8. Bank routing number validation on any G-1650 forms found. G-1650 is for ACH bank drafts and carries a routing number. G-1450 is the credit card equivalent — it has no routing number and requires no bank validation.
 
-USCIS FORM REFERENCE (current editions — updated daily from USCIS.gov):
+USCIS FORM REFERENCE. One line per form: FORM|page count|the edition date we have on file.
+This list is re-checked against USCIS.gov weekly, and a line may carry an annotation:
+- "(OUT OF DATE: USCIS.gov now publishes <date>)" means our stored edition has been superseded. <date> is the real current edition. Judge the package against <date>, and flag any page still carrying our older stored edition.
+- "(UNVERIFIED: could not confirm against USCIS.gov)" means the check failed and we do not know the current edition. Do NOT raise an edition finding for that form. Say instead that its edition could not be verified.
 {{FORM_EDITIONS}}
 
 BANK ROUTING REFERENCE (for G-1650 validation):
 021000021 JPMorgan Chase, 021000089 Citibank, 026009593 Bank of America, 021001208 Bank of America, 026012881 Bank of America, 021200339 Wells Fargo, 053000219 Wells Fargo, 021202337 JPMorgan Chase, 044000037 JPMorgan Chase, 071000013 JPMorgan Chase, 322271627 JPMorgan Chase, 083000108 PNC Bank, 041000124 PNC Bank, 054000030 PNC Bank, 031000053 PNC Bank, 021052053 Capital One, 056073502 Capital One, 051405515 Capital One, 065000090 Capital One, 031100649 TD Bank, 011103093 TD Bank, 267084131 TD Bank, 021300077 HSBC, 022000020 KeyBank, 041001039 KeyBank, 121122676 US Bank, 091000022 US Bank, 071904779 US Bank, 081000210 US Bank, 314972853 Navy Federal, 256074974 Navy Federal, 311079674 USAA, 114994196 USAA, 261271694 Truist, 053101121 Truist, 055002707 Truist, 042101706 Huntington, 044201847 Huntington, 011401533 Citizens Bank, 241070417 Citizens Bank
 
 NOTES:
-- G-1450 and G-1650 do NOT require a date next to the signature — do not flag this.
 - G-1450 is the credit card payment form; G-1650 is the ACH bank draft form. Multiple G-1450/G-1650 in one package are normal (separate fees per filing). Do not flag them as duplicates. Only G-1650 has a routing number to validate.
 - For DACA (I-821D) packages: the I-765WS is never listed on the G-28 attorney of record — do not flag its absence from the G-28.
 - I-765WS does not require a signature — do not flag it as unsigned.
@@ -68,9 +69,10 @@ NOTES:
 - When a supporting document (birth certificate, passport, military ID, etc.) is in a name different from the beneficiary, first determine whether it logically belongs to the petitioner or a third party before flagging it as an error.
 
 Format your response as:
+- FIRST LINE: an HTML comment carrying the overall status, exactly one of <!--STATUS:PASS--> or <!--STATUS:NEEDS CORRECTION-->
 - A summary section (overall status: PASS / NEEDS CORRECTION), including the identified case type and the names of the beneficiary and petitioner/sponsor if determinable
 - An HTML table: Status | Form/Document | Issue | Detail
-- A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address, signature date order)
+- A cross-check section (beneficiary name consistency across USCIS forms, A-Number, address)
 - If a G-1650 is found: a Bank Validation section showing routing number, bank name on form, expected bank, and match status. (G-1450 is credit card — no routing validation needed.)`;
 
 // Generation cap. Below the page's 10-minute poll ceiling, so a hung stream
@@ -102,16 +104,38 @@ async function loadEditions(admin) {
   try {
     const { data: rows } = await admin
       .from('form_editions')
-      .select('form_number, pages, edition_date')
+      .select('form_number, pages, edition_date, upstream_edition, check_status')
       .order('form_number', { ascending: true });
     return rows?.length ? rows : null;
   } catch { return null; }
 }
 
+// Render the form_editions rows for the prompt.
+//
+// The weekly cron (process-form-edition-check.js) stamps every row against
+// USCIS.gov. Pass its verdict through rather than presenting each stored edition
+// as fact: a known-superseded date sent as ground truth makes the model fail
+// packages that carry the CORRECT current form, which is a false positive we
+// manufacture ourselves.
+//
+// 'unknown' (never auto-checked) is deliberately left unannotated. We have no
+// verdict for those, and marking them unverified would mute the edition check
+// across the board until the first cron run.
+export function formatEditions(rows) {
+  return rows.map(r => {
+    const base = `${r.form_number}|${r.pages}p|${r.edition_date}`;
+    if (r.check_status === 'stale' && r.upstream_edition) {
+      return `${base} (OUT OF DATE: USCIS.gov now publishes ${r.upstream_edition})`;
+    }
+    if (r.check_status === 'error') {
+      return `${base} (UNVERIFIED: could not confirm against USCIS.gov)`;
+    }
+    return base;
+  }).join(', ');
+}
+
 async function buildPrompt(admin, editionRows) {
-  const formEditions = editionRows
-    ? editionRows.map(r => `${r.form_number}|${r.pages}p|${r.edition_date}`).join(', ')
-    : FALLBACK_EDITIONS;
+  const formEditions = editionRows ? formatEditions(editionRows) : FALLBACK_EDITIONS;
 
   let customInstructions = '';
   try {
@@ -207,9 +231,19 @@ async function notify(env, admin, fields) {
   }
 }
 
+// Overall pass/fail. The prompt asks for an explicit <!--STATUS:...--> marker;
+// the bare substring test is the fallback for a response that omits it. Without
+// the marker, the phrase appearing anywhere in a finding's prose flips the whole
+// scan's status.
+export function readStatus(html) {
+  const marker = html.match(/<!--\s*STATUS:\s*(PASS|NEEDS CORRECTION)\s*-->/i);
+  if (marker) return marker[1].toUpperCase() === 'PASS' ? 'pass' : 'needs_correction';
+  return html.includes('NEEDS CORRECTION') ? 'needs_correction' : 'pass';
+}
+
 // ── Turning a generation into a stored verdict ────────────────────────────────
 // Pure, and exported for tests, because both halves have bitten before: the
-// status is a substring match over model prose, and a report cut off at
+// status used to be a substring match over model prose, and a report cut off at
 // max_tokens used to be stored as a clean PASS because stop_reason was never
 // read. A truncated report is never a pass — it is a report nobody has seen the
 // end of, and the banner has to say so on the report itself.
@@ -218,7 +252,7 @@ export function reportFrom(text, stopReason) {
   const html = truncated
     ? `<div class="proof-result"><strong>⚠ This report was cut off before it finished.</strong> It is incomplete — re-run the scan or split the package.</div>${text}`
     : text;
-  const status = (truncated || html.includes('NEEDS CORRECTION')) ? 'needs_correction' : 'pass';
+  const status = truncated ? 'needs_correction' : readStatus(html);
   return { html, status, truncated };
 }
 
