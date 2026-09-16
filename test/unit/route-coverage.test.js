@@ -12,10 +12,13 @@
 import { describe, it, expect } from 'vitest';
 import { routes } from '../../_worker.js';
 
-// Raw source of everything that could call an API endpoint.
-const pageSources = import.meta.glob('../../{pages,js}/**/*.js', {
-  query: '?raw', import: 'default', eager: true,
-});
+// Raw source of everything that could call an API endpoint. Vendored
+// third-party libraries (js/vendor/**) are excluded -- their own API paths
+// (e.g. Supabase Realtime's /api/broadcast) aren't ours to route.
+const pageSources = import.meta.glob(
+  ['../../{pages,js}/**/*.js', '!../../js/vendor/**'],
+  { query: '?raw', import: 'default', eager: true },
+);
 
 // Paths served by something other than the exact-match table (prefix handlers
 // dispatched earlier in the worker, or endpoints that legitimately 404 for the
