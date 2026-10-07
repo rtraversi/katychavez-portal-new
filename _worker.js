@@ -77,6 +77,11 @@ import { onRequest as listSignatures }              from './functions/api/list-s
 import { onRequest as proofScan }                   from './functions/api/proof-scan.js';
 import { onRequest as proofScanHistory }            from './functions/api/proof-scan-history.js';
 import { onRequest as proofScanConfig }             from './functions/api/proof-scan-config.js';
+import { onRequest as proofScanV2Case }             from './functions/api/proof-scan-v2-case.js';
+import { onRequest as proofScanV2Cases }            from './functions/api/proof-scan-v2-cases.js';
+import { onRequest as proofScanV2Person }           from './functions/api/proof-scan-v2-person.js';
+import { onRequest as proofScanV2Suggestion }       from './functions/api/proof-scan-v2-suggestion.js';
+import { onRequest as proofScanV2Ssn }              from './functions/api/proof-scan-v2-ssn.js';
 import { onRequest as translationStart, runTranslationTmpCleanup } from './functions/api/translation-start.js';
 import { onRequest as translationProcess }          from './functions/api/translation-process.js';
 import { onRequest as translationPoll }             from './functions/api/translation-poll.js';
@@ -227,6 +232,11 @@ export const routes = {
   '/api/proof-scan':                     proofScan,
   '/api/proof-scan-history':             proofScanHistory,
   '/api/proof-scan-config':              proofScanConfig,
+  '/api/proof-scan-v2-case':             proofScanV2Case,
+  '/api/proof-scan-v2-cases':            proofScanV2Cases,
+  '/api/proof-scan-v2-person':           proofScanV2Person,
+  '/api/proof-scan-v2-suggestion':       proofScanV2Suggestion,
+  '/api/proof-scan-v2-ssn':              proofScanV2Ssn,
   '/api/translation-start':             translationStart,
   '/api/translation-process':           translationProcess,
   '/api/translation-poll':              translationPoll,
