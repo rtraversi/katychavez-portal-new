@@ -12,9 +12,15 @@ const newId = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`
 let clock = Date.parse('2026-10-07T12:00:00Z');
 const now = () => new Date(clock += 1000).toISOString();
 
+// Unset columns come back as null from Postgres, not undefined.
+const PERSON_COLUMNS = ['first_name', 'middle_name', 'last_name', 'street', 'apt_type', 'apt_number', 'city',
+  'state', 'zip', 'in_care_of', 'province', 'postal_code', 'country', 'date_of_birth', 'a_number',
+  'ead_expiration', 'phone', 'email'];
+
 const DEFAULTS = {
   proof_scan_cases: () => ({ created_at: now(), updated_at: now() }),
   proof_scan_people: () => ({
+    ...Object.fromEntries(PERSON_COLUMNS.map((c) => [c, null])),
     is_main: false, field_sources: {}, changed_since_approval: false, no_evidence: false,
     approved_at: null, approved_by: null, ssn_encrypted: null, ssn_last4: null,
     created_at: now(), updated_at: now(),

@@ -82,6 +82,7 @@ import { onRequest as proofScanV2Cases }            from './functions/api/proof-
 import { onRequest as proofScanV2Person }           from './functions/api/proof-scan-v2-person.js';
 import { onRequest as proofScanV2Suggestion }       from './functions/api/proof-scan-v2-suggestion.js';
 import { onRequest as proofScanV2Ssn }              from './functions/api/proof-scan-v2-ssn.js';
+import { onRequest as proofScanV2Evidence }         from './functions/api/proof-scan-v2-evidence.js';
 import { onRequest as translationStart, runTranslationTmpCleanup } from './functions/api/translation-start.js';
 import { onRequest as translationProcess }          from './functions/api/translation-process.js';
 import { onRequest as translationPoll }             from './functions/api/translation-poll.js';
@@ -237,6 +238,7 @@ export const routes = {
   '/api/proof-scan-v2-person':           proofScanV2Person,
   '/api/proof-scan-v2-suggestion':       proofScanV2Suggestion,
   '/api/proof-scan-v2-ssn':              proofScanV2Ssn,
+  '/api/proof-scan-v2-evidence':         proofScanV2Evidence,
   '/api/translation-start':             translationStart,
   '/api/translation-process':           translationProcess,
   '/api/translation-poll':              translationPoll,
