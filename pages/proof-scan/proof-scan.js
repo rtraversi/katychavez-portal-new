@@ -52,6 +52,7 @@
   const modalTitle      = document.getElementById('ps-modal-title');
   const modalBody       = document.getElementById('ps-modal-body');
   const modalClose      = document.getElementById('ps-modal-close');
+  let modalReturnFocus  = null;
 
   // Listeners on nodes inside #page-content die with the nodes when the SPA swaps
   // routes. Document-level ones do not, so they hang off an AbortController that
@@ -71,16 +72,18 @@
   let reportModules = null;
   async function loadReport() {
     if (!reportModules) {
-      const [model, view, legacy] = await Promise.all([
+      const [model, view, legacy, exploration] = await Promise.all([
         import(`/pages/proof-scan/report-model.js?v=${v}`),
         import(`/pages/proof-scan/report.js?v=${v}`),
         import(`/pages/proof-scan/legacy-html.js?v=${v}`),
+        import(`/pages/proof-scan/exploration.js?v=${v}`),
       ]);
       reportModules = {
         ...model,
         renderReport:       view.renderReport,
         renderLegacyReport: view.renderLegacyReport,
         renderUnavailable:  view.renderUnavailable,
+        renderExploration:  exploration.renderExploration,
         sanitizeLegacyHtml: legacy.sanitizeLegacyHtml,
       };
     }
@@ -250,7 +253,7 @@
     const scanProfile = scanTypeValue();
     if (!scanProfile) return;
 
-    const { renderReport, buildReportModel, scanErrorMessage } = await loadReport();
+    const { renderReport, buildReportModel, scanErrorMessage, renderExploration } = await loadReport();
 
     scanning = true;
     runBtn.disabled = true;
@@ -296,13 +299,29 @@
       // all end here. A failed scan is never rendered as a result.
       if (!res.ok) throw new Error(scanErrorMessage(res.status, data));
 
-      renderReport(buildReportModel(data), resultsContent);
+      // The exploratory "Possible issues" seam. `data.exploration` is not part of
+      // the validated checklist contract and no endpoint sends it today, so the
+      // section draws nothing on a real scan. When a separately validated
+      // exploratory result and authenticated decision handlers exist, they attach
+      // here — the strict result validator is untouched either way.
+      renderReport(buildReportModel(data), resultsContent, {
+        exploration: data.exploration,
+        renderExploration,
+        explorationHandlers: explorationHandlers(),
+      });
 
-      // A completed scan that did not persist is still a real report. Say so
-      // plainly, and never claim Recent Scans has it.
+      // Persistence and notification failures never change the validated report,
+      // but staff still need an honest operational warning beside it.
+      const warnings = [];
       if (data.stored === false) {
-        storageWarning.textContent = data.storage_error
-          || 'This scan completed but could not be saved. It will not appear in Recent Scans — keep this page open or run it again.';
+        warnings.push(data.storage_error
+          || 'This scan completed but could not be saved. It will not appear in Recent Scans — keep this page open or run it again.');
+      }
+      if (data.notification_attempted === true && data.notification_sent !== true) {
+        warnings.push('The scan was saved, but the notification email was not sent.');
+      }
+      if (warnings.length) {
+        storageWarning.textContent = warnings.join(' ');
         storageWarning.classList.remove('hidden');
       } else {
         storageWarning.classList.add('hidden');
@@ -335,6 +354,24 @@
       runBtn.disabled = !selectedFile;
     }
   });
+
+  // ── Exploratory decision handlers ────────────────────────────────────────────
+  //
+  // The seam for accept / dismiss / rule-nomination, deliberately EMPTY for now.
+  //
+  // There is no authenticated endpoint behind these yet, and inventing a local
+  // one would be worse than having none: a staff member who clicked "Never
+  // suggest this reasoning again" and saw it succeed would reasonably believe the
+  // suppression was recorded somewhere. It would not be. localStorage would be
+  // the same lie with extra steps, so it is not used here either.
+  //
+  // With no handler supplied, exploration.js reports every decision as
+  // "Not saved — decision handling is not connected yet." and leaves the control
+  // usable. When authenticated handlers land they are returned from here; nothing
+  // else in this file has to change.
+  function explorationHandlers() {
+    return {};
+  }
 
   // ── Clear results ────────────────────────────────────────────────────────────
   //
@@ -544,10 +581,14 @@
   //               build does not configure — a neutral message, never a result.
 
   async function openScan(model) {
+    modalReturnFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     modalTitle.textContent = model.filename;
     modalBody.textContent = 'Loading…';
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+    modalClose.focus();
 
     try {
       const report = await loadReport();
@@ -564,7 +605,14 @@
       if (!res.ok) throw new Error(data.error || 'Could not load that scan.');
 
       if (data.kind === 'structured') {
-        report.renderReport(report.buildReportModel(data.result), modalBody);
+        // Reopened scans take the identical path, including the exploration seam.
+        // The section is always collapsed on first paint — the component never
+        // sets `open`, so a reopened scan cannot restore an expanded state.
+        report.renderReport(report.buildReportModel(data.result), modalBody, {
+          exploration: data.exploration,
+          renderExploration: report.renderExploration,
+          explorationHandlers: explorationHandlers(),
+        });
         return;
       }
 
@@ -595,13 +643,31 @@
   modalClose.addEventListener('click', closeModal);
   modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
   onDocument('keydown', e => {
-    if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+    if (modal.classList.contains('hidden')) return;
+    if (e.key === 'Escape') { closeModal(); return; }
+    if (e.key !== 'Tab') return;
+
+    const focusable = Array.from(modal.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), '
+      + 'textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+    )).filter((node) => !node.hidden && node.getClientRects().length);
+    if (!focusable.length) { e.preventDefault(); modalClose.focus(); return; }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
   });
 
   function closeModal() {
     modal.classList.add('hidden');
     document.body.style.overflow = '';
     modalBody.textContent = '';
+    const returnTo = modalReturnFocus;
+    modalReturnFocus = null;
+    if (returnTo?.isConnected) returnTo.focus();
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────

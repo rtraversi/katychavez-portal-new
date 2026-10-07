@@ -164,7 +164,7 @@ async function call(request, admin) {
 }
 
 const asStaff = () => helpersMock.verifyAuth.mockResolvedValue({
-  profile: { id: 'staff-1' }, accessLevel: 'write', isClient: false,
+  profile: { id: 'staff-1', roles: { name: 'Attorney' } }, accessLevel: 'write', isClient: false,
 });
 
 beforeEach(() => {
@@ -221,15 +221,18 @@ describe('proof scan history — access', () => {
     ['list',   listRequest],
     ['detail', () => detailRequest(ID)],
   ])('refuses a portal client on %s even if a grant is misconfigured', async (_name, make) => {
-    // A proof scan is firm work product. verifyAuth let this through — the
-    // handler's own isClient check is the second lock, and it holds.
+    // This is verifyAuth's real post-permission shape: its profile retains the
+    // Client role, but isClient is reset to false after the ordinary grant check.
     helpersMock.verifyAuth.mockResolvedValue({
-      profile: { id: 'client-1' }, accessLevel: 'write', isClient: true,
+      profile: { id: 'client-1', roles: { name: 'Client' } },
+      accessLevel: 'write',
+      isClient: false,
     });
     const admin = makeAdmin({ rows: [structuredRow(storedResult())] });
     const { res, body } = await call(make(), admin);
     expect(res.status).toBe(403);
     expect(body.error).toMatch(/permissions/i);
+    expect(helpersMock.makeAdminClient).not.toHaveBeenCalled();
     expect(admin.queries).toHaveLength(0);
   });
 
@@ -318,14 +321,35 @@ describe('proof scan history — list', () => {
     const admin = makeAdmin({ error: { message: 'connection reset' } });
     const { res, body } = await call(listRequest(), admin);
     expect(res.status).toBe(500);
-    expect(body.error).toBe('connection reset');
+    expect(body.error).toMatch(/could not load proof scan history/i);
     expect(body.scans).toBeUndefined();
+  });
+
+  it('names required migrations when structured history columns are absent', async () => {
+    const admin = makeAdmin({ error: { code: '42703', message: 'column attention_count does not exist' } });
+    const { res, body } = await call(listRequest(), admin);
+    expect(res.status).toBe(500);
+    expect(body.error).toMatch(/migrations 1302 and 1303/i);
   });
 });
 
 // ── Detail ────────────────────────────────────────────────────────────────────
 
 describe('proof scan history — structured detail', () => {
+  it.each(['A123456789', '123456789'])(
+    'revalidates and reopens history with A-Number value %s',
+    async (aNumber) => {
+      const result = storedResult((obs) => { obs.client_observed.a_number = aNumber; });
+      const { res, body } = await call(
+        detailRequest(ID),
+        makeAdmin({ rows: [structuredRow(result)] }),
+      );
+      expect(res.status).toBe(200);
+      expect(body.kind).toBe('structured');
+      expect(body.result.client_observed.a_number).toBe(aNumber);
+    },
+  );
+
   it('returns the validated stored result for the requested scan only', async () => {
     const result = attentionResult();
     const admin = makeAdmin({ rows: [structuredRow(result)] });
@@ -372,8 +396,13 @@ describe('proof scan history — structured detail', () => {
     ['an unverifiable profile version', () => ({ ...storedResult(), profile_version: 99 })],
     ['a tampered clean state',    () => ({ ...attentionResult(), report_state: 'no_issues_found', attention_count: 0, primary_report_language: 'No issues found' })],
     ['a tampered language',       () => ({ ...storedResult(), primary_report_language: 'Pass' })],
+    ['a tampered rule title',     () => { const r = storedResult(); r.rule_results[0].title = 'Model title'; return r; }],
+    ['a tampered severity',       () => { const r = storedResult(); r.rule_results[0].severity = 'warning'; return r; }],
+    ['reordered rules',           () => { const r = storedResult(); r.rule_results.reverse(); return r; }],
+    ['a false attention item',    () => { const r = attentionResult(); r.attention_items[0].id = r.rule_results[1].rule_id; return r; }],
     ['an extra unknown field',    () => ({ ...storedResult(), overall_verdict: 'PASS' })],
     ['a full SSN',                () => { const r = storedResult(); r.client_observed.ssn_last4 = '123456789'; return r; }],
+    ['a full SSN in free text',   () => { const r = storedResult(); r.rule_results[0].evidence = 'SSN 123456789'; return r; }],
   ])('refuses to render %s, returning a neutral unavailable message', async (_name, make) => {
     const admin = makeAdmin({ rows: [structuredRow(make())] });
     const { res, body } = await call(detailRequest(ID), admin);

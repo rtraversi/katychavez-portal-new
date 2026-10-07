@@ -144,7 +144,14 @@ function notice(item) {
 
 // `d` is the output of buildReportModel() — already validated by the server and
 // already shaped. Nothing below re-derives a status, a count, or a verdict.
-export function renderReport(d, mount) {
+//
+// `options.exploration` is the OPTIONAL, separately validated suggestion envelope
+// described in exploration-model.js. It arrives as its own argument rather than
+// as part of `d` on purpose: nothing below reads it when composing the client
+// summary, the attention block, the counts or the report language, so a
+// suggestion cannot reach an official number even by accident. When it is absent
+// — which is every real scan today — the section is not drawn at all.
+export function renderReport(d, mount, options = {}) {
   mount.textContent = '';
 
   // ── 1. Client summary, from the uploaded package only ──────────────────────
@@ -288,7 +295,19 @@ export function renderReport(d, mount) {
     mount.appendChild(b);
   }
 
-  // ── 7. The reminder, on every report, in every state ───────────────────────
+  // ── 7. Possible issues — exploratory, below everything the checker owns ────
+  //
+  // Deliberately last of the content blocks: it sits under "Not checked" when
+  // that section is present, and directly after the check groups when it is not,
+  // because it is the only part of the page the checklist does not stand behind.
+  if (options.exploration && typeof options.renderExploration === 'function') {
+    const section = options.renderExploration(options.exploration, {
+      handlers: options.explorationHandlers || {},
+    });
+    if (section) mount.appendChild(section);
+  }
+
+  // ── 8. The reminder, on every report, in every state ───────────────────────
   mount.appendChild(el('p', 'psr-standing-note', STAFF_REVIEW_REMINDER));
 }
 

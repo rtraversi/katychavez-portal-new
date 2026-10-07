@@ -91,7 +91,8 @@ export const ProofScanSchema = z.object({
   filename: z.string().trim().min(1).max(255)
     .regex(/\.pdf$/i, 'must be a .pdf file')
     // No path separators or control characters — the name is stored and displayed.
-    .regex(/^[^/\\\x00-\x1f]+$/, 'contains characters that are not allowed in a filename'),
+    .regex(/^[^/\\\x00-\x1f\x7f-\x9f\u2028\u2029]+$/,
+      'contains characters that are not allowed in a filename'),
   file_base64: z.string()
     .min(1, 'No file provided')
     .max(PROOF_SCAN_MAX_BASE64_CHARS, `PDF is too large — the limit is ${MAX_PDF_MB} MB`)

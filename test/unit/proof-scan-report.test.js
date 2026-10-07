@@ -434,7 +434,7 @@ describe('proof-scan page source', () => {
     expect(controller).not.toMatch(/themeResultHtml/);
     expect(controller).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
     // The new-scan branch renders structured data.
-    expect(controller).toMatch(/renderReport\(buildReportModel\(data\), resultsContent\)/);
+    expect(controller).toMatch(/renderReport\(buildReportModel\(data\), resultsContent, \{/);
   });
 
   it('sends the scan type explicitly and never infers it', () => {
@@ -664,7 +664,7 @@ describe('history and legacy source', () => {
 
   it('reopens a structured scan through the SAME model and renderer a fresh scan uses', () => {
     const controller = codeOf('proof-scan.js');
-    expect(controller).toMatch(/report\.renderReport\(report\.buildReportModel\(data\.result\), modalBody\)/);
+    expect(controller).toMatch(/report\.renderReport\(report\.buildReportModel\(data\.result\), modalBody, \{/);
   });
 
   it('routes the three detail kinds to three different renderers', () => {
@@ -701,5 +701,21 @@ describe('history and legacy source', () => {
     expect(controller).toMatch(/title\.textContent = model\.filename/);
     expect(controller).toMatch(/tag\.textContent = model\.label/);
     expect(controller).not.toMatch(/historyList\.innerHTML/);
+  });
+
+  it('gives the history modal a labelled close control and restores focus', () => {
+    const controller = codeOf('proof-scan.js');
+    expect(markup).toMatch(/aria-label="Close saved scan"/);
+    expect(controller).toMatch(/modalReturnFocus = document\.activeElement/);
+    expect(controller).toMatch(/modalClose\.focus\(\)/);
+    expect(controller).toMatch(/returnTo\?\.isConnected/);
+    expect(controller).toMatch(/e\.key !== 'Tab'/);
+  });
+
+  it('shows notification failure as an operational warning without replacing the report', () => {
+    const controller = codeOf('proof-scan.js');
+    expect(controller).toMatch(/notification_attempted === true/);
+    expect(controller).toMatch(/notification email was not sent/);
+    expect(controller).toMatch(/renderReport\(buildReportModel\(data\), resultsContent, \{[\s\S]*notification_attempted/);
   });
 });

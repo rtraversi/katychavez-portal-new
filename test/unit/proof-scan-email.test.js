@@ -83,6 +83,16 @@ const incompleteResult = () => storedResult((obs) => {
 // ── Subject and body language ─────────────────────────────────────────────────
 
 describe('proof scan email — report language', () => {
+  it.each(['A123456789', '123456789'])(
+    'accepts a validated structured result with A-Number value %s',
+    (aNumber) => {
+      const result = storedResult((obs) => { obs.client_observed.a_number = aNumber; });
+      const mail = buildProofScanEmail(result, OPTS);
+      expect(mail).not.toBeNull();
+      expect(mail.html).toContain(aNumber);
+    },
+  );
+
   it.each([
     ['items need attention', () => attentionResult(1), '1 item needs attention'],
     ['a plural count',       () => attentionResult(3), '3 items need attention'],
@@ -246,6 +256,7 @@ describe('proof scan email — unvalidated input cannot produce a message', () =
     ['an unknown extra field',    () => ({ ...storedResult(), overall_verdict: 'PASS' })],
     ['a tampered clean state',    () => ({ ...attentionResult(1), report_state: 'no_issues_found', attention_count: 0, primary_report_language: 'No issues found' })],
     ['a full SSN',                () => { const r = storedResult(); r.client_observed.ssn_last4 = '123456789'; return r; }],
+    ['a full SSN in free text',   () => { const r = storedResult(); r.rule_results[0].evidence = 'SSN 123456789'; return r; }],
   ])('returns null for %s', (_name, make) => {
     expect(buildProofScanEmail(make(), OPTS)).toBeNull();
   });

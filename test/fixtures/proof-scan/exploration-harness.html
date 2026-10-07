@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FIXTURE — Possible issues component harness</title>
+<link rel="stylesheet" href="/css/variables.css">
+<link rel="stylesheet" href="/css/main.css">
+<link rel="stylesheet" href="/css/portal.css">
+<style>
+  /* Harness chrome only. None of this ships — the component below is the real one. */
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-sans, system-ui); }
+  .harness-wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  .harness-banner {
+    margin-bottom: 20px; padding: 12px 16px; border-radius: 8px;
+    background: var(--color-warning-bg); color: var(--color-warning);
+    border: 1px solid color-mix(in srgb, var(--color-warning) 32%, transparent);
+    font-size: 13px; line-height: 1.5;
+  }
+  .harness-banner strong { display: block; font-size: 14px; margin-bottom: 2px; }
+  .harness-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 20px; }
+  .harness-controls label { display: block; font-size: 12px; color: var(--ink-soft); margin-bottom: 4px; }
+  .harness-controls select, .harness-controls button {
+    font: inherit; font-size: 13px; padding: 6px 10px;
+    border: 1px solid var(--line-strong); border-radius: 6px;
+    background: var(--surface); color: var(--ink); cursor: pointer;
+  }
+  .harness-card { padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .harness-empty { margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+  .harness-log {
+    margin-top: 20px; padding: 12px; max-height: 180px; overflow-y: auto;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--paper-deep);
+    font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.6; color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+<div class="harness-wrap">
+
+  <div class="harness-banner">
+    <strong>Fixture harness — not a production page</strong>
+    This exercises the real component from <code>/pages/proof-scan/exploration.js</code>
+    with mock callbacks. It lives under <code>test/</code>, which is excluded from
+    deployment by <code>.assetsignore</code>, and nothing in the portal imports it.
+    The suggestions below are obviously-fake harness data, not scan output.
+  </div>
+
+  <div class="harness-controls">
+    <div>
+      <label for="harness-data">Suggestion data</label>
+      <select id="harness-data">
+        <option value="sample">sample — three suggestions</option>
+        <option value="hostile">hostile — markup in every field</option>
+        <option value="malformed">malformed — mixed junk entries</option>
+        <option value="empty">empty — zero suggestions</option>
+        <option value="wrong-version">wrong schema_version</option>
+        <option value="none">none — no envelope (production today)</option>
+      </select>
+    </div>
+    <div>
+      <label for="harness-mode">Mock handlers</label>
+      <select id="harness-mode">
+        <option value="success">success</option>
+        <option value="slow">slow — 1.5s, shows pending</option>
+        <option value="failure">failure — handler throws</option>
+        <option value="false">failure — handler returns false</option>
+        <option value="none">none wired (production today)</option>
+      </select>
+    </div>
+    <button id="harness-redraw" type="button">Redraw</button>
+    <button id="harness-theme" type="button">Toggle light / dark</button>
+  </div>
+
+  <div class="harness-card ps-report">
+    <div id="harness-mount"></div>
+  </div>
+
+  <div id="harness-log" class="harness-log"></div>
+</div>
+
+<script type="module" src="/test/fixtures/proof-scan/exploration-harness.js"></script>
+</body>
+</html>

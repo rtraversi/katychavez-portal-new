@@ -2699,3 +2699,173 @@ body.help-drawer-lock { overflow: hidden; }
   color: var(--color-danger); margin-bottom: var(--space-1);
 }
 .psr-unavailable-body { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--ink); }
+
+/* ── Possible issues (pages/proof-scan/exploration.js) ───────────────────────
+   Ported from the approved UI Lab preview. It keeps the lab's muted-blue
+   treatment — the one signal that this block is exploratory rather than part of
+   the checklist — while every other value comes from the production tokens, so
+   it is the same kit as the report above it rather than a parallel system.
+
+   The blue is a single local token. Nothing else in the portal reads it, and it
+   flips with the portal's own dark mode. */
+
+.ps-explore {
+  --explore-blue: #406b94;
+  margin-top: var(--space-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 35%, transparent);
+  color: var(--ink);
+  scroll-margin-top: var(--space-4);
+}
+:root[data-mode="dark"] .ps-explore { --explore-blue: #91b8dc; }
+
+/* Header: muted blue, count badge, custom chevron. */
+.ps-explore > .ps-explore-head {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm); font-weight: 600;
+  list-style: none;
+  background: color-mix(in srgb, var(--explore-blue) 12%, transparent);
+}
+.ps-explore > .ps-explore-head::-webkit-details-marker { display: none; }
+.ps-explore > .ps-explore-head::after {
+  content: ''; width: 6px; height: 6px; margin-left: auto; margin-right: 3px;
+  border-right: 1.5px solid var(--ink-soft); border-bottom: 1.5px solid var(--ink-soft);
+  transform: rotate(-45deg); transition: transform .18s ease;
+}
+.ps-explore[open] > .ps-explore-head::after { transform: rotate(45deg); }
+.ps-explore[open] > .ps-explore-head { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.ps-explore > .ps-explore-head:hover {
+  background: color-mix(in srgb, var(--explore-blue) 17%, transparent);
+}
+
+.ps-explore-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 22px; padding: 0 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--explore-blue) 22%, transparent);
+  color: var(--explore-blue);
+  font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+
+.ps-explore > .ps-explore-note {
+  margin: 0; padding: var(--space-3) var(--space-4);
+  color: var(--ink-soft); font-size: 12px; line-height: 1.5;
+}
+
+/* One suggestion: compact, same rhythm as a report row. */
+.ps-explore-item {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+  transition: background-color .16s ease;
+}
+.ps-explore-item:hover { background: color-mix(in srgb, var(--ink) 2%, transparent); }
+.ps-explore-item.is-reviewed { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.ps-explore-item.is-pending { opacity: .75; }
+
+.ps-explore-row-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+}
+.ps-explore-title {
+  margin: 0; font-family: inherit; font-size: var(--text-sm); font-weight: 600; line-height: 1.4;
+}
+.ps-explore-desc {
+  max-width: 76ch; margin: 4px 0 6px;
+  color: var(--ink-soft); font-size: 12px; line-height: 1.5;
+}
+
+.ps-explore-actions {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex-shrink: 0;
+}
+
+/* Compact controls. Accept carries the blue; the rest stay quiet. */
+.ps-explore-control {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 30px; padding: 4px 11px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: transparent; color: var(--ink-soft);
+  font: inherit; font-size: 11px; cursor: pointer;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+.ps-explore-control:hover:not(:disabled) {
+  background: var(--surface); color: var(--ink); border-color: var(--line-strong);
+}
+.ps-explore-control:disabled { opacity: .6; cursor: default; }
+
+.ps-explore-accept {
+  color: var(--explore-blue); font-weight: 600;
+  background: color-mix(in srgb, var(--explore-blue) 8%, transparent);
+  border-color: color-mix(in srgb, var(--explore-blue) 30%, transparent);
+}
+.ps-explore-accept::before { content: '✓'; margin-right: 5px; font-weight: 400; }
+.ps-explore-accept:hover:not(:disabled) {
+  color: var(--explore-blue);
+  background: color-mix(in srgb, var(--explore-blue) 16%, transparent);
+  border-color: color-mix(in srgb, var(--explore-blue) 45%, transparent);
+}
+
+/* Evidence link: underlined blue, expands the excerpt below it. */
+.ps-explore-source {
+  display: block; max-width: 100%; padding: 3px 0;
+  border: 0; background: none; text-align: left;
+  color: var(--explore-blue); font: inherit; font-size: 11px; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--explore-blue) 35%, transparent);
+}
+.ps-explore-source:hover,
+.ps-explore-source[aria-expanded='true'] { text-decoration-color: currentColor; }
+
+.ps-explore-evidence {
+  margin: 10px 0 2px; padding: var(--space-3);
+  border: 1px solid var(--line); border-left: 2px solid var(--explore-blue);
+  border-radius: 0 6px 6px 0;
+  background: var(--surface);
+  font: inherit; font-size: 12px; line-height: 1.7;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* Dismiss: choices exist only while the disclosure is open. */
+.ps-explore-dismiss { position: relative; }
+.ps-explore-dismiss > .ps-explore-dismiss-toggle { list-style: none; }
+.ps-explore-dismiss > .ps-explore-dismiss-toggle::-webkit-details-marker { display: none; }
+.ps-explore-dismiss > .ps-explore-dismiss-toggle::after { content: '⌄'; margin-left: 6px; }
+.ps-explore-choices {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 5;
+  width: 246px; max-width: 75vw; padding: 4px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: 0 4px 16px #0002;
+}
+.ps-explore-choices .ps-explore-control {
+  display: block; width: 100%; padding: 8px;
+  border: 0; text-align: left; white-space: normal;
+}
+
+.ps-explore-status { margin: 8px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
+.ps-explore-status:empty { display: none; }
+.ps-explore-item.is-unresolved .ps-explore-status { color: var(--color-danger); }
+
+.ps-explore :focus-visible { outline: 2px solid var(--explore-blue); outline-offset: 3px; }
+.ps-explore [hidden] { display: none !important; }
+
+@media (max-width: 520px) {
+  .ps-explore-row-head { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .ps-explore-actions { width: 100%; }
+  /* On a phone the toggle sits near the left edge, so a floating panel anchored
+     to it runs off the side of the card. Drop out of the overlay entirely and let
+     the reasons take the full row width instead — same disclosure, no overflow. */
+  .ps-explore-dismiss { position: static; }
+  /* Closed, it sits beside Accept. Opened, it claims the row so the reasons can
+     use the full width beneath both controls. */
+  .ps-explore-dismiss[open] { width: 100%; }
+  .ps-explore-dismiss > .ps-explore-dismiss-toggle { width: fit-content; }
+  .ps-explore-choices {
+    position: static; width: 100%; max-width: 100%;
+    margin-top: 6px; box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-explore *, .ps-explore *::after { transition: none !important; }
+}

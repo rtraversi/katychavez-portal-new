@@ -136,7 +136,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   lastAnthropicRequest = null;
   globalThis.fetch = vi.fn(async () => { throw new Error('unexpected network call'); });
-  helpersMock.verifyAuth.mockResolvedValue({ profile: { id: 'user-1' } });
+  helpersMock.verifyAuth.mockResolvedValue({
+    profile: { id: 'user-1', roles: { name: 'Attorney' } },
+    accessLevel: 'write',
+    isClient: false,
+  });
 });
 
 // ── Request boundary ──────────────────────────────────────────────────────────
@@ -189,10 +193,26 @@ describe('/api/proof-scan — request validation', () => {
     expect(res.status).toBe(400);
   });
 
+  it.each(['package\r\nBcc: victim@example.test.pdf', 'package\0.pdf', 'package\u0085.pdf', 'package\u2028.pdf'])(
+    'rejects a filename carrying header or Unicode control characters',
+    async (filename) => {
+      const { res } = await run({ filename });
+      expect(res.status).toBe(400);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects invalid base64', async () => {
     const { res, body } = await run({ file_base64: 'not valid base64 ***' });
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/base64/);
+  });
+
+  it('rejects malformed base64 even when it begins with a valid PDF header', async () => {
+    const { res, body } = await run({ file_base64: PDF_B64.slice(0, 12) + '***=' });
+    expect(res.status).toBe(400);
+    expect(body.error).toMatch(/base64/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it('rejects decoded bytes that are obviously not a PDF', async () => {
@@ -219,6 +239,23 @@ describe('/api/proof-scan — request validation', () => {
     const { res } = await run({});
     expect(res.status).toBe(403);
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses a Client role even when module permission was otherwise granted', async () => {
+    helpersMock.verifyAuth.mockResolvedValue({
+      profile: { id: 'client-1', roles: { name: 'Client' } },
+      accessLevel: 'write',
+      isClient: false,
+    });
+    const admin = makeAdmin();
+    const { res, body } = await run({}, undefined, { admin });
+
+    expect(res.status).toBe(403);
+    expect(body.error).toMatch(/permissions/i);
+    expect(helpersMock.makeAdminClient).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(admin.writes).toHaveLength(0);
+    expect(notificationsMock.notifyStructuredProofScan).not.toHaveBeenCalled();
   });
 });
 
@@ -442,6 +479,15 @@ describe('/api/proof-scan — valid structured response', () => {
     expect(body.scan_id).toBeNull();
     expect(body.storage_error).toMatch(/could not be saved/);
   });
+
+  it('names the required migrations when structured storage columns are absent', async () => {
+    const admin = makeAdmin({ insertError: 'column attention_count does not exist' });
+    const { res, body } = await run({}, { text: JSON.stringify(validObservations()) }, { admin });
+    expect(res.status).toBe(200);
+    expect(body.stored).toBe(false);
+    expect(body.storage_error).toMatch(/migrations 1302 and 1303/i);
+    expect(notificationsMock.notifyStructuredProofScan).not.toHaveBeenCalled();
+  });
 });
 
 // ── Failure closes the door ───────────────────────────────────────────────────
@@ -573,6 +619,7 @@ describe('/api/proof-scan — email eligibility', () => {
 
     expect(body.stored).toBe(true);
     expect(body.notification_sent).toBe(true);
+    expect(body.notification_attempted).toBe(true);
     expect(notificationsMock.notifyStructuredProofScan).toHaveBeenCalledTimes(1);
 
     const [, args] = notificationsMock.notifyStructuredProofScan.mock.calls[0];
@@ -606,6 +653,7 @@ describe('/api/proof-scan — email eligibility', () => {
     expect(body.stored).toBe(false);
     expect(body.storage_error).toMatch(/could not be saved/i);
     expect(body.notification_sent).toBe(false);
+    expect(body.notification_attempted).toBe(false);
     expect(notificationsMock.notifyStructuredProofScan).not.toHaveBeenCalled();
   });
 
@@ -637,6 +685,7 @@ describe('/api/proof-scan — email eligibility', () => {
     const { body } = await run({}, { text: JSON.stringify(validObservations()) }, { admin });
     expect(body.stored).toBe(true);
     expect(body.notification_sent).toBe(false);
+    expect(body.notification_attempted).toBe(false);
     expect(notificationsMock.notifyStructuredProofScan).not.toHaveBeenCalled();
   });
 
@@ -646,6 +695,8 @@ describe('/api/proof-scan — email eligibility', () => {
     expect(res.status).toBe(200);
     expect(body.stored).toBe(true);
     expect(body.notification_sent).toBe(false);
+    expect(body.report_state).toBe('no_issues_found');
+    expect(body.notification_attempted).toBe(true);
   });
 
   it('reports notification_sent false when the notifier reports non-delivery', async () => {
@@ -654,6 +705,7 @@ describe('/api/proof-scan — email eligibility', () => {
     expect(res.status).toBe(200);
     expect(body.stored).toBe(true);
     expect(body.notification_sent).toBe(false);
+    expect(body.notification_attempted).toBe(true);
   });
 
   it('leaves the configured notify_email row untouched', async () => {

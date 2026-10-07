@@ -136,6 +136,29 @@ function issue(code, path, message) {
   return { code, path, message };
 }
 
+// A full SSN is forbidden in every model-authored string, not only in the
+// dedicated last-four field. Formatted SSNs are unambiguous enough to reject
+// everywhere. A bare nine-digit value is inherently ambiguous — regex cannot
+// tell an SSN from an A-Number with its optional "A" prefix omitted. The only
+// narrow exemption is an entire value in the schema-owned `a_number` field;
+// free text and every other field continue to fail conservatively.
+const FORMATTED_FULL_SSN_RE = /(?:^|[^A-Za-z0-9])\d{3}[- ]\d{2}[- ]\d{4}(?:[^0-9]|$)/;
+const BARE_FULL_SSN_RE = /(?:^|[^A-Za-z0-9])\d{9}(?:[^0-9]|$)/;
+const A_NUMBER_VALUE_RE = /^\s*(?:A\s*)?\d{9}\s*$/i;
+
+export function containsFullSsn(value, fieldName = null) {
+  if (typeof value === 'string') {
+    if (FORMATTED_FULL_SSN_RE.test(value)) return true;
+    if (fieldName === 'a_number' && A_NUMBER_VALUE_RE.test(value)) return false;
+    return BARE_FULL_SSN_RE.test(value);
+  }
+  if (Array.isArray(value)) return value.some((entry) => containsFullSsn(entry, fieldName));
+  if (value && typeof value === 'object') {
+    return Object.entries(value).some(([key, entry]) => containsFullSsn(entry, key));
+  }
+  return false;
+}
+
 function invalid(issues) {
   return {
     ok: false,
@@ -233,6 +256,11 @@ export function validateAndComposeScanResult(profile, modelResponse) {
   const response = responseResult.data;
   const selectedProfile = profileResult.data;
   const issues = [];
+  if (containsFullSsn(response.client_observed)
+      || containsFullSsn(response.package_items)
+      || containsFullSsn(response.rule_results)) {
+    issues.push(issue('full_ssn_forbidden', [], 'Model observations must never contain a full SSN.'));
+  }
   if (response.scan_profile !== selectedProfile.profile_id) {
     issues.push(issue('profile_id_mismatch', ['scan_profile'], 'Response scan profile does not match the selected profile.'));
   }
@@ -558,21 +586,20 @@ export const StoredScanResultSchema = z.object({
   rule_results: z.array(StoredRuleResultSchema).min(1),
 }).strict();
 
-// Recomputes state from the stored items. Deliberately mirrors composition rather
-// than sharing a branch with it, so a stored row can be checked against the rule
-// even if it was written by a different build of this file.
-function derivedStateOf(stored) {
-  const attentionCount =
-    stored.package_items.filter((item) => item.status === 'needs_attention').length
-    + stored.rule_results.filter((rule) => rule.status === 'needs_attention').length;
-  const unsuppressedNotChecked =
-    stored.package_items.filter((item) => item.status === 'not_checked').length
-    + stored.rule_results.filter((rule) =>
-      rule.status === 'not_checked' && !rule.suppressed_by_package_item_ids.length).length;
-  const reportState = attentionCount
-    ? 'items_need_attention'
-    : unsuppressedNotChecked ? 'review_incomplete' : 'no_issues_found';
-  return { attentionCount, unsuppressedNotChecked, reportState };
+function sameData(left, right) {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameData(value, right[index]));
+  }
+  if (left && right && typeof left === 'object' && typeof right === 'object') {
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    return sameData(leftKeys, rightKeys)
+      && leftKeys.every((key) => sameData(left[key], right[key]));
+  }
+  return false;
 }
 
 // Returns { ok: true, data } or { ok: false, issues }. Callers turn a failure into
@@ -597,47 +624,52 @@ export function validateStoredScanResult(stored) {
     issues.push(issue('unsupported_profile_version', ['profile_version'],
       'This result was produced by a scan profile version this build cannot verify.'));
   } else {
-    // Exact coverage, the same rule a fresh scan is held to: every configured
-    // rule and package item exactly once, nothing unknown, nothing missing.
-    issues.push(...findIdentifierIssues(
-      data.package_items, storedProfile.package_items.map((item) => item.item_id),
-      'item_id', 'package_item',
-    ));
-    issues.push(...findIdentifierIssues(
-      data.rule_results, storedProfile.rules.map((rule) => rule.rule_id),
-      'rule_id', 'rule',
-    ));
-  }
+    // Re-run the exact current composition code against model-owned fields only.
+    // This verifies coverage, order, titles, severity, suppression, counts,
+    // language, and every other server-owned field in one closed comparison.
+    const recomposed = validateAndComposeObservations(storedProfile, {
+      client_observed: data.client_observed,
+      package_items: data.package_items.map((item) => ({
+        item_id: item.item_id,
+        status: item.status,
+        locations: item.locations,
+        evidence: item.evidence,
+        reason: item.reason,
+      })),
+      rule_results: data.rule_results.map((rule) => ({
+        rule_id: rule.rule_id,
+        status: rule.status,
+        summary: rule.summary,
+        locations: rule.locations,
+        evidence: rule.evidence,
+        reason: rule.reason,
+        not_checked_item_ids: rule.not_checked_item_ids,
+      })),
+    }, data.scan);
 
-  const itemIds = data.package_items.map((item) => item.item_id);
-  const ruleIds = data.rule_results.map((rule) => rule.rule_id);
-  if (new Set(itemIds).size !== itemIds.length) {
-    issues.push(issue('duplicate_stored_package_item_id', ['package_items'], 'Stored package-item IDs must be unique.'));
-  }
-  if (new Set(ruleIds).size !== ruleIds.length) {
-    issues.push(issue('duplicate_stored_rule_id', ['rule_results'], 'Stored rule IDs must be unique.'));
-  }
-
-  const derived = derivedStateOf(data);
-  if (derived.reportState !== data.report_state) {
-    issues.push(issue('stored_report_state_mismatch', ['report_state'],
-      'Stored report state does not match the stored items.'));
-  }
-  if (derived.attentionCount !== data.attention_count) {
-    issues.push(issue('stored_attention_count_mismatch', ['attention_count'],
-      'Stored attention count does not match the stored items.'));
-  }
-  if (derived.unsuppressedNotChecked !== data.unsuppressed_not_checked_count) {
-    issues.push(issue('stored_not_checked_count_mismatch', ['unsuppressed_not_checked_count'],
-      'Stored not-checked count does not match the stored items.'));
-  }
-  if (data.attention_items.length !== data.attention_count) {
-    issues.push(issue('stored_attention_items_mismatch', ['attention_items'],
-      'Stored attention items do not match the stored attention count.'));
-  }
-  if (data.primary_report_language !== reportStateLanguage(data.report_state, data.attention_count)) {
-    issues.push(issue('stored_report_language_mismatch', ['primary_report_language'],
-      'Stored report language does not match the stored report state.'));
+    if (!recomposed.ok) {
+      issues.push(...recomposed.issues);
+    } else {
+      const canonical = {
+        schema_version: storedProfile.contract.result_schema_version,
+        scan_profile: storedProfile.profile_id,
+        profile_version: storedProfile.profile_version,
+        profile_label: storedProfile.label,
+        scan: recomposed.scan,
+        report_state: recomposed.report_state,
+        primary_report_language: recomposed.primary_report_language,
+        attention_count: recomposed.attention_count,
+        attention_items: recomposed.attention_items,
+        unsuppressed_not_checked_count: recomposed.unsuppressed_not_checked_count,
+        client_observed: recomposed.client_observed,
+        package_items: recomposed.package_items,
+        rule_results: recomposed.rule_results,
+      };
+      if (!sameData(data, canonical)) {
+        issues.push(issue('stored_result_mismatch', [],
+          'Stored result does not match the exact server-owned profile composition.'));
+      }
+    }
   }
 
   return issues.length ? { ok: false, issues } : { ok: true, data };

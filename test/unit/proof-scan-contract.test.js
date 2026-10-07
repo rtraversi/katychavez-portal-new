@@ -14,6 +14,7 @@ import {
   getSelectedScanProfile,
   parseAndComposeObservations,
   parseAndComposeScanResult,
+  containsFullSsn,
   validateAndComposeObservations,
   validateAndComposeScanResult,
   validateScanProfile,
@@ -187,14 +188,17 @@ describe('Proof Scan missing-form suppression', () => {
 });
 
 describe('Proof Scan strict response validation', () => {
-  it.each(['123', '12a4'])('rejects invalid ssn_last4 value %s', (ssn_last4) => {
-    const response = clone(completed.model_response);
-    response.client_observed.ssn_last4 = ssn_last4;
+  it.each(['123', '12a4', '123456789', '123-45-6789'])(
+    'rejects non-last-four ssn_last4 value %s',
+    (ssn_last4) => {
+      const response = clone(completed.model_response);
+      response.client_observed.ssn_last4 = ssn_last4;
 
-    const result = validateAndComposeScanResult(profile, response);
-    expect(result.ok).toBe(false);
-    expect(result.report_state).toBe('scan_could_not_be_completed');
-  });
+      const result = validateAndComposeScanResult(profile, response);
+      expect(result.ok).toBe(false);
+      expect(result.report_state).toBe('scan_could_not_be_completed');
+    },
+  );
 
   it('rejects an attempted full-SSN property', () => {
     const response = clone(completed.model_response);
@@ -203,6 +207,36 @@ describe('Proof Scan strict response validation', () => {
     const result = validateAndComposeScanResult(profile, response);
     expect(result.ok).toBe(false);
     expect(result.report_state).toBe('scan_could_not_be_completed');
+  });
+
+  it.each([
+    ['client summary', (response) => { response.client_observed.address = 'SSN: 123-45-6789'; }],
+    ['client summary as bare digits', (response) => { response.client_observed.address = 'SSN: 123456789'; }],
+    ['rule evidence', (response) => { response.rule_results[0].evidence = '123 45 6789'; }],
+    ['rule summary', (response) => { response.rule_results[0].summary = '123456789'; }],
+    ['package evidence', (response) => { response.package_items[0].evidence = '123-45-6789'; }],
+  ])('rejects a full SSN hidden in %s', (_label, mutate) => {
+    const response = clone(completed.model_response);
+    mutate(response);
+    const result = validateAndComposeScanResult(profile, response);
+    expect(result.ok).toBe(false);
+    expect(issueCodes(result)).toContain('full_ssn_forbidden');
+  });
+
+  it.each(['A123456789', '123456789'])(
+    'does not mistake legitimate A-Number value %s for an SSN',
+    (aNumber) => {
+      const response = clone(completed.model_response);
+      response.client_observed.a_number = aNumber;
+      expect(validateAndComposeScanResult(profile, response).ok).toBe(true);
+      expect(containsFullSsn({ a_number: aNumber })).toBe(false);
+    },
+  );
+
+  it('does not broadly exempt nine-digit values outside the A-Number field', () => {
+    expect(containsFullSsn({ a_number: 'SSN: 123456789' })).toBe(true);
+    expect(containsFullSsn({ uscis_account_number: '123456789' })).toBe(true);
+    expect(containsFullSsn({ evidence: 'Observed 123456789 on the form.' })).toBe(true);
   });
 
   it('rejects unknown top-level and nested properties', () => {

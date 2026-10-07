@@ -186,6 +186,15 @@ function scanCouldNotBeCompleted(result, stage) {
   });
 }
 
+const MIGRATION_REQUIRED =
+  'Proof Scan storage is not ready. Apply database migrations 1302 and 1303 before scanning.';
+
+function missingStructuredColumns(error) {
+  const detail = `${error?.code || ''} ${error?.message || ''}`;
+  return /42703|PGRST204|result_json|result_schema_version|scan_profile|profile_version|report_state|attention_count/i
+    .test(detail);
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 export async function onRequest({ request, env }) {
@@ -193,6 +202,12 @@ export async function onRequest({ request, env }) {
 
   const auth = await verifyAuth(request, env, 'write', 'proof_scan');
   if (auth.httpError) return json(auth.httpError.status, { error: auth.httpError.message });
+  // Proof Scan is staff-only work product. Use the authenticated profile role as
+  // the authority: verifyAuth reports isClient:false when a Client reaches this
+  // point through an ordinary (possibly misconfigured) module permission grant.
+  if (auth.profile?.roles?.name === 'Client' || auth.isClient) {
+    return json(403, { error: 'Insufficient permissions for proof_scan module' });
+  }
 
   let body;
   try { body = await request.json(); }
@@ -324,6 +339,7 @@ export async function onRequest({ request, env }) {
 
   let scanId = null;
   let stored = false;
+  let storageError = 'The scan completed but could not be saved to history.';
   try {
     const { data: rows, error } = await admin
       .from('proof_scans')
@@ -350,11 +366,12 @@ export async function onRequest({ request, env }) {
         scanned_by:            auth.profile.id,
       })
       .select('id');
-    if (error) throw new Error(error.message);
+    if (error) throw error;
     scanId = rows?.[0]?.id ?? null;
     stored = scanId !== null;
   } catch (err) {
     console.error('[proof-scan] DB save error:', err.message);
+    if (missingStructuredColumns(err)) storageError = MIGRATION_REQUIRED;
   }
 
   // ── Notification ───────────────────────────────────────────────────────────
@@ -374,6 +391,7 @@ export async function onRequest({ request, env }) {
   // notifyStructuredProofScan re-validates the result a third time and builds the
   // body itself. Nothing model-authored is passed to it.
   let notification_sent = false;
+  let notification_attempted = false;
   if (!stored) {
     console.warn('[proof-scan] result not persisted; returning it unstored and notifying nobody');
   } else {
@@ -384,6 +402,7 @@ export async function onRequest({ request, env }) {
         .limit(1);
       const toEmail = rows?.[0]?.notify_email?.trim() || '';
       if (toEmail) {
+        notification_attempted = true;
         notification_sent = await notifyStructuredProofScan(env, { toEmail, result: payload });
       }
     } catch (err) {
@@ -396,7 +415,8 @@ export async function onRequest({ request, env }) {
     ...payload,
     scan_id: scanId,
     stored,
-    storage_error: stored ? null : 'The scan completed but could not be saved to history.',
+    storage_error: stored ? null : storageError,
+    notification_attempted,
     notification_sent,
   });
 }

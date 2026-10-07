@@ -37,6 +37,16 @@ const LIST_COLUMNS = 'id, filename, created_at, status, report_state, attention_
 // Legacy `result_html` can be large; only the detail path ever asks for it.
 const DETAIL_COLUMNS = 'id, filename, created_at, status, report_state, attention_count, scan_profile, profile_version, result_schema_version, result_json, result_html';
 
+const MIGRATION_REQUIRED =
+  'Proof Scan history is not ready. Apply database migrations 1302 and 1303.';
+
+function databaseError(error) {
+  const detail = `${error?.code || ''} ${error?.message || ''}`;
+  const missing = /42703|PGRST204|result_json|result_schema_version|scan_profile|profile_version|report_state|attention_count/i
+    .test(detail);
+  return json(500, { error: missing ? MIGRATION_REQUIRED : 'Could not load Proof Scan history.' });
+}
+
 // ── Ownership ────────────────────────────────────────────────────────────────
 //
 // Proof scans are firm work product: a paralegal runs one, an attorney reviews
@@ -44,13 +54,17 @@ const DETAIL_COLUMNS = 'id, filename, created_at, status, report_state, attentio
 // pressed the button. `scanned_by` stays an audit field, not an access rule.
 //
 // verifyAuth already refuses anyone without `read` on the proof_scan module, and
-// the Client role has no such grant. clientBypass is NOT passed, and the explicit
-// isClient refusal below means a portal client is turned away even if a grant is
-// ever misconfigured for their role. A client never owns a proof scan.
+// the Client role has no such grant. clientBypass is NOT passed. The explicit
+// profile-role refusal below is a second lock if a Client grant is ever
+// misconfigured. (`verifyAuth` currently reports isClient:false after an ordinary
+// permission check, so the authenticated profile is the authoritative identity.)
+// A client never owns a proof scan.
 async function authorize(request, env, level) {
   const auth = await verifyAuth(request, env, level, 'proof_scan');
   if (auth.httpError) return { error: json(auth.httpError.status, { error: auth.httpError.message }) };
-  if (auth.isClient) return { error: json(403, { error: 'Insufficient permissions for proof_scan module' }) };
+  if (auth.profile?.roles?.name === 'Client' || auth.isClient) {
+    return { error: json(403, { error: 'Insufficient permissions for proof_scan module' }) };
+  }
   return { auth };
 }
 
@@ -99,7 +113,7 @@ async function listScans(admin) {
     .order('created_at', { ascending: false })
     .limit(HISTORY_LIMIT);
 
-  if (error) return json(500, { error: error.message });
+  if (error) return databaseError(error);
   return json(200, { scans: (scans || []).map(historyRow) });
 }
 
@@ -119,7 +133,7 @@ async function detailScan(admin, scanId) {
     .eq('id', scanId)
     .limit(1);
 
-  if (error) return json(500, { error: error.message });
+  if (error) return databaseError(error);
   const row = rows?.[0];
   if (!row) return json(404, { error: 'Scan not found' });
 

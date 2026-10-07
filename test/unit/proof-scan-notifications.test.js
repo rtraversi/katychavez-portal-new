@@ -6,7 +6,10 @@ const helpersMock = vi.hoisted(() => ({
 }));
 vi.mock('../../functions/api/_helpers.js', () => helpersMock);
 
-import { notifyStructuredProofScan } from '../../functions/api/_notifications.js';
+import {
+  notifyStructuredProofScan,
+  notifyTaskAssigned,
+} from '../../functions/api/_notifications.js';
 import {
   getSelectedScanProfile,
   validateAndComposeObservations,
@@ -108,5 +111,22 @@ describe('structured Proof Scan delivery result', () => {
     expect(await notifyStructuredProofScan(ENV, {
       toEmail: 'staff@example.test', result: storedResult(),
     })).toBe(true);
+  });
+});
+
+describe('unrelated notifications remain compatible', () => {
+  it('still sends an existing task notification through the same Resend boundary', async () => {
+    adminThat();
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(notifyTaskAssigned(ENV, {
+      toEmail: 'staff@example.test',
+      taskTitle: 'Review sanitized fixture',
+      clientName: 'Sample Applicant',
+      dueDate: '2026-09-04',
+    })).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).subject)
+      .toBe('Task assigned: Review sanitized fixture');
   });
 });

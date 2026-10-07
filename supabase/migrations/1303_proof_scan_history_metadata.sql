@@ -27,6 +27,29 @@ ALTER TABLE proof_scans ADD CONSTRAINT proof_scans_attention_count_state
              AND attention_count >= 0
              AND (report_state = 'items_need_attention') = (attention_count > 0)));
 
+-- Keep the legacy and structured representations mutually exclusive and make
+-- every structured metadata column mandatory as one unit. Existing legacy rows
+-- satisfy the second branch unchanged; no row is rewritten.
+ALTER TABLE proof_scans DROP CONSTRAINT IF EXISTS proof_scans_result_shape;
+ALTER TABLE proof_scans ADD CONSTRAINT proof_scans_result_shape
+  CHECK ((status = 'structured'
+          AND result_json IS NOT NULL
+          AND result_html IS NULL
+          AND result_schema_version IS NOT NULL
+          AND scan_profile IS NOT NULL
+          AND profile_version IS NOT NULL
+          AND report_state IS NOT NULL
+          AND attention_count IS NOT NULL)
+         OR
+         (status IN ('pass', 'needs_correction')
+          AND result_json IS NULL
+          AND result_html IS NOT NULL
+          AND result_schema_version IS NULL
+          AND scan_profile IS NULL
+          AND profile_version IS NULL
+          AND report_state IS NULL
+          AND attention_count IS NULL));
+
 -- The history list is "the last 10, newest first" for every caller.
 CREATE INDEX IF NOT EXISTS proof_scans_created_at_idx
   ON proof_scans (created_at DESC);
