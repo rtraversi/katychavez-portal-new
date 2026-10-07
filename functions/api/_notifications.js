@@ -4,7 +4,7 @@
 // Gracefully no-ops when RESEND_API_KEY is absent (dev / pre-domain setup).
 
 import { makeAdminClient } from './_helpers.js';
-import { buildProofScanEmail } from './_proof-scan-email.js';
+import { buildProofScanEmail, buildProofScanStageEmail } from './_proof-scan-email.js';
 
 async function sendEmail(env, to, subject, html, type = 'other') {
   const apiKey = env.RESEND_API_KEY;
@@ -444,5 +444,21 @@ export async function notifyStructuredProofScan(env, { toEmail, result }) {
     return false;
   }
 
+  return sendEmail(env, toEmail, message.subject, message.html, 'proof_scan');
+}
+
+// ── Proof Scan v2 stage result (D-61) ────────────────────────────────────────
+// Optional, staff choose it per run. Only the stage and its official result,
+// with a link. Possible issues never generate email (D-36).
+export async function notifyProofScanStage(env, { toEmail, result }) {
+  if (!toEmail) return false;
+  const message = buildProofScanStageEmail(result, {
+    firmName:  env.PORTAL_FIRM_NAME || 'Your Law Firm',
+    portalUrl: env.PORTAL_URL || 'https://your-portal.workers.dev',
+  });
+  if (!message) {
+    console.error('[notify] proof scan stage result did not validate; no notification sent');
+    return false;
+  }
   return sendEmail(env, toEmail, message.subject, message.html, 'proof_scan');
 }

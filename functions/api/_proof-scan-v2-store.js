@@ -351,3 +351,8 @@ export async function auditSsn(admin, { entityType, entityId, action, userId, ip
     console.error('[proof-scan-v2] SSN audit log failed:', err.message);
   }
 }
+
+export async function ruleChangesForIssue(admin, possibleIssueId) {
+  return run('rule changes for issue', admin.from('proof_scan_rule_changes').select('id')
+    .eq('possible_issue_id', possibleIssueId).limit(1));
+}

@@ -15,7 +15,7 @@
 //      re-validates and returns null on any failure, so a malformed, unknown-ID,
 //      duplicated or omitted observation set has no path to an inbox.
 
-import { validateStoredScanResult, STAFF_REVIEW_REMINDER } from './proof-scan-contract.js';
+import { validateStoredScanResult, reportStateLanguage, STAFF_REVIEW_REMINDER } from './proof-scan-contract.js';
 import { buildReportModel } from '../../pages/proof-scan/report-model.js';
 
 // Same shaping the portal renders, so a line in the email is the line on screen.
@@ -139,5 +139,49 @@ export function buildProofScanEmail(result, { firmName, portalUrl } = {}) {
 </div>
 </body></html>`;
 
+  return { subject, html };
+}
+
+// ── Proof Scan v2: the optional stage email (D-61) ───────────────────────────
+//
+// Only the official stage result and a link to the report. No client name, no
+// findings, and never a Possible issue (D-36). The phrase is recomputed from the
+// stored state and count through reportStateLanguage(), so the email cannot say
+// anything the report does not.
+const V2_STAGE_LABELS = { draft_review: 'Draft Review', preflight: 'Pre-flight', physical_scan: 'Physical Scan' };
+
+export function buildProofScanStageEmail(result, { firmName, portalUrl } = {}) {
+  const stageLabel = V2_STAGE_LABELS[result?.stage];
+  const language = reportStateLanguage(result?.report_state, result?.attention_count);
+  if (!stageLabel || !language || language !== result?.primary_report_language) return null;
+
+  const subject = `Proof Scan: ${stageLabel}: ${language}`;
+  const tone = TONE[result.report_state] || '#374151';
+  const reportUrl = proofScanReportUrl(portalUrl);
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+<div style="max-width:520px;margin:40px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)">
+  <div style="background:#1a3a5c;padding:22px 32px">
+    <p style="margin:0;color:#fff;font-size:17px;font-weight:600">${esc(firmName || 'Your Law Firm')}</p>
+    <p style="margin:2px 0 0;color:#fff;font-size:12px;opacity:.8">Proof Scan result</p>
+  </div>
+  <div style="padding:24px 32px 4px">
+    <p style="margin:0 0 4px;font-size:13px;color:#6b7280">${esc(stageLabel)}</p>
+    <p style="margin:0 0 16px;font-size:18px;font-weight:700;color:${tone}">${esc(language)}</p>
+  </div>
+  <div style="margin:0 32px;padding:12px 16px;background:#f9fafb;border-left:3px solid #1a3a5c">
+    <p style="margin:0;font-size:12px;color:#374151">${esc(STAFF_REVIEW_REMINDER)}</p>
+  </div>
+  ${reportUrl ? `<div style="padding:20px 32px 28px">
+    <a href="${esc(reportUrl)}"
+      style="display:inline-block;padding:11px 22px;background:#1a3a5c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px"
+    >Open the report</a>
+  </div>` : '<div style="padding:12px"></div>'}
+  <div style="padding:14px 32px;background:#f9fafb;font-size:11px;color:#9ca3af;text-align:center">
+    Secure notification from your client portal. Do not reply to this email.
+  </div>
+</div>
+</body></html>`;
   return { subject, html };
 }

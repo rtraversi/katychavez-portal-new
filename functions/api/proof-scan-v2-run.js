@@ -5,6 +5,8 @@
 //        form names the one form of an individual review. File kind is 'package'
 //        (default), or at Pre-flight 'marked' (the client's marked-up pages) and
 //        'corrected' (D-68). Each file at most 12 MB (D-95).
+//        email: true sends the optional stage email (D-61) to the firm's Proof
+//        Scan notification address, once the run is stored.
 //   GET  ?id=<run id>   a stored run with its Possible issues
 //
 // The model reports observations only (D-18); the engine decides everything
@@ -26,6 +28,7 @@ import { callModel, stageRunSchema, stageRunValidator, stageRunPrompt } from './
 import { selectRules, evaluateRun, RESULT_SCHEMA_VERSION } from './_proof-scan-v2-engine.js';
 import { FALLBACK_EDITIONS } from './proof-scan.js';
 import { DEMO_UNAVAILABLE } from './proof-scan-v2-evidence.js';
+import { notifyProofScanStage } from './_notifications.js';
 
 const id = z.string().uuid();
 const RunSchema = z.object({
@@ -219,9 +222,26 @@ async function startRun({ request, env, gate }) {
     followUpError = 'The review was saved, but some case card updates could not be saved.';
   }
 
+  // D-61: optional, and only once the run is stored, so the link always opens
+  // a real report. Built from the stored result alone.
+  let notificationAttempted = false;
+  let notificationSent = false;
+  if (body.email) {
+    try {
+      const toEmail = await store.getNotifyEmail(admin);
+      if (toEmail) {
+        notificationAttempted = true;
+        notificationSent = await notifyProofScanStage(env, { toEmail, result });
+      }
+    } catch (err) {
+      console.error('[proof-scan-v2-run] notification failed:', err.message);
+    }
+  }
+
   const after = await loadCase(admin, snapshot.case.id);
   return json(200, {
     run_id: runId, stored: true, storage_error: null, follow_up_error: followUpError,
+    notification_attempted: notificationAttempted, notification_sent: notificationSent,
     result, possible_issues: possibleIssues, case_view: await publicCaseView(admin, after),
   });
 }
