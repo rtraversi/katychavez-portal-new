@@ -8,44 +8,44 @@
 -- nothing that is already there and never trips the 2002 freeze triggers.
 -- Depends on 2002.
 
--- ── DACA renewal v1: 39 checks, 8 package items ──
+-- ── DACA renewal v1: 40 checks, 8 package items ──
 INSERT INTO public.proof_scan_rule_sets (case_type, version, is_current, label, source_note, created_by)
 SELECT 'daca_renewal', 1,
        NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND is_current),
-       'DACA renewal', 'v1.2 profile daca_renewal v1 (39 checks, 8 package items) with Draft Review and Pre-flight settings from D-69 to D-73.', NULL
+       'DACA renewal', 'v1.2 profile daca_renewal v1 (39 checks, 8 package items) with Draft Review and Pre-flight settings from D-69 to D-73, plus the firm-wide evidence check PS-304 (D-98).', NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1);
 
-INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, sort_order)
+INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, kind, sort_order)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
-       'DACA-COMP-G1450-FILING-FEE', 'G-1450', '$520', 'Credit card authorization', 1, 1
+       'DACA-COMP-G1450-FILING-FEE', 'G-1450', '$520', 'Credit card authorization', 1, 'form', 1
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_package_items WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND item_id = 'DACA-COMP-G1450-FILING-FEE');
-INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, sort_order)
+INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, kind, sort_order)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
-       'DACA-COMP-G1450-BIOMETRICS-FEE', 'G-1450', '$85', 'Credit card authorization', 1, 2
+       'DACA-COMP-G1450-BIOMETRICS-FEE', 'G-1450', '$85', 'Credit card authorization', 1, 'form', 2
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_package_items WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND item_id = 'DACA-COMP-G1450-BIOMETRICS-FEE');
-INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, sort_order)
+INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, kind, sort_order)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
-       'DACA-COMP-G1145', 'G-1145', NULL, 'E-notification', 1, 3
+       'DACA-COMP-G1145', 'G-1145', NULL, 'E-notification', 1, 'form', 3
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_package_items WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND item_id = 'DACA-COMP-G1145');
-INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, sort_order)
+INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, kind, sort_order)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
-       'DACA-COMP-G28', 'G-28', NULL, 'Notice of entry of appearance', 4, 4
+       'DACA-COMP-G28', 'G-28', NULL, 'Notice of entry of appearance', 4, 'form', 4
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_package_items WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND item_id = 'DACA-COMP-G28');
-INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, sort_order)
+INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, kind, sort_order)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
-       'DACA-COMP-I821D', 'I-821D', NULL, 'Consideration of DACA', 7, 5
+       'DACA-COMP-I821D', 'I-821D', NULL, 'Consideration of DACA', 7, 'form', 5
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_package_items WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND item_id = 'DACA-COMP-I821D');
-INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, sort_order)
+INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, kind, sort_order)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
-       'DACA-COMP-I765', 'I-765', NULL, 'Application for employment authorization', 7, 6
+       'DACA-COMP-I765', 'I-765', NULL, 'Application for employment authorization', 7, 'form', 6
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_package_items WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND item_id = 'DACA-COMP-I765');
-INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, sort_order)
+INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, kind, sort_order)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
-       'DACA-COMP-I765WS', 'I-765WS', NULL, 'Worksheet', 1, 7
+       'DACA-COMP-I765WS', 'I-765WS', NULL, 'Worksheet', 1, 'form', 7
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_package_items WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND item_id = 'DACA-COMP-I765WS');
-INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, sort_order)
+INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, kind, sort_order)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
-       'DACA-COMP-EAD-CARD', 'EAD card', NULL, 'Copy, front and back, enlarged colour', 1, 8
+       'DACA-COMP-EAD-CARD', 'EAD card', NULL, 'Copy, front and back, enlarged colour', 1, 'evidence', 8
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_package_items WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND item_id = 'DACA-COMP-EAD-CARD');
 
 INSERT INTO public.proof_scan_rules (rule_set_id, rule_id, title, severity, check_kind, form, page, item, expected,
@@ -198,10 +198,31 @@ WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule
 INSERT INTO public.proof_scan_rules (rule_set_id, rule_id, title, severity, check_kind, form, page, item, expected,
                                      pass_text, note, source_note, applies_to_item_ids, scope, origin, retired, sort_order)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
+       'PS-304', 'Evidence matches the forms.', 'fatal', 'pdf',
+       NULL, NULL, NULL, NULL,
+       'Evidence matches the forms.', 'Every fact a piece of evidence carries (names, dates of birth, marriage date, A-Number) is compared with the forms about the same person. Each difference is its own item. Decided by Max 2026-10-07 (D-98).', NULL, '{}'::text[],
+       'firm', 'general_rules', false, 8
+WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'PS-304');
+INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
+SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'PS-304'),
+       'draft_review', 'checked', NULL, NULL, NULL, false
+WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'PS-304') AND stage = 'draft_review');
+INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
+SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'PS-304'),
+       'preflight', 'checked', NULL, NULL, NULL, false
+WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'PS-304') AND stage = 'preflight');
+INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
+SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'PS-304'),
+       'physical_scan', 'checked', NULL, NULL, NULL, false
+WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'PS-304') AND stage = 'physical_scan');
+
+INSERT INTO public.proof_scan_rules (rule_set_id, rule_id, title, severity, check_kind, form, page, item, expected,
+                                     pass_text, note, source_note, applies_to_item_ids, scope, origin, retired, sort_order)
+SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1),
        'DACA-G1145-001', 'Name, Email and Phone', 'fatal', 'pdf',
        'G-1145', '1', NULL, NULL,
        'G-1145 contact details complete.', NULL, NULL, ARRAY['DACA-COMP-G1145']::text[],
-       'case_type', 'firm_checklist', false, 8
+       'case_type', 'firm_checklist', false, 9
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1145-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1145-001'),
@@ -222,7 +243,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G28-001', 'Forms I-821d, I-765', 'fatal', 'pdf',
        'G-28', '2', '1.b', 'I-821D and I-765 ONLY',
        'G-28 discloses I-821D and I-765 only.', NULL, NULL, ARRAY['DACA-COMP-G28']::text[],
-       'case_type', 'firm_checklist', false, 9
+       'case_type', 'firm_checklist', false, 10
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G28-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G28-001'),
@@ -243,7 +264,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G28-002', 'Applicant Checkbox', 'fatal', 'pdf',
        'G-28', '2', '5', NULL,
        'G-28 applicant checkbox marked.', NULL, NULL, ARRAY['DACA-COMP-G28']::text[],
-       'case_type', 'firm_checklist', false, 10
+       'case_type', 'firm_checklist', false, 11
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G28-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G28-002'),
@@ -264,7 +285,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G28-003', 'Verify if EAD home or office', 'fatal', 'pdf',
        'G-28', '3', NULL, NULL,
        'G-28 EAD address verified.', NULL, NULL, ARRAY['DACA-COMP-G28']::text[],
-       'case_type', 'firm_checklist', false, 11
+       'case_type', 'firm_checklist', false, 12
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G28-003');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G28-003'),
@@ -285,7 +306,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G28-004', 'Applicant & attorney signatures, dated', 'fatal', 'pdf',
        'G-28', '3', NULL, NULL,
        'G-28 signed and dated.', NULL, NULL, ARRAY['DACA-COMP-G28']::text[],
-       'case_type', 'firm_checklist', false, 12
+       'case_type', 'firm_checklist', false, 13
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G28-004');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G28-004'),
@@ -306,7 +327,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-001', 'Renewal checkbox, Exp. Date', 'fatal', 'pdf',
        'I-821D', '1', '2', NULL,
        'I-821D renewal checkbox and expiry set.', NULL, NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 13
+       'case_type', 'firm_checklist', false, 14
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-001'),
@@ -327,7 +348,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-002', 'Name', 'fatal', 'pdf',
        'I-821D', '1', NULL, NULL,
        'I-821D name present.', NULL, NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 14
+       'case_type', 'firm_checklist', false, 15
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-002'),
@@ -348,7 +369,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-003', 'Mailing address', 'fatal', 'pdf',
        'I-821D', '1', NULL, NULL,
        'I-821D mailing address present.', NULL, NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 15
+       'case_type', 'firm_checklist', false, 16
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-003');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-003'),
@@ -369,7 +390,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-004', 'Removal proceedings (NO)', 'fatal', 'pdf',
        'I-821D', '1', '5', 'NO',
        'I-821D removal proceedings answered NO.', NULL, NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 16
+       'case_type', 'firm_checklist', false, 17
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-004');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-004'),
@@ -390,7 +411,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-005', 'Continuously residing in US (YES)', 'fatal', 'pdf',
        'I-821D', '2', '1', 'YES',
        'I-821D continuous residence answered YES.', NULL, NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 17
+       'case_type', 'firm_checklist', false, 18
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-005');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-005'),
@@ -411,7 +432,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-006', 'Date of Birth', 'fatal', 'pdf',
        'I-821D', '2', '9', NULL,
        'I-821D date of birth present.', NULL, NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 18
+       'case_type', 'firm_checklist', false, 19
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-006');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-006'),
@@ -432,7 +453,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-007', 'Departures (Only if applicable)', 'warning', 'pdf',
        'I-821D', '3', '6.c', NULL,
        'I-821D departures section consistent.', 'Conditional. Only applies when the applicant has departures to report.', NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 19
+       'case_type', 'firm_checklist', false, 20
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-007');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-007'),
@@ -453,7 +474,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-008', 'Criminal checkboxes, ALL NO', 'fatal', 'pdf',
        'I-821D', '4', '1-7', 'ALL NO',
        'I-821D criminal questions all answered NO.', NULL, NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 20
+       'case_type', 'firm_checklist', false, 21
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-008');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-008'),
@@ -474,7 +495,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-009', 'Read/Understand English (YES)', 'fatal', 'pdf',
        'I-821D', '5', NULL, 'YES',
        'I-821D English question answered YES.', NULL, NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 21
+       'case_type', 'firm_checklist', false, 22
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-009');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-009'),
@@ -495,7 +516,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-821D-010', 'Applicant & attorney signatures, dated', 'fatal', 'pdf',
        'I-821D', '5,6', NULL, NULL,
        'I-821D signed and dated.', NULL, NULL, ARRAY['DACA-COMP-I821D']::text[],
-       'case_type', 'firm_checklist', false, 22
+       'case_type', 'firm_checklist', false, 23
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-010');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-821D-010'),
@@ -516,7 +537,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765-001', 'Renewal checkbox', 'fatal', 'pdf',
        'I-765', '1', '1.c', NULL,
        'I-765 renewal checkbox marked.', NULL, NULL, ARRAY['DACA-COMP-I765']::text[],
-       'case_type', 'firm_checklist', false, 23
+       'case_type', 'firm_checklist', false, 24
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-001'),
@@ -537,7 +558,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765-002', 'Name', 'fatal', 'pdf',
        'I-765', '1', NULL, NULL,
        'I-765 name present.', NULL, NULL, ARRAY['DACA-COMP-I765']::text[],
-       'case_type', 'firm_checklist', false, 24
+       'case_type', 'firm_checklist', false, 25
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-002'),
@@ -558,7 +579,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765-003', 'Physical address, same (YES)', 'fatal', 'pdf',
        'I-765', '2', '6', 'YES',
        'I-765 physical address answered YES.', NULL, NULL, ARRAY['DACA-COMP-I765']::text[],
-       'case_type', 'firm_checklist', false, 25
+       'case_type', 'firm_checklist', false, 26
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-003');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-003'),
@@ -579,7 +600,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765-004', 'Questions 12,13,14', 'fatal', 'pdf',
        'I-765', '2', '12-14', NULL,
        'I-765 questions 12 to 14 answered.', NULL, NULL, ARRAY['DACA-COMP-I765']::text[],
-       'case_type', 'firm_checklist', false, 26
+       'case_type', 'firm_checklist', false, 27
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-004');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-004'),
@@ -600,7 +621,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765-005', 'Date of Birth', 'fatal', 'pdf',
        'I-765', '3', '20', NULL,
        'I-765 date of birth present.', NULL, NULL, ARRAY['DACA-COMP-I765']::text[],
-       'case_type', 'firm_checklist', false, 27
+       'case_type', 'firm_checklist', false, 28
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-005');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-005'),
@@ -621,7 +642,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765-006', '“DACA”', 'fatal', 'pdf',
        'I-765', '3', '25', 'DACA',
        'I-765 item 25 reads DACA.', NULL, NULL, ARRAY['DACA-COMP-I765']::text[],
-       'case_type', 'firm_checklist', false, 28
+       'case_type', 'firm_checklist', false, 29
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-006');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-006'),
@@ -642,7 +663,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765-007', 'Eligibility category C 33 (Zoom in)', 'fatal', 'pdf',
        'I-765', '3', '27', 'C33',
        'I-765 eligibility category is C33.', NULL, NULL, ARRAY['DACA-COMP-I765']::text[],
-       'case_type', 'firm_checklist', false, 29
+       'case_type', 'firm_checklist', false, 30
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-007');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-007'),
@@ -663,7 +684,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765-008', 'Read/Understand English (YES)', 'fatal', 'pdf',
        'I-765', '4', '1.a', 'YES',
        'I-765 English question answered YES.', NULL, NULL, ARRAY['DACA-COMP-I765']::text[],
-       'case_type', 'firm_checklist', false, 30
+       'case_type', 'firm_checklist', false, 31
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-008');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-008'),
@@ -684,7 +705,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765-009', 'Applicant & attorney signatures, dates', 'fatal', 'pdf',
        'I-765', '4,6', NULL, NULL,
        'I-765 signed and dated.', NULL, NULL, ARRAY['DACA-COMP-I765']::text[],
-       'case_type', 'firm_checklist', false, 31
+       'case_type', 'firm_checklist', false, 32
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-009');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765-009'),
@@ -705,7 +726,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-765WS-001', 'Applicant name & numbers, “living expenses”', 'fatal', 'pdf',
        'I-765WS', '1', NULL, NULL,
        'I-765WS complete.', NULL, NULL, ARRAY['DACA-COMP-I765WS']::text[],
-       'case_type', 'firm_checklist', false, 32
+       'case_type', 'firm_checklist', false, 33
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765WS-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-765WS-001'),
@@ -726,7 +747,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-ASM-001', 'All pages in order', 'fatal', 'pdf',
        NULL, NULL, NULL, NULL,
        'All pages in order.', NULL, NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 33
+       'case_type', 'firm_checklist', false, 34
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-ASM-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-ASM-001'),
@@ -747,7 +768,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G1450-001', 'Name, Email and Phone #', 'fatal', 'pdf',
        'G-1450', '1', NULL, NULL,
        'Contact details complete.', NULL, NULL, ARRAY['DACA-COMP-G1450-FILING-FEE', 'DACA-COMP-G1450-BIOMETRICS-FEE']::text[],
-       'case_type', 'firm_checklist', false, 34
+       'case_type', 'firm_checklist', false, 35
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-001'),
@@ -768,7 +789,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G1450-002', 'One G-1450 authorises $520.', 'fatal', 'pdf',
        'G-1450', '1', NULL, '$520',
        '$520 filing fee authorised.', NULL, 'AuthorizedPaymentAmt on the filing-fee form.', ARRAY['DACA-COMP-G1450-FILING-FEE']::text[],
-       'case_type', 'firm_checklist', false, 35
+       'case_type', 'firm_checklist', false, 36
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-002'),
@@ -789,7 +810,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G1450-003', 'One G-1450 authorises $85.', 'fatal', 'pdf',
        'G-1450', '1', NULL, '$85',
        '$85 biometrics fee authorised.', NULL, 'AuthorizedPaymentAmt on the biometrics form.', ARRAY['DACA-COMP-G1450-BIOMETRICS-FEE']::text[],
-       'case_type', 'firm_checklist', false, 36
+       'case_type', 'firm_checklist', false, 37
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-003');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-003'),
@@ -810,7 +831,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G1450-004', 'Card number, card type and expiration date are complete.', 'fatal', 'pdf',
        'G-1450', '1', NULL, NULL,
        'Card details complete.', NULL, 'Fields CreditCardNumber_1 to _4, CreditCardTypeChBx, ExpirationDate. Verified against the repo''s 1600-g1450.sql field map.', ARRAY['DACA-COMP-G1450-FILING-FEE', 'DACA-COMP-G1450-BIOMETRICS-FEE']::text[],
-       'case_type', 'firm_checklist', false, 37
+       'case_type', 'firm_checklist', false, 38
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-004');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-004'),
@@ -831,7 +852,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G1450-005', 'Cardholder name and billing address are complete.', 'fatal', 'pdf',
        'G-1450', '1', NULL, NULL,
        'Cardholder details complete.', NULL, 'CCHolderGivenName/FamilyName and the CCHolder address block.', ARRAY['DACA-COMP-G1450-FILING-FEE', 'DACA-COMP-G1450-BIOMETRICS-FEE']::text[],
-       'case_type', 'firm_checklist', false, 38
+       'case_type', 'firm_checklist', false, 39
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-005');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-005'),
@@ -852,7 +873,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renew
        'DACA-G1450-006', 'Signed by the applicant.', 'fatal', 'pdf',
        'G-1450', '1', NULL, NULL,
        'Signed.', NULL, 'SignatureOfApplicant. Added by Max 2026-08-31; not on the original checklist.', ARRAY['DACA-COMP-G1450-FILING-FEE', 'DACA-COMP-G1450-BIOMETRICS-FEE']::text[],
-       'case_type', 'firm_checklist', false, 39
+       'case_type', 'firm_checklist', false, 40
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-006');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-006'),
@@ -867,11 +888,11 @@ SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FR
        'physical_scan', 'checked', NULL, NULL, NULL, false
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'daca_renewal' AND version = 1) AND rule_id = 'DACA-G1450-006') AND stage = 'physical_scan');
 
--- ── General v1: 7 checks, 0 package items ──
+-- ── General v1: 8 checks, 0 package items ──
 INSERT INTO public.proof_scan_rule_sets (case_type, version, is_current, label, source_note, created_by)
 SELECT 'general', 1,
        NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND is_current),
-       'General', 'The 7 firm-wide checks with the stage settings DACA uses for them (D-93). No package items, no evidence gate (D-95).', NULL
+       'General', 'The 8 firm-wide checks (the 7 base checks and PS-304, D-98) with the stage settings DACA uses for them (D-93). No package items, no evidence gate (D-95).', NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1);
 
 INSERT INTO public.proof_scan_rules (rule_set_id, rule_id, title, severity, check_kind, form, page, item, expected,
@@ -1020,3 +1041,24 @@ INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1) AND rule_id = 'PS-303'),
        'physical_scan', 'checked', NULL, NULL, NULL, false
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1) AND rule_id = 'PS-303') AND stage = 'physical_scan');
+
+INSERT INTO public.proof_scan_rules (rule_set_id, rule_id, title, severity, check_kind, form, page, item, expected,
+                                     pass_text, note, source_note, applies_to_item_ids, scope, origin, retired, sort_order)
+SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1),
+       'PS-304', 'Evidence matches the forms.', 'fatal', 'pdf',
+       NULL, NULL, NULL, NULL,
+       'Evidence matches the forms.', 'Every fact a piece of evidence carries (names, dates of birth, marriage date, A-Number) is compared with the forms about the same person. Each difference is its own item. Decided by Max 2026-10-07 (D-98).', NULL, '{}'::text[],
+       'firm', 'general_rules', false, 8
+WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1) AND rule_id = 'PS-304');
+INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
+SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1) AND rule_id = 'PS-304'),
+       'draft_review', 'checked', NULL, NULL, NULL, false
+WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1) AND rule_id = 'PS-304') AND stage = 'draft_review');
+INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
+SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1) AND rule_id = 'PS-304'),
+       'preflight', 'checked', NULL, NULL, NULL, false
+WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1) AND rule_id = 'PS-304') AND stage = 'preflight');
+INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
+SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1) AND rule_id = 'PS-304'),
+       'physical_scan', 'checked', NULL, NULL, NULL, false
+WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'general' AND version = 1) AND rule_id = 'PS-304') AND stage = 'physical_scan');

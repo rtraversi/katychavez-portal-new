@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "_note": "Seed for the Proof Scan v2 rule tables (migration 2002). Generated once from the v1.2 DACA profile (daca-renewal.v1.json, checks and package items unchanged) and the v2 Lab stage map (stage-map.sample.json, Max decisions D-69 to D-73). Physical Scan runs every check (D-58). General carries the 7 firm-wide checks only, no package items (D-90 to D-95). Turned into SQL by scripts/proof-scan-v2-seed.mjs; edit this file, then rerun the script.",
+  "_note": "Seed for the Proof Scan v2 rule tables (migration 2002). Generated once from the v1.2 DACA profile (daca-renewal.v1.json, checks and package items unchanged) and the v2 Lab stage map (stage-map.sample.json, Max decisions D-69 to D-73). Physical Scan runs every check (D-58). General carries the firm-wide checks only (the 7 base checks plus PS-304, D-98), no package items (D-90 to D-95). Turned into SQL by scripts/proof-scan-v2-seed.mjs; edit this file, then rerun the script.",
   "stages": [
     "draft_review",
     "preflight",
@@ -18,57 +18,65 @@
       "case_type": "daca_renewal",
       "version": 1,
       "label": "DACA renewal",
-      "source_note": "v1.2 profile daca_renewal v1 (39 checks, 8 package items) with Draft Review and Pre-flight settings from D-69 to D-73.",
+      "source_note": "v1.2 profile daca_renewal v1 (39 checks, 8 package items) with Draft Review and Pre-flight settings from D-69 to D-73, plus the firm-wide evidence check PS-304 (D-98).",
       "package_items": [
         {
           "item_id": "DACA-COMP-G1450-FILING-FEE",
           "form": "G-1450",
           "instance": "$520",
           "label": "Credit card authorization",
-          "pages": 1
+          "pages": 1,
+          "kind": "form"
         },
         {
           "item_id": "DACA-COMP-G1450-BIOMETRICS-FEE",
           "form": "G-1450",
           "instance": "$85",
           "label": "Credit card authorization",
-          "pages": 1
+          "pages": 1,
+          "kind": "form"
         },
         {
           "item_id": "DACA-COMP-G1145",
           "form": "G-1145",
           "label": "E-notification",
-          "pages": 1
+          "pages": 1,
+          "kind": "form"
         },
         {
           "item_id": "DACA-COMP-G28",
           "form": "G-28",
           "label": "Notice of entry of appearance",
-          "pages": 4
+          "pages": 4,
+          "kind": "form"
         },
         {
           "item_id": "DACA-COMP-I821D",
           "form": "I-821D",
           "label": "Consideration of DACA",
-          "pages": 7
+          "pages": 7,
+          "kind": "form"
         },
         {
           "item_id": "DACA-COMP-I765",
           "form": "I-765",
           "label": "Application for employment authorization",
-          "pages": 7
+          "pages": 7,
+          "kind": "form"
         },
         {
           "item_id": "DACA-COMP-I765WS",
           "form": "I-765WS",
           "label": "Worksheet",
-          "pages": 1
+          "pages": 1,
+          "kind": "form"
         },
         {
           "item_id": "DACA-COMP-EAD-CARD",
           "form": "EAD card",
           "label": "Copy, front and back, enlarged colour",
-          "pages": 1
+          "pages": 1,
+          "kind": "evidence"
         }
       ],
       "rules": [
@@ -209,6 +217,28 @@
           "severity": "fatal",
           "check_kind": "pdf",
           "pass_text": "Mailing address consistent.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-304",
+          "title": "Evidence matches the forms.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Evidence matches the forms.",
+          "note": "Every fact a piece of evidence carries (names, dates of birth, marriage date, A-Number) is compared with the forms about the same person. Each difference is its own item. Decided by Max 2026-10-07 (D-98).",
           "applies_to_item_ids": [],
           "scope": "firm",
           "origin": "general_rules",
@@ -1069,7 +1099,7 @@
       "case_type": "general",
       "version": 1,
       "label": "General",
-      "source_note": "The 7 firm-wide checks with the stage settings DACA uses for them (D-93). No package items, no evidence gate (D-95).",
+      "source_note": "The 8 firm-wide checks (the 7 base checks and PS-304, D-98) with the stage settings DACA uses for them (D-93). No package items, no evidence gate (D-95).",
       "package_items": [],
       "rules": [
         {
@@ -1209,6 +1239,28 @@
           "severity": "fatal",
           "check_kind": "pdf",
           "pass_text": "Mailing address consistent.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-304",
+          "title": "Evidence matches the forms.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Evidence matches the forms.",
+          "note": "Every fact a piece of evidence carries (names, dates of birth, marriage date, A-Number) is compared with the forms about the same person. Each difference is its own item. Decided by Max 2026-10-07 (D-98).",
           "applies_to_item_ids": [],
           "scope": "firm",
           "origin": "general_rules",

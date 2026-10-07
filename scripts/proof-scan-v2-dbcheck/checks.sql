@@ -62,16 +62,16 @@ $$;
 -- SEED (before any fixture touches the rule tables)
 -- ═════════════════════════════════════════════════════════════════════════════
 
-SELECT dbcheck.record('seed: DACA renewal has 39 rules and 8 package items',
-  (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('daca_renewal')) = 39
+SELECT dbcheck.record('seed: DACA renewal has 40 rules and 8 package items',
+  (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('daca_renewal')) = 40
   AND (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('daca_renewal')) = 8,
   format('rules=%s items=%s',
     (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('daca_renewal')),
     (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('daca_renewal'))));
 
-SELECT dbcheck.record('seed: General has the 7 firm-wide rules and 0 package items',
+SELECT dbcheck.record('seed: General has the 8 firm-wide rules and 0 package items',
   (SELECT array_agg(rule_id ORDER BY rule_id) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('general'))
-    = ARRAY['PS-101','PS-102','PS-103','PS-201','PS-301','PS-302','PS-303']
+    = ARRAY['PS-101','PS-102','PS-103','PS-201','PS-301','PS-302','PS-303','PS-304']
   AND (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('general')) = 0,
   format('rules=%s items=%s',
     (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('general')),
@@ -82,7 +82,7 @@ SELECT dbcheck.record('seed: every rule has a Draft Review, Pre-flight and Physi
     SELECT 1 FROM public.proof_scan_rules r
     WHERE (SELECT array_agg(stage ORDER BY stage) FROM public.proof_scan_rule_stage_settings s WHERE s.rule_pk = r.id)
           IS DISTINCT FROM ARRAY['draft_review','physical_scan','preflight'])
-  AND (SELECT count(*) FROM public.proof_scan_rules) = 46,
+  AND (SELECT count(*) FROM public.proof_scan_rules) = 48,
   format('rules without all three: %s',
     (SELECT count(*) FROM public.proof_scan_rules r
      WHERE (SELECT count(*) FROM public.proof_scan_rule_stage_settings s WHERE s.rule_pk = r.id) <> 3)));

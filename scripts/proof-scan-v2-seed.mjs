@@ -56,9 +56,9 @@ export function buildSeedSql(seed) {
 
     rs.package_items.forEach((item, i) => {
       out.push(
-        'INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, sort_order)',
+        'INSERT INTO public.proof_scan_package_items (rule_set_id, item_id, form, instance, label, pages, kind, sort_order)',
         `SELECT ${ruleSetRef(rs)},`,
-        `       ${lit(item.item_id)}, ${lit(item.form)}, ${lit(item.instance)}, ${lit(item.label)}, ${int(item.pages)}, ${int(i + 1)}`,
+        `       ${lit(item.item_id)}, ${lit(item.form)}, ${lit(item.instance)}, ${lit(item.label)}, ${int(item.pages)}, ${lit(item.kind)}, ${int(i + 1)}`,
         `WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_package_items WHERE rule_set_id = ${ruleSetRef(rs)} AND item_id = ${lit(item.item_id)});`,
       );
     });

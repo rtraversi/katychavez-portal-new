@@ -9,7 +9,11 @@ const seedSql = Object.values(import.meta.glob('../../supabase/migrations/2003_p
 
 const REVIEW_STAGES = ['draft_review', 'preflight', 'physical_scan'];
 const STATES = ['checked', 'if_filled', 'if_marked', 'later', 'not_this_stage'];
-const FIRM_WIDE = ['PS-101', 'PS-102', 'PS-103', 'PS-201', 'PS-301', 'PS-302', 'PS-303'];
+const BASE_FIRM_WIDE = ['PS-101', 'PS-102', 'PS-103', 'PS-201', 'PS-301', 'PS-302', 'PS-303'];
+// D-98: the evidence check, added for v2. Not in the v1.2 profile.
+const FIRM_WIDE = [...BASE_FIRM_WIDE, 'PS-304'];
+const v12Ids = v12.rules.map((r) => r.rule_id);
+const withoutNew = (rules) => rules.filter((r) => r.rule_id !== 'PS-304');
 
 const ruleSet = (caseType) => seed.rule_sets.find((rs) => rs.case_type === caseType);
 const daca = ruleSet('daca_renewal');
@@ -18,14 +22,15 @@ const rule = (rs, id) => rs.rules.find((r) => r.rule_id === id);
 const allRules = () => seed.rule_sets.flatMap((rs) => rs.rules.map((r) => [rs.case_type, r]));
 
 describe('Proof Scan v2 seed: DACA renewal', () => {
-  it('has exactly the 39 v1.2 checks, same IDs, same order', () => {
-    expect(daca.rules).toHaveLength(39);
-    expect(daca.rules.map((r) => r.rule_id)).toEqual(v12.rules.map((r) => r.rule_id));
+  it('has the 39 v1.2 checks, same IDs, same order, plus PS-304 (D-98)', () => {
+    expect(daca.rules).toHaveLength(40);
+    expect(withoutNew(daca.rules).map((r) => r.rule_id)).toEqual(v12Ids);
+    expect(daca.rules.map((r) => r.rule_id).indexOf('PS-304')).toBe(v12Ids.indexOf('PS-303') + 1);
   });
 
   it('has exactly the 8 v1.2 package items, unchanged', () => {
     expect(daca.package_items).toHaveLength(8);
-    expect(daca.package_items).toEqual(v12.package_items);
+    expect(daca.package_items.map(({ kind, ...rest }) => rest)).toEqual(v12.package_items);
   });
 
   it('copies every v1.2 check unchanged', () => {
@@ -48,8 +53,27 @@ describe('Proof Scan v2 seed: DACA renewal', () => {
   });
 });
 
+describe('Proof Scan v2 seed: package item kinds', () => {
+  it('marks the EAD card as evidence and every other item as a form', () => {
+    for (const item of daca.package_items) {
+      expect(item.kind, item.item_id).toBe(item.item_id === 'DACA-COMP-EAD-CARD' ? 'evidence' : 'form');
+    }
+  });
+});
+
+describe('Proof Scan v2 seed: evidence matches the forms (D-98)', () => {
+  it('is a firm-wide check in both DACA and General, checked at every review stage', () => {
+    for (const rs of [daca, general]) {
+      const r = rule(rs, 'PS-304');
+      expect(r, rs.case_type).toBeDefined();
+      expect(r.scope).toBe('firm');
+      for (const stage of REVIEW_STAGES) expect(r.stages[stage].state, `${rs.case_type} ${stage}`).toBe('checked');
+    }
+  });
+});
+
 describe('Proof Scan v2 seed: General (D-90 to D-95)', () => {
-  it('has exactly the 7 firm-wide checks', () => {
+  it('has exactly the 8 firm-wide checks', () => {
     expect(general.rules.map((r) => r.rule_id).sort()).toEqual([...FIRM_WIDE].sort());
     expect(general.rules.every((r) => r.scope === 'firm')).toBe(true);
   });
@@ -62,7 +86,7 @@ describe('Proof Scan v2 seed: General (D-90 to D-95)', () => {
     for (const r of general.rules) expect(r.stages, r.rule_id).toEqual(rule(daca, r.rule_id).stages);
   });
 
-  it('the DACA firm-wide checks are exactly the same 7', () => {
+  it('the DACA firm-wide checks are exactly the same 8', () => {
     expect(daca.rules.filter((r) => r.scope === 'firm').map((r) => r.rule_id).sort()).toEqual([...FIRM_WIDE].sort());
   });
 });
@@ -136,7 +160,7 @@ describe('Proof Scan v2 seed: stage settings', () => {
     const on = daca.rules.filter((r) => r.stages.preflight.state === 'checked').map((r) => r.rule_id).sort();
     expect(on).toEqual([
       'DACA-765-009', 'DACA-821D-010', 'DACA-G1450-004', 'DACA-G1450-005', 'DACA-G1450-006',
-      'DACA-G28-004', 'PS-201', 'PS-301', 'PS-302', 'PS-303',
+      'DACA-G28-004', 'PS-201', 'PS-301', 'PS-302', 'PS-303', 'PS-304',
     ]);
     const conditional = daca.rules.filter((r) => r.stages.preflight.state === 'if_marked').map((r) => r.rule_id);
     expect(conditional).toEqual(['DACA-821D-007']);

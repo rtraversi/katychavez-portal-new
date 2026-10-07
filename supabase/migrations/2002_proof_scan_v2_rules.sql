@@ -53,6 +53,9 @@ CREATE TABLE IF NOT EXISTS public.proof_scan_package_items (
   instance     text,
   label        text    NOT NULL,
   pages        integer NOT NULL CHECK (pages >= 1),
+  -- 'form' = a filed form; 'evidence' = a supporting document (the EAD card copy).
+  -- Draft Review asks only for forms; Physical Scan expects both (D-58, D-66).
+  kind         text    NOT NULL DEFAULT 'form' CHECK (kind IN ('form', 'evidence')),
   sort_order   integer NOT NULL,
   UNIQUE (rule_set_id, item_id)
 );
