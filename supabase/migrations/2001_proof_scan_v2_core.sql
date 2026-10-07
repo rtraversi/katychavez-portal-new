@@ -246,8 +246,13 @@ CREATE TRIGGER proof_scan_document_people_same_case
 
 -- ── Suggestions: proposed changes, never auto-applied (D-55, D-72) ──────────
 -- 'used' = staff copied the value into the record; 'kept' = staff kept the
--- existing value. A full SSN is never a suggestion value (server decides how an
--- SSN difference is surfaced; it is never stored in plaintext here).
+-- existing value.
+--
+-- SSN (D-97): a different SSN from a newer document is a suggestion too, stored
+-- exactly like proof_scan_people.ssn_encrypted (same AES-256-GCM format, same
+-- key, same audited server path) in value_encrypted + value_last4. It never
+-- uses the plaintext `value` column, and no other field may use the encrypted
+-- pair.
 CREATE TABLE IF NOT EXISTS public.proof_scan_suggestions (
   id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   person_id     uuid        NOT NULL REFERENCES public.proof_scan_people(id) ON DELETE CASCADE,
@@ -256,8 +261,11 @@ CREATE TABLE IF NOT EXISTS public.proof_scan_suggestions (
                               'street', 'apt_type', 'apt_number', 'city', 'state', 'zip',
                               'in_care_of', 'province', 'postal_code', 'country',
                               'date_of_birth', 'a_number', 'ead_expiration',
-                              'phone', 'email')),
-  value         text        NOT NULL,
+                              'phone', 'email', 'ssn')),
+  value            text,
+  value_encrypted  text        CHECK (value_encrypted IS NULL
+                                      OR value_encrypted ~ '^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$'),
+  value_last4      char(4)     CHECK (value_last4 IS NULL OR value_last4 ~ '^[0-9]{4}$'),
   source_label  text        NOT NULL CHECK (length(btrim(source_label)) BETWEEN 1 AND 200),
   document_id   uuid        REFERENCES public.proof_scan_documents(id) ON DELETE SET NULL,
   run_id        uuid        REFERENCES public.proof_scans(id) ON DELETE SET NULL,
@@ -267,7 +275,20 @@ CREATE TABLE IF NOT EXISTS public.proof_scan_suggestions (
   created_at    timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT proof_scan_suggestions_decided_shape
-    CHECK ((status = 'open') = (decided_at IS NULL))
+    CHECK ((status = 'open') = (decided_at IS NULL)),
+  -- The encrypted pair is set together or not at all.
+  CONSTRAINT proof_scan_suggestions_ssn_pair
+    CHECK ((value_encrypted IS NULL) = (value_last4 IS NULL)),
+  -- An SSN suggestion carries only the encrypted pair; every other field
+  -- carries only the plaintext value.
+  CONSTRAINT proof_scan_suggestions_value_shape
+    CHECK (CASE WHEN field = 'ssn'
+                THEN value IS NULL AND value_encrypted IS NOT NULL
+                ELSE value IS NOT NULL AND value_encrypted IS NULL END),
+  -- Belt and braces: a value shaped like an SSN (123-45-6789) is refused in the
+  -- plaintext column whatever field it claims to be.
+  CONSTRAINT proof_scan_suggestions_no_plain_ssn
+    CHECK (value IS NULL OR value !~ '^\s*[0-9]{3}-[0-9]{2}-[0-9]{4}\s*$')
 );
 
 CREATE INDEX IF NOT EXISTS proof_scan_suggestions_person_open_idx

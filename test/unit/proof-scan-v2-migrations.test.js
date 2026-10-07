@@ -85,5 +85,10 @@ describe('Proof Scan v2 migrations: security', () => {
     expect(core).not.toMatch(/^\s+ssn\s+text/m);
     // Document facts refuse a full SSN.
     expect(core).toMatch(/proof_scan_documents_no_full_ssn/);
+    // D-97: an SSN suggestion is stored encrypted, never in the plaintext value.
+    expect(core).toMatch(/value_encrypted\s+text/);
+    expect(core).toMatch(/value_last4\s+char\(4\)/);
+    expect(core).toMatch(/proof_scan_suggestions_value_shape/);
+    expect(core).toMatch(/proof_scan_suggestions_no_plain_ssn/);
   });
 });
