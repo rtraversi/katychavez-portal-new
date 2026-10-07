@@ -135,6 +135,7 @@ function makeAdmin({ rows = [], error = null } = {}) {
       select: (columns) => { q.columns = columns; return chain; },
       order:  () => chain,
       eq:     (column, value) => { q.filters.push([column, value]); return chain; },
+      is:     (column, value) => { q.filters.push([column, 'is', value]); return chain; },
       limit:  (n) => { q.limit = n; return chain; },
       then:   (resolve) => resolve({ data: error ? null : rows, error }),
     };
@@ -273,6 +274,12 @@ describe('proof scan history — list', () => {
     expect(query.limit).toBe(10);
     expect(query.columns).not.toMatch(/result_json/);
     expect(query.columns).not.toMatch(/result_html/);
+  });
+
+  it('lists only v1.2 scans: v2 runs belong to their case', async () => {
+    const admin = makeAdmin({ rows: [] });
+    await call(listRequest(), admin);
+    expect(admin.queries[0].filters).toEqual([['case_id', 'is', null]]);
   });
 
   it('shows the deterministic language for every structured state', async () => {

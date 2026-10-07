@@ -110,6 +110,9 @@ async function listScans(admin) {
   const { data: scans, error } = await admin
     .from('proof_scans')
     .select(LIST_COLUMNS)
+    // v2 runs live inside their case (migration 2001) and render there; this
+    // list is the v1.2 checker's own history.
+    .is('case_id', null)
     .order('created_at', { ascending: false })
     .limit(HISTORY_LIMIT);
 

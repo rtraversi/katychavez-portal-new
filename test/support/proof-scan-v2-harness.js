@@ -92,8 +92,10 @@ export function mockModel(vi, responses) {
   globalThis.fetch = vi.fn(async (url, opts) => {
     const body = JSON.parse(opts.body);
     calls.push({ url: String(url), body });
-    const next = queue.shift();
+    let next = queue.shift();
     if (next === undefined) throw new Error('unexpected extra model call');
+    // A function builds its answer from the request (the IDs this run asked for).
+    if (typeof next === 'function') next = { output: next(body) };
     if (next?.httpStatus) return { ok: false, status: next.httpStatus, json: async () => ({}) };
     return {
       ok: true,
@@ -107,4 +109,45 @@ export function mockModel(vi, responses) {
     };
   });
   return calls;
+}
+
+// ── Stage-run observations ───────────────────────────────────────────────────
+
+import { FORM_VALUE_FIELDS, EVIDENCE_FACT_FIELDS } from '../../functions/api/_proof-scan-v2-ai.js';
+
+export const askedRuleIds = (body) => body.output_config.format.schema.properties.rule_results?.items.properties.rule_id.enum || [];
+export const askedItemIds = (body) => body.output_config.format.schema.properties.package_items?.items.properties.item_id.enum || [];
+
+// Values a form shows. Fields the form has no box for are null; pass '' for a blank box.
+export function formValues(values = {}) {
+  return { ...Object.fromEntries(FORM_VALUE_FIELDS.map((f) => [f, null])), ...values };
+}
+export function evidenceFacts(facts = {}) {
+  return { ...Object.fromEntries(EVIDENCE_FACT_FIELDS.map((f) => [f, null])), ...facts };
+}
+
+// An answer to a stage-run request: every asked ID clear (or as overridden),
+// every asked item present (or as overridden), plus the given forms, evidence,
+// markups and possible issues.
+export function observations({ rules = {}, items = {}, forms = [], evidence = [], markups, possible = [] } = {}) {
+  return (body) => {
+    const props = body.output_config.format.schema.properties;
+    const out = {};
+    const ruleIds = askedRuleIds(body);
+    if (props.rule_results) {
+      out.rule_results = ruleIds.map((rule_id) => {
+        const o = rules[rule_id];
+        const status = typeof o === 'string' ? o : o?.status || 'clear';
+        return { rule_id, status, summary: null, locations: [], evidence: null, reason: status === 'clear' ? null : 'observed', ...(typeof o === 'object' ? o : {}) };
+      });
+    }
+    if (props.package_items) {
+      out.package_items = askedItemIds(body).map((item_id) => ({ item_id, status: items[item_id] || 'present', locations: [] }));
+    }
+    out.forms_found = forms;
+    out.evidence_found = evidence;
+    if (props.markups) out.markups = markups || [];
+    out.possible_issues = possible;
+    return out;
+  };
 }
