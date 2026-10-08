@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "label": "Combined AOS-style package",
+  "_note": "SYNTHETIC. Placeholder people for the General case type (D-90 to D-95). No file is read. Never put a real client's data in a fixture. Forms are tagged with the person they are about (_person).",
+  "files": [
+    {
+      "filename": "sample-general-package.pdf",
+      "pages": 137
+    }
+  ],
+  "forms_identified": [
+    {
+      "key": "I-130",
+      "file": "sample-general-package.pdf",
+      "pages": "1-12"
+    },
+    {
+      "key": "I-130A",
+      "file": "sample-general-package.pdf",
+      "pages": "13-18"
+    },
+    {
+      "key": "I-485",
+      "file": "sample-general-package.pdf",
+      "pages": "19-38"
+    },
+    {
+      "key": "I-864",
+      "file": "sample-general-package.pdf",
+      "pages": "39-48"
+    },
+    {
+      "key": "I-765",
+      "file": "sample-general-package.pdf",
+      "pages": "49-55"
+    },
+    {
+      "key": "G-28",
+      "file": "sample-general-package.pdf",
+      "pages": "56-59"
+    }
+  ],
+  "evidence_identified": [],
+  "forms": {
+    "I-130": {
+      "_person": "petitioner",
+      "first_name": {
+        "value": "DANIEL",
+        "where": "p.1"
+      },
+      "last_name": {
+        "value": "MORALES",
+        "where": "p.1"
+      },
+      "date_of_birth": {
+        "value": "1990-02-11",
+        "where": "p.2"
+      },
+      "marriage_date": {
+        "value": "2021-05-12",
+        "where": "p.3"
+      }
+    },
+    "I-130A": {
+      "_person": "beneficiary",
+      "first_name": {
+        "value": "LUCIA",
+        "where": "p.1"
+      },
+      "last_name": {
+        "value": "REYES",
+        "where": "p.1"
+      }
+    },
+    "I-485": {
+      "_person": "beneficiary",
+      "first_name": {
+        "value": "LUCIA",
+        "where": "p.1"
+      },
+      "last_name": {
+        "value": "REYES",
+        "where": "p.1"
+      },
+      "date_of_birth": {
+        "value": "1993-09-30",
+        "where": "p.2"
+      },
+      "a_number": {
+        "value": "A-234567890",
+        "where": "p.1"
+      },
+      "country_of_birth": {
+        "value": "MEXICO",
+        "where": "p.2"
+      }
+    },
+    "I-864": {
+      "_person": "petitioner",
+      "first_name": {
+        "value": "DANIEL",
+        "where": "p.1"
+      },
+      "last_name": {
+        "value": "MORALES",
+        "where": "p.1"
+      }
+    },
+    "I-765": {
+      "_person": "beneficiary",
+      "first_name": {
+        "value": "LUCIA",
+        "where": "p.1"
+      },
+      "last_name": {
+        "value": "REYES",
+        "where": "p.1"
+      },
+      "a_number": {
+        "value": "A-234567809",
+        "where": "p.1"
+      },
+      "country_of_birth": {
+        "value": "GUATEMALA",
+        "where": "p.3"
+      }
+    }
+  },
+  "results": {
+    "PS-302": {
+      "status": "needs_attention",
+      "summary": "The beneficiary's A-Number on the I-765 is A-234567809. The I-485 has A-234567890."
+    }
+  }
+}

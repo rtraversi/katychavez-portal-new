@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "_note": "SYNTHETIC. Placeholder people for the General case type (D-90 to D-95). No file is read. Never put a real client's data in a fixture. A marriage certificate belongs to both spouses (D-94).",
+  "sample_label": "Marriage certificate",
+  "filename": "sample-marriage-certificate.pdf",
+  "doc_type": "marriage_certificate",
+  "type_label": "Marriage certificate",
+  "read_quality": "clear",
+  "owner_roles": [
+    "petitioner",
+    "beneficiary"
+  ],
+  "summary_fields": [
+    "spouse_1",
+    "spouse_2",
+    "marriage_date"
+  ],
+  "facts": {
+    "spouse_1": "DANIEL MORALES",
+    "spouse_2": "LUCIA REYES",
+    "marriage_date": "2021-05-15"
+  }
+}

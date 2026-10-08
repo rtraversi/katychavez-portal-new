@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "label": "One combined PDF",
+  "_note": "SYNTHETIC. A whole Draft Review sent as one PDF. Forms are 'identified' from printed form names and page numbers (simulated here, D-56). The I-765WS is not in it. Results are an OVERLAY keyed by rule_id, same as the 1.2 fixtures: anything active and not named here is a pass. 2026-10-02: G-28 EAD home/office left blank (needs info at Draft Review) and I-821D English answered NO (gentle confirm) added to show both.",
+  "files": [
+    {
+      "filename": "sample-daca-draft-combined.pdf",
+      "pages": 21
+    }
+  ],
+  "forms_identified": [
+    {
+      "key": "G-1450 $520",
+      "file": "sample-daca-draft-combined.pdf",
+      "pages": "1"
+    },
+    {
+      "key": "G-1450 $85",
+      "file": "sample-daca-draft-combined.pdf",
+      "pages": "2"
+    },
+    {
+      "key": "G-1145",
+      "file": "sample-daca-draft-combined.pdf",
+      "pages": "3"
+    },
+    {
+      "key": "G-28",
+      "file": "sample-daca-draft-combined.pdf",
+      "pages": "4-7"
+    },
+    {
+      "key": "I-821D",
+      "file": "sample-daca-draft-combined.pdf",
+      "pages": "8-14"
+    },
+    {
+      "key": "I-765",
+      "file": "sample-daca-draft-combined.pdf",
+      "pages": "15-21"
+    }
+  ],
+  "evidence_identified": [],
+  "forms": {
+    "G-1450 $520": {
+      "first_name": {
+        "value": "ANA"
+      },
+      "last_name": {
+        "value": "RIVERA"
+      },
+      "phone": {
+        "value": "",
+        "where": "p.1"
+      },
+      "email": {
+        "value": "",
+        "where": "p.1"
+      }
+    },
+    "G-1450 $85": {
+      "first_name": {
+        "value": "ANA"
+      },
+      "last_name": {
+        "value": "RIVERA"
+      },
+      "phone": {
+        "value": "",
+        "where": "p.1"
+      },
+      "email": {
+        "value": "",
+        "where": "p.1"
+      }
+    },
+    "G-1145": {
+      "first_name": {
+        "value": "ANA"
+      },
+      "last_name": {
+        "value": "RIVERA"
+      },
+      "phone": {
+        "value": "",
+        "where": "p.1"
+      },
+      "email": {
+        "value": "",
+        "where": "p.1"
+      }
+    },
+    "G-28": {
+      "first_name": {
+        "value": "ANA"
+      },
+      "last_name": {
+        "value": "RIVERA"
+      },
+      "a_number": {
+        "value": "A-123456789",
+        "where": "p.2"
+      }
+    },
+    "I-821D": {
+      "first_name": {
+        "value": "ANA"
+      },
+      "last_name": {
+        "value": "RIVERA"
+      },
+      "a_number": {
+        "value": "123-456-789",
+        "where": "p.1"
+      },
+      "date_of_birth": {
+        "value": "1994-06-18",
+        "where": "p.2 item 9"
+      }
+    },
+    "I-765": {
+      "first_name": {
+        "value": "ANA"
+      },
+      "last_name": {
+        "value": "RIVERA"
+      },
+      "a_number": {
+        "value": "A-123456789",
+        "where": "p.1"
+      },
+      "date_of_birth": {
+        "value": "1994-06-81",
+        "where": "p.3 item 20"
+      },
+      "ssn": {
+        "value": "",
+        "where": "p.2"
+      }
+    }
+  },
+  "results": {
+    "DACA-G28-001": {
+      "status": "needs_attention",
+      "summary": "I-765WS is listed in Part 3 item 1.b. Only I-821D and I-765 belong there."
+    },
+    "DACA-765-007": {
+      "status": "not_checked",
+      "reason": "Page 3 could not be read at the resolution supplied."
+    },
+    "DACA-G28-003": {
+      "status": "blank"
+    },
+    "DACA-821D-009": {
+      "status": "needs_attention",
+      "summary": "Reads and understands English is answered NO."
+    }
+  }
+}

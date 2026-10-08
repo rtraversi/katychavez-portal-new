@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "_note": "SYNTHETIC. Placeholder people for the General case type (D-90 to D-95). No file is read. Never put a real client's data in a fixture.",
+  "sample_label": "Birth certificate (beneficiary)",
+  "filename": "sample-bc-beneficiary.pdf",
+  "doc_type": "birth_certificate",
+  "type_label": "Birth certificate",
+  "read_quality": "clear",
+  "owner_roles": [
+    "beneficiary"
+  ],
+  "summary_fields": [
+    "name",
+    "date_of_birth"
+  ],
+  "facts": {
+    "first_name": "LUCIA",
+    "middle_name": "",
+    "last_name": "REYES",
+    "date_of_birth": "1993-09-30"
+  }
+}

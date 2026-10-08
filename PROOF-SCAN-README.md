@@ -1,14 +1,12 @@
-# Proof Scan — where the current record lives
+# Proof Scan: where the current record lives
 
-The master record for Proof Scan is `PROOF-SCAN.md` in the **Anobe** repo, under
-`proof-scan-lab/`. Scoping, settled decisions, open questions, rejected ideas, and
-current build status are kept there and are the live source.
+**Updated 2026-10-08 for the v2 handoff.** Start at `docs/proof-scan-v2/README.md` on
+branch `proof-scan-v2`. A full copy of the master record (decisions D-1 to D-102) is at
+`docs/proof-scan-v2/DECISIONS-MASTER-RECORD.md`, so nothing depends on access to Max's
+separate lab repo.
 
-The `PROOF-SCAN-*.md` files in this repo are historical. Each one was accurate when
-it was written. Where any of them disagrees with the master record, **the master
-record wins.**
+The other `PROOF-SCAN-*.md` files in this repo are historical. Where any of them disagrees
+with the master record, **the master record wins.**
 
-Nothing in this workstream is authorized for deployment. See the master record's
-"Blockers and ownership" section before pushing, applying migrations, or deploying.
-
-Last updated 2026-09-09.
+Nothing in this workstream is authorized for deployment until Rob runs
+`docs/proof-scan-v2/DEPLOY-CHECKLIST.md`.

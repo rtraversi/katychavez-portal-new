@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "_note": "SYNTHETIC. A simulated firm intake. Carries the D-12 fields an EAD does not: address, phone, email, SSN. Full SSN shown to staff (D-62); 000- area numbers are never issued, so this one is fake.",
+  "sample_label": "Sample intake",
+  "filename": "sample-intake.pdf",
+  "doc_type": "intake",
+  "type_label": "Intake",
+  "read_quality": "clear",
+  "summary_fields": [
+    "name",
+    "address",
+    "phone",
+    "email",
+    "ssn"
+  ],
+  "facts": {
+    "first_name": "ANA",
+    "middle_name": "MARIA",
+    "last_name": "RIVERA",
+    "street": "1842 W Encanto Blvd",
+    "apt_type": "Apt.",
+    "apt_number": "6",
+    "city": "Phoenix",
+    "state": "AZ",
+    "zip": "85007",
+    "phone": "(602) 555-0147",
+    "email": "ana.rivera@example.test",
+    "ssn": "000-12-4821"
+  }
+}

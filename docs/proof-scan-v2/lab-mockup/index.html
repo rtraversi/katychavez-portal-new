@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Proof Scan v2 Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&family=Sora:wght@400;600&family=Codystar:wght@300;400&family=Lora:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet">
+  <!-- Same portal assets and 1.2 Lab stylesheet, by URL. v2-lab.css only adds. -->
+  <link rel="stylesheet" href="/ui-lab/portal-assets/css/variables.css">
+  <link rel="stylesheet" href="/ui-lab/portal-assets/css/portal.css">
+  <link rel="stylesheet" href="/ui-lab/ui-lab.css">
+  <link rel="stylesheet" href="/v2-lab/v2-lab.css">
+  <script src="/ui-lab/portal-assets/js/theme.js"></script>
+</head>
+<body class="portal-body ps-lab-body">
+  <aside class="sidebar ps-lab-sidebar" aria-label="UI Lab navigation">
+    <div class="sidebar-brand">
+      <div class="ps-lab-brand-mark" aria-hidden="true">IQ</div>
+      <span class="brand-tagline">Client Portal</span>
+      <span class="brand-mini" aria-hidden="true">IQ</span>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="Portal modules">
+      <span class="nav-section-label">Intake &amp; Screening</span>
+      <a class="nav-item active" href="#scan" data-view="scan" aria-current="page">
+        <span class="nav-icon" aria-hidden="true">⌕</span>
+        <span class="nav-label">Proof Scan</span>
+      </a>
+      <!-- D-88: the old checker stays next to v2 for all staff while Max tests. -->
+      <a class="nav-item" href="/ui-lab/" target="_blank" rel="noopener">
+        <span class="nav-icon" aria-hidden="true">⌕</span>
+        <span class="nav-label" data-copy="nav.old_checker"></span>
+      </a>
+      <a class="nav-item" href="#rulebook" data-view="rulebook">
+        <span class="nav-icon" aria-hidden="true">≡</span>
+        <span class="nav-label" data-copy="nav.rulebook"></span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="powered-by"><span data-copy="shell.footer"></span></div>
+    </div>
+  </aside>
+
+  <div class="main-wrapper">
+    <header class="topbar">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <span>Intake &amp; Screening</span><span class="breadcrumb-separator">/</span><span>Proof Scan</span><span class="breadcrumb-separator">/</span><span id="v2-crumb"></span>
+      </nav>
+      <div class="topbar-right">
+        <span class="ps-lab-topbar-note" data-copy="shell.topbar_note"></span>
+        <button id="v2-reset" type="button" class="v2-link v2-reset" data-copy="shell.reset"></button>
+        <button id="ps-lab-mode-btn" class="topbar-settings-btn" type="button" aria-label="Switch to dark mode" title="Light / dark mode">
+          <svg id="ps-lab-mode-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+          <svg id="ps-lab-mode-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="page-content" role="main">
+      <div class="ps-lab-preview-note" role="status" data-copy="shell.preview_note"></div>
+
+      <div id="v2-view-scan">
+        <div class="dk-masthead">
+          <div class="dk-kicker rise" style="animation-delay:.04s" data-copy="masthead.kicker"></div>
+          <h1 class="dk-title rise" style="animation-delay:.09s" data-copy="masthead.title"></h1>
+          <p class="dk-sub rise" style="animation-delay:.13s" data-copy="masthead.sub"></p>
+        </div>
+
+        <!-- Before a case starts, picking the case type is the only thing on the page. -->
+        <section id="v2-start" class="dk-sec v2-start">
+          <div class="dk-sec-head">
+            <h2 data-copy="entry.heading"></h2>
+            <span class="dk-sec-rule"></span>
+          </div>
+          <label class="v2-start-label" for="v2-case-type" data-copy="entry.case_type_label"></label>
+          <div class="v2-start-row">
+            <select id="v2-case-type" class="ps-select" aria-describedby="v2-case-type-hint">
+              <option value="" selected data-copy="entry.case_type_placeholder"></option>
+              <option value="daca_renewal">DACA renewal</option>
+              <option value="general">General</option>
+            </select>
+            <button id="v2-start-btn" type="button" class="btn btn--primary" disabled data-copy="entry.start"></button>
+          </div>
+          <p id="v2-case-type-hint" class="v2-hint" data-copy="entry.case_type_hint"></p>
+        </section>
+
+        <!-- Once the case starts: one header, always on top. Case type (locked),
+             the stage tracker, and the Evidence Zero summary (D-63, D-67). -->
+        <section id="v2-case" class="v2-case" hidden aria-label="Case">
+          <div class="v2-case-top" id="v2-case-top"></div>
+          <nav id="v2-tracker" class="v2-tracker" aria-label="Stages"></nav>
+          <div id="v2-summary" class="v2-summary" aria-live="polite"></div>
+        </section>
+
+        <!-- The stage choice, shown when Evidence Zero is ready and no stage is open. -->
+        <section id="v2-choose" class="dk-sec v2-choose" hidden>
+          <div class="dk-sec-head">
+            <h2 data-copy="choose.heading"></h2>
+            <span class="dk-sec-rule"></span>
+          </div>
+          <p class="v2-hint" data-copy="choose.sub"></p>
+          <div class="v2-stage-cards" id="v2-stage-cards"></div>
+        </section>
+
+        <div id="v2-stage-mount"></div>
+      </div>
+
+      <div id="v2-view-rulebook" hidden></div>
+    </main>
+  </div>
+
+  <script src="/ui-lab/portal-assets/js/dk.js"></script>
+  <script type="module" src="/v2-lab/v2-lab.js"></script>
+</body>
+</html>
