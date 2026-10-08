@@ -98,7 +98,7 @@ const must = (r, what) => { if (r.status >= 300) throw new Error(`preview seed f
 // ── Seeded cases: what the brief asked Max to be able to see ────────────────
 async function seedCases() {
   // 1. A DACA renewal through all four stages.
-  let v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'daca_renewal', label: 'Rivera, Ana' }), 'DACA case');
+  let v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'daca_renewal' }), 'DACA case');
   const daca = v.case.id;
   const ana = v.people[0].id;
   must(await call('/api/proof-scan-v2-evidence', 'POST', { case_id: daca, ...file('ead-ana-rivera.pdf') }), 'EAD');
@@ -113,11 +113,11 @@ async function seedCases() {
   must(await call('/api/proof-scan-v2-run', 'POST', { case_id: daca, stage: 'physical_scan', files: [file('final-package-scan.pdf')], email: true }), 'Physical Scan');
 
   // 2. A General, AOS-style package: two people, one evidence-vs-forms difference.
-  v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'general', label: 'Morales, Daniel and Reyes, Lucia' }), 'General case');
+  v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'general' }), 'General case');
   must(await call('/api/proof-scan-v2-run', 'POST', { case_id: v.case.id, stage: 'physical_scan', files: [file('aos-package-scan.pdf')] }), 'General Physical Scan');
 
   // 3. A DACA renewal still in Evidence Zero: replaced EAD, suggestions, a damaged copy.
-  v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'daca_renewal', label: 'Garcia, Luis' }), 'Garcia case');
+  v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'daca_renewal' }), 'Garcia case');
   for (const name of ['ead-luis-garcia.pdf', 'intake-luis-garcia.pdf', 'ead-newer-luis-garcia.pdf', 'intake-updated-luis-garcia.pdf', 'ead-damaged-luis-garcia.pdf']) {
     must(await call('/api/proof-scan-v2-evidence', 'POST', { case_id: v.case.id, ...file(name) }), name);
   }

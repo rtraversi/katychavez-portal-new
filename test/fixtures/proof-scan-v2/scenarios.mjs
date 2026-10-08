@@ -21,10 +21,17 @@ const LUIS = {
   street: '515 E Roosevelt St', apt_type: null, apt_number: null, city: 'Tempe', state: 'AZ', zip: '85281',
   phone: '(480) 555-0110', email: 'luis.garcia@example.test', ssn: '900-66-2211', ead_expiration: '03/02/2026',
 };
+// D-100: full cards for both people, every per-person fact the form maps fill.
 const LUCIA = { first_name: 'LUCIA', middle_name: null, last_name: 'REYES', date_of_birth: '09/30/1993', a_number: 'A234567890',
-  street: '1842 W Encanto Blvd', apt_type: 'Apt.', apt_number: '6', city: 'Phoenix', state: 'AZ', zip: '85007' };
+  street: '1842 W Encanto Blvd', apt_type: 'Apt.', apt_number: '6', city: 'Phoenix', state: 'AZ', zip: '85007',
+  phone: '(602) 555-0177', email: 'lucia.reyes@example.test', ssn: '900-77-3141', uscis_account_number: '0023-4567-8901',
+  country_of_birth: 'MEXICO', country_of_citizenship: 'MEXICO', i94_number: '345678901A2', i94_expiration: '10/01/2021',
+  last_entry_date: '04/02/2021', port_of_entry: 'NOGALES, AZ', employer: 'SONORAN BAKERY LLC',
+  marriage_date: '05/15/2021', marriage_place: 'PHOENIX, AZ' };
 const DANIEL = { first_name: 'DANIEL', middle_name: null, last_name: 'MORALES', date_of_birth: '02/11/1990', a_number: null,
-  street: '1842 W Encanto Blvd', apt_type: 'Apt.', apt_number: '6', city: 'Phoenix', state: 'AZ', zip: '85007' };
+  street: '1842 W Encanto Blvd', apt_type: 'Apt.', apt_number: '6', city: 'Phoenix', state: 'AZ', zip: '85007',
+  phone: '(602) 555-0188', email: 'daniel.morales@example.test', ssn: '900-88-2718', country_of_birth: 'UNITED STATES',
+  country_of_citizenship: 'UNITED STATES', employer: 'VALLEY FREIGHT INC', marriage_date: '05/15/2021', marriage_place: 'PHOENIX, AZ' };
 
 const nulls = (fields) => Object.fromEntries(fields.map((f) => [f, null]));
 const pick = (person, fields) => Object.fromEntries(fields.map((f) => [f, person[f] ?? null]));
@@ -67,6 +74,7 @@ function evidenceZeroAnswer(filename, general) {
 
 const values = (o) => ({ ...nulls(FORM_VALUE_FIELDS), ...o });
 const evidenceFacts = (o) => ({ ...nulls(EVIDENCE_FACT_FIELDS), ...o });
+const english = { language: 'English', has_english_translation: true };
 
 // What each DACA form shows about the applicant. Fields a form has no box for are null.
 function dacaForm(form, file, pages, p, over = {}) {
@@ -93,20 +101,28 @@ function stageAnswer({ caseType, stage, scope, form, files, ruleIds, itemIds, wi
   const possible = [];
 
   if (general) {
+    const PERSON = [...NAME, 'date_of_birth', ...ADDRESS, 'phone', 'email', 'ssn', 'country_of_birth', 'country_of_citizenship'];
+    const ENTRY = ['a_number', 'uscis_account_number', 'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry'];
     forms = [
-      { form: 'I-130', file: first, pages: '1-12', person_role: 'petitioner', values: values(pick(DANIEL, [...NAME, 'date_of_birth', ...ADDRESS])) },
-      { form: 'I-130A', file: first, pages: '13-18', person_role: 'beneficiary', values: values(pick(LUCIA, [...NAME, 'date_of_birth', ...ADDRESS])) },
-      { form: 'I-485', file: first, pages: '19-38', person_role: 'beneficiary', values: values({ ...pick(LUCIA, [...NAME, 'a_number', ...ADDRESS]), date_of_birth: '09/03/1993' }) },
-      { form: 'I-864', file: first, pages: '39-48', person_role: 'petitioner', values: values(pick(DANIEL, [...NAME, 'date_of_birth', ...ADDRESS])) },
-      { form: 'I-765', file: first, pages: '49-55', person_role: 'beneficiary', values: values(pick(LUCIA, [...NAME, 'a_number', ...ADDRESS])) },
+      { form: 'I-130', file: first, pages: '1-12', person_role: 'petitioner', values: values(pick(DANIEL, [...PERSON, 'marriage_date', 'marriage_place'])) },
+      { form: 'I-130A', file: first, pages: '13-18', person_role: 'beneficiary', values: values(pick(LUCIA, [...PERSON, 'employer', 'marriage_date', 'marriage_place'])) },
+      // The I-485 gives the beneficiary's date of birth as 09/03/1993; her birth certificate says 09/30/1993 (D-98).
+      { form: 'I-485', file: first, pages: '19-38', person_role: 'beneficiary', values: values({ ...pick(LUCIA, [...PERSON, ...ENTRY, 'employer']), date_of_birth: '09/03/1993' }) },
+      { form: 'I-864', file: first, pages: '39-48', person_role: 'petitioner', values: values(pick(DANIEL, [...PERSON, 'employer'])) },
+      // D-100 #1: the I-765 says the beneficiary was born in GUATEMALA; the I-485 says MEXICO.
+      { form: 'I-765', file: first, pages: '49-55', person_role: 'beneficiary', values: values({ ...pick(LUCIA, [...PERSON, ...ENTRY]), country_of_birth: 'GUATEMALA' }) },
     ];
     if (stage === 'physical_scan') {
       // D-95: the evidence is inside the package. One deliberate difference (D-98):
       // the beneficiary's birth certificate says 09/30/1993; the I-485 says 09/03/1993.
       evidence = [
-        { doc_type: 'birth_certificate', file: first, pages: '101-102', owner_roles: ['beneficiary'], read_quality: 'clear', facts: evidenceFacts(pick(LUCIA, [...NAME, 'date_of_birth'])) },
-        { doc_type: 'birth_certificate', file: first, pages: '103-104', owner_roles: ['petitioner'], read_quality: 'clear', facts: evidenceFacts(pick(DANIEL, [...NAME, 'date_of_birth'])) },
-        { doc_type: 'marriage_certificate', file: first, pages: '105', owner_roles: ['petitioner', 'beneficiary'], read_quality: 'clear', facts: evidenceFacts({ marriage_date: '05/15/2021' }) },
+        // D-100 #6: the beneficiary's birth certificate is in Spanish, with no translation in the package.
+        { doc_type: 'birth_certificate', file: first, pages: '101-102', owner_roles: ['beneficiary'], read_quality: 'clear', language: 'Spanish', has_english_translation: false, facts: evidenceFacts(pick(LUCIA, [...NAME, 'date_of_birth'])) },
+        { doc_type: 'birth_certificate', file: first, pages: '103-104', owner_roles: ['petitioner'], read_quality: 'clear', ...english, facts: evidenceFacts(pick(DANIEL, [...NAME, 'date_of_birth'])) },
+        { doc_type: 'marriage_certificate', file: first, pages: '105', owner_roles: ['petitioner', 'beneficiary'], read_quality: 'clear', ...english, facts: evidenceFacts({ marriage_date: '05/15/2021', marriage_place: 'PHOENIX, AZ' }) },
+        // D-100 #5: an expired passport is a Possible issue, never counted.
+        { doc_type: 'passport', file: first, pages: '106-107', owner_roles: ['beneficiary'], read_quality: 'clear', ...english, facts: evidenceFacts({ ...pick(LUCIA, [...NAME, 'country_of_citizenship']), expiration_date: '03/14/2024' }) },
+        { doc_type: 'i94', file: first, pages: '108', owner_roles: ['beneficiary'], read_quality: 'clear', ...english, facts: evidenceFacts(pick(LUCIA, [...NAME, 'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry'])) },
       ];
       possible.push({
         title: 'Tax transcript year may be out of date',
@@ -158,7 +174,7 @@ function stageAnswer({ caseType, stage, scope, form, files, ruleIds, itemIds, wi
       dacaForm('G-1145', first, '3', who), dacaForm('G-28', first, '4-7', who), dacaForm('I-821D', first, '8-14', who),
       dacaForm('I-765', first, '15-21', who), dacaForm('I-765WS', first, '22', who),
     ];
-    evidence = [{ doc_type: 'ead', file: first, pages: '23-24', owner_roles: ['applicant'], read_quality: 'clear', facts: evidenceFacts(pick(who, [...NAME, 'date_of_birth', 'a_number'])) }];
+    evidence = [{ doc_type: 'ead', file: first, pages: '23-24', owner_roles: ['applicant'], read_quality: 'clear', ...english, facts: evidenceFacts(pick(who, [...NAME, 'date_of_birth', 'a_number'])) }];
     rules['DACA-765-007'] = { status: 'needs_attention', summary: 'Item 27 reads (c)(3), not (c)(33).', reason: 'The eligibility category is cut off.', locations: ['I-765 page 3'] };
     possible.push(
       { title: 'Attorney signed before the applicant', description: 'The G-28 attorney date is earlier than the applicant date.', evidence: `${first}, page 7`, why_it_matters: 'Order of signatures.', uncertainty: 'The firm does not require an order.', reasoning_key: 'signature_date_order' },
