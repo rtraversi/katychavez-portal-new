@@ -20,7 +20,8 @@ const REPEATABLE = new Set(['household_member']);
 const APT_TYPES = ['Apt.', 'Ste.', 'Flr.'];
 const DOC_TYPE_LABEL_KEY = {
   ead: 'ez.type.ead', intake: 'ez.type.intake', birth_certificate: 'ez.type.birth_certificate',
-  marriage_certificate: 'ez.type.marriage_certificate', other: 'ez.type.other',
+  marriage_certificate: 'ez.type.marriage_certificate', passport: 'ez.type.passport', i94: 'ez.type.i94',
+  green_card: 'ez.type.green_card', other: 'ez.type.other',
 };
 const docTypeLabel = (type) => t(DOC_TYPE_LABEL_KEY[type] || 'ez.type.other');
 const roleLabel = (role) => t(`role.${role}`);
@@ -105,7 +106,7 @@ export function renderEvidenceZero(mount, ctx) {
     card.dataset.documentId = d.id;
     const head = el('div', 'v2-doc-head');
     const tile = el('span', 'v2-doc-tile');
-    tile.appendChild(icon(DOC_TYPE_LABEL_KEY[d.doc_type] ? d.doc_type : 'other'));
+    tile.appendChild(icon(d.doc_type));
     head.appendChild(tile);
     const titles = el('div', 'v2-doc-titles');
     titles.appendChild(el('div', 'v2-doc-type', t('ez.doc.identified', { type: docTypeLabel(d.doc_type) })));

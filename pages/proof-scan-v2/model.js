@@ -104,8 +104,12 @@ export function statusKey(view, stage, state, current) {
 // ── People ───────────────────────────────────────────────────────────────────
 
 export const ADDRESS_PARTS = ['street', 'apt_type', 'apt_number', 'city', 'state', 'zip', 'in_care_of', 'province', 'postal_code', 'country'];
-export const OPTIONAL_FIELDS = new Set(['in_care_of', 'province', 'postal_code', 'country']); // D-82
-export const DATE_FIELDS = new Set(['date_of_birth', 'ead_expiration', 'marriage_date']);
+// D-100: the other per-person facts the form maps fill. Like the D-82 address
+// parts, they appear only when a document, form or scan carried them.
+export const EXTRA_FIELDS = ['uscis_account_number', 'country_of_birth', 'country_of_citizenship', 'i94_number',
+  'i94_expiration', 'last_entry_date', 'port_of_entry', 'employer', 'marriage_date', 'marriage_place'];
+export const OPTIONAL_FIELDS = new Set(['in_care_of', 'province', 'postal_code', 'country', ...EXTRA_FIELDS]);
+export const DATE_FIELDS = new Set(['date_of_birth', 'ead_expiration', 'marriage_date', 'i94_expiration', 'last_entry_date', 'expiration_date']);
 
 // The reference record, in the Lab's groups and order (D-12, D-64, D-82).
 export const FIELD_GROUPS = [
@@ -113,6 +117,9 @@ export const FIELD_GROUPS = [
   ['address', ['street', 'apt_type', 'apt_number', 'city', 'state', 'zip', 'in_care_of', 'province', 'postal_code', 'country']],
   ['identity', ['date_of_birth', 'a_number', 'ead_expiration', 'ssn']],
   ['contact', ['phone', 'email']],
+  ['immigration', ['uscis_account_number', 'country_of_birth', 'country_of_citizenship', 'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry']],
+  ['work', ['employer']],
+  ['marriage', ['marriage_date', 'marriage_place']],
 ];
 
 export const fullName = (p) => [p?.first_name, p?.middle_name, p?.last_name].filter((v) => v && String(v).trim()).join(' ');
@@ -139,7 +146,8 @@ export function sourceKind(person, field) {
 // Optional address parts appear only when a value or a suggestion carries one (D-82).
 export function visibleFields(person, suggestions = []) {
   return FIELD_GROUPS.map(([group, fields]) => [group, fields.filter((f) => !OPTIONAL_FIELDS.has(f)
-    || person?.[f] || suggestions.some((s) => s.person_id === person?.id && s.field === f))]);
+    || person?.[f] || suggestions.some((s) => s.person_id === person?.id && s.field === f))])
+    .filter(([, fields]) => fields.length);
 }
 
 export const suggestionsFor = (view, person) => (view?.suggestions || []).filter((s) => s.person_id === person.id);
@@ -148,7 +156,7 @@ export const suggestionsFor = (view, person) => (view?.suggestions || []).filter
 
 export const DOC_TYPE_SETS = {
   daca_renewal: ['ead', 'intake', 'other'],
-  general: ['birth_certificate', 'marriage_certificate', 'other'],
+  general: ['birth_certificate', 'marriage_certificate', 'passport', 'i94', 'green_card', 'other'],
 };
 
 // Documents shown in the workspace. A replaced card has done its job (D-55).
@@ -157,7 +165,7 @@ export const workspaceDocuments = (view) => (view?.documents || []).filter((d) =
 // The case-relevant facts a card shows (D-53). An EAD always shows its four,
 // even when one is not on the document; other cards show what they carry.
 const EAD_FACTS = ['name', 'date_of_birth', 'a_number', 'ead_expiration'];
-const OTHER_FACTS = ['name', 'date_of_birth', 'a_number', 'ead_expiration', 'marriage_date', 'address', 'phone', 'email', 'ssn'];
+const OTHER_FACTS = ['name', 'date_of_birth', 'a_number', 'ead_expiration', 'expiration_date', 'address', 'phone', 'email', 'ssn', ...EXTRA_FIELDS];
 export function docFactKeys(docRow) {
   const f = docRow?.facts || {};
   if (docRow?.doc_type === 'ead') return EAD_FACTS;
@@ -259,10 +267,14 @@ export function reviewModel(result) {
       consistency: attentionChecks.filter((c) => c.consistency),
       differences: byKind(result, 'reference_difference'),
       not_carried: byKind(result, 'not_carried'),
+      // D-100 #1: a fact two forms about the same person disagree on.
+      form_differences: byKind(result, 'form_difference'),
       fold: listed.filter((c) => c.consistency),
     },
     checklist: {
       missing: byKind(result, 'missing_item'),
+      // D-100 #6: foreign-language evidence without a translation.
+      translations: byKind(result, 'translation'),
       attention: attentionChecks.filter((c) => !c.consistency),
       groups: groupChecks(listed.filter((c) => !c.consistency), order),
     },
@@ -280,7 +292,13 @@ export function reviewModel(result) {
         .map((i) => ({ rule_id: `item:${i.item_id}`, status: 'not_checked', form: i.form, title: `${i.form}${i.instance ? ` (${i.instance})` : ''} could not be read.`, where: (i.locations || []).join(' · ') })),
     ],
     case_card_differences: byKind(result, 'case_card_difference'),
+    forms_found: formsFound(result),
   };
+}
+
+// D-100 #3: every form found, its pages and whose it is. Information only.
+export function formsFound(result) {
+  return (result?.forms_found || []).map((f) => ({ form: f.form, file: f.file || '', pages: f.pages || '', person_role: f.person_role || null }));
 }
 
 // Physical Scan: the stored result in the shape pages/proof-scan/report.js draws

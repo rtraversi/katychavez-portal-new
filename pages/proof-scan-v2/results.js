@@ -165,12 +165,15 @@ export function renderReviewResult(result, mount, ctx = {}) {
   if (m.corrections) renderCorrections(m, mount, ctx);
 
   // Our errors: inconsistencies across forms, and forms against the case card.
-  const ourCount = m.our.consistency.length + m.our.differences.length + m.our.not_carried.length;
+  const ourCount = m.our.consistency.length + m.our.differences.length + m.our.not_carried.length + m.our.form_differences.length;
   const our = block(t('review.our_errors'), ourCount, 'v2-our-errors');
   our.appendChild(el('p', 'v2-block-note', t('review.our_errors.note')));
   m.our.consistency.forEach((c) => our.appendChild(notice('needs_attention', c.title,
     [[t('review.observed'), c.summary], [t('r12.where'), [c.form, c.where, ...(c.locations || [])].filter(Boolean).join(' · ')], [t('r12.expects'), c.expected], [t('r12.note'), c.reason]], c.severity)));
   m.our.not_carried.forEach((d) => our.appendChild(notice('needs_attention', d.title)));
+  // D-100 #1: the forms disagree with each other about one person.
+  m.our.form_differences.forEach((d) => our.appendChild(notice('needs_attention', d.title,
+    (d.values || []).map((v) => [v.forms.join(', '), v.value]))));
   m.our.differences.forEach((d) => {
     const edit = ctx.openStage ? button(t('review.edit_reference'), 'v2-link', () => ctx.openStage('evidence_zero')) : null;
     our.appendChild(notice('needs_attention', d.title, [
@@ -184,8 +187,9 @@ export function renderReviewResult(result, mount, ctx = {}) {
   mount.appendChild(our);
 
   // Checklist items, one fixed group per form.
-  const ck = block(t('review.checklist'), m.checklist.missing.length + m.checklist.attention.length, 'v2-checklist');
+  const ck = block(t('review.checklist'), m.checklist.missing.length + m.checklist.translations.length + m.checklist.attention.length, 'v2-checklist');
   m.checklist.missing.forEach((i) => ck.appendChild(notice('needs_attention', i.title, [[t('review.expected_by'), i.detail]])));
+  m.checklist.translations.forEach((i) => ck.appendChild(notice('needs_attention', i.title, [[t('r12.where'), i.where]])));
   m.checklist.attention.forEach((c) => ck.appendChild(notice('needs_attention', c.title,
     [[t('review.observed'), c.summary], [t('r12.expects'), c.expected], [t('r12.where'), [c.form, c.where, ...(c.locations || [])].filter(Boolean).join(' · ')], [t('r12.note'), c.reason]], c.severity)));
   m.checklist.groups.forEach((g) => ck.appendChild(fold(g.form || t('r12.package_group'), g.items)));
@@ -211,7 +215,26 @@ export function renderReviewResult(result, mount, ctx = {}) {
   }
 
   renderAwareness(mount, m.awareness);
+  renderFormsFound(mount, m.forms_found);
   renderLaterAndNotChecked(mount, m);
+}
+
+// D-100 #3: the forms found in these files, with their pages and whose they
+// are. Information only: never counted, never measured against a list.
+export function renderFormsFound(mount, forms) {
+  if (!forms.length) return;
+  const b = block(t('forms.heading'), null, 'v2-forms-found');
+  b.appendChild(el('p', 'v2-block-note', t('forms.note')));
+  const table = el('table', 'psr-table v2-forms-table');
+  for (const f of forms) {
+    const tr = el('tr');
+    tr.appendChild(el('td', 'psr-td-form', f.form));
+    tr.appendChild(el('td', 'psr-td-label', [f.file, f.pages ? t('forms.pages', { pages: f.pages }) : null].filter(Boolean).join(' · ')));
+    tr.appendChild(el('td', 'v2-forms-who', f.person_role ? t(`role.${f.person_role}`) : t('forms.no_person')));
+    table.appendChild(tr);
+  }
+  b.appendChild(table);
+  mount.appendChild(b);
 }
 
 function renderAwareness(mount, notes) {
@@ -257,6 +280,7 @@ export function renderPhysicalScanResult(result, mount, ctx = {}) {
   renderMatchBlock(extra, m.matches);
   if (result.case_type === 'general') renderPeopleBlock(extra, result);
   renderAwareness(extra, m.awareness);
+  renderFormsFound(extra, m.forms_found);
   if (m.later.length || m.not_this_stage_count) renderLaterAndNotChecked(extra, { ...m, not_checked: [] });
   if (ctx.afterReport) ctx.afterReport(extra);
   if (standing) mount.insertBefore(extra, standing);

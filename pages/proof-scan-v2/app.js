@@ -1,9 +1,9 @@
 // app.js: Proof Scan v2, the page. Ported from the v2 Lab's v2-lab.js (the
 // flow Max approved) and wired to the Batch 2 routes.
 //
-// 1. Start: pick the case type, name the folder, press Start. The case type is
-//    locked from then on (D-77). Or find an existing case by client name or
-//    A-Number (D-83).
+// 1. Start: pick the case type and press Start. The case type is locked from
+//    then on (D-77); the folder names itself from its people (D-101). Or find
+//    an existing case by client name or A-Number (D-83).
 // 2. The case card stays on top: folder, case type, the stage tracker and the
 //    people (D-63, D-99).
 // 3. DACA opens in Evidence Zero; once the evidence requirement is met and the
@@ -17,6 +17,7 @@ import {
 } from './ui.js';
 import {
   STAGES, CASE_TYPES, stepState, statusKey, gateReady, isGeneral, mainPerson, fullName, formatAddress,
+  EXTRA_FIELDS, DATE_FIELDS,
 } from './model.js';
 import { createSsnToggle } from './ssn.js';
 import { renderEvidenceZero } from './evidence-zero.js';
@@ -31,7 +32,7 @@ export function mountProofScanV2({ root, api }) {
     stage: null,
     mode: 'scan',
     rules: {},
-    start: { caseType: '', label: '', error: '', query: '', results: null, searching: false },
+    start: { caseType: '', error: '', query: '', results: null, searching: false },
     error: '',
   };
   ctx.ssn = createSsnToggle(api, { onError: (res) => { ctx.error = errorText(res); render(); } });
@@ -148,37 +149,21 @@ export function mountProofScanV2({ root, api }) {
     sel.appendChild(ph);
     CASE_TYPES.forEach((c) => { const o = el('option', null, c.label); o.value = c.value; sel.appendChild(o); });
     sel.value = s.caseType;
-    const nameLabel = el('label', 'v2-start-label', t('entry.label_label'));
-    nameLabel.htmlFor = 'ps2-case-label';
-    const name = el('input', 'v2-input v2-start-name');
-    name.id = 'ps2-case-label';
-    name.type = 'text';
-    name.autocomplete = 'off';
-    name.maxLength = 200;
-    name.placeholder = t('entry.label_placeholder');
-    name.value = s.label;
     const go = button(t('entry.start'), 'btn btn--primary v2-start-btn', async () => {
       s.caseType = sel.value;
-      s.label = name.value.trim();
       if (!s.caseType) return;
-      if (!s.label) { s.error = t('entry.need_label'); render(); return; }
       go.disabled = true;
-      const res = await api.createCase(s.caseType, s.label);
+      const res = await api.createCase(s.caseType);
       go.disabled = false;
       if (!res.ok) { s.error = errorText(res); render(); return; }
       s.error = '';
       s.caseType = '';
-      s.label = '';
       await caseOpened(res.data);
     });
     go.disabled = !s.caseType;
     sel.addEventListener('change', () => { s.caseType = sel.value; go.disabled = !sel.value; });
-    name.addEventListener('input', () => { s.label = name.value; });
-    row.append(sel);
-    b.append(label, row, el('p', 'v2-hint', t('entry.case_type_hint')), nameLabel);
-    const row2 = el('div', 'v2-start-row');
-    row2.append(name, go);
-    b.append(row2, el('p', 'v2-hint', t('entry.label_hint')));
+    row.append(sel, go);
+    b.append(label, row, el('p', 'v2-hint', t('entry.case_type_hint')), el('p', 'v2-hint', t('entry.folder_hint')));
     if (s.error) b.appendChild(errorLine(s.error));
     scanView.appendChild(start.wrap);
 
@@ -322,6 +307,10 @@ export function mountProofScanV2({ root, api }) {
   }
 
   const ssnNode = (p) => (p.has_ssn ? ctx.ssn.view({ person_id: p.id, last4: p.ssn_last4 }) : null);
+  // D-100: the other facts, only those a document, form or scan carried.
+  const extraFacts = (parent, p, modifier) => {
+    for (const f of EXTRA_FIELDS) fact(parent, t(`field.${f}`), DATE_FIELDS.has(f) ? fmtDate(p[f]) : p[f], modifier);
+  };
 
   function drawSummary() {
     const view = ctx.view;
@@ -358,6 +347,7 @@ export function mountProofScanV2({ root, api }) {
     fact(details, t('field.phone'), p.phone, 'phone');
     fact(details, t('field.email'), p.email, 'email');
     fact(details, t('ref.group.address'), formatAddress(p), 'address');
+    extraFacts(details, p);
     summary.appendChild(details);
     return summary;
   }
@@ -386,6 +376,7 @@ export function mountProofScanV2({ root, api }) {
     fact(facts, t('field.phone'), p.phone);
     fact(facts, t('field.email'), p.email);
     fact(facts, t('ref.group.address'), formatAddress(p));
+    extraFacts(facts, p);
     card.appendChild(facts);
     const src = Object.entries(p.field_sources || {}).find(([k]) => p[k] || (k === 'ssn' && p.has_ssn))?.[1];
     if (src) card.appendChild(el('div', `v2-person-src v2-ref-source v2-src--${src.kind === 'document' ? 'doc' : src.kind}`, srcText(src)));

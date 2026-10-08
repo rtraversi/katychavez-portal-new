@@ -107,12 +107,9 @@ const buttonByText = (root, text) => findAll(root, (n) => n.tagName === 'button'
 const stepOf = (root, stage) => findAll(root, (n) => /\bv2-step\b/.test(n.className) && n.dataset.stage === stage)[0];
 const stepButton = (root, stage) => byTag(stepOf(root, stage), 'button')[0];
 
-async function startCase(root, caseType, label) {
+async function startCase(root, caseType) {
   const sel = findAll(root, (n) => n.id === 'ps2-case-type')[0];
   await change(sel, caseType);
-  const name = findAll(root, (n) => n.id === 'ps2-case-label')[0];
-  name.value = label;
-  await name.dispatchEvent({ type: 'input', target: name });
   await click(oneByClass(root, 'v2-start-btn'));
   await flush();
 }
@@ -137,7 +134,7 @@ async function runStage(root, files) {
 
 // A DACA case through Evidence Zero, ready for the stages.
 async function readyDacaCase(root) {
-  await startCase(root, 'daca_renewal', 'Rivera, Ana');
+  await startCase(root, 'daca_renewal');
   await pickFiles(root, [fakeFile('ead-ana-rivera.pdf'), fakeFile('intake-ana-rivera.pdf')]);
   await click(oneByClass(root, 'v2-approve'));
   await flush();
@@ -216,7 +213,8 @@ describe('stored results drive every block', () => {
     expect(byClass(card, 'psr-client-details')).toHaveLength(0);
     const first = byClass(card, 'psr-notice--needs_attention')[0];
     expect(flatText(first)).toContain('The package shows the phone as (602) 555-0199.');
-    expect(byClass(card, 'psr-table')).toHaveLength(1); // Included in the scan
+    expect(byClass(card, 'psr-table')).toHaveLength(2); // Included in the scan, and forms found (D-100 #3)
+    expect(byClass(card, 'v2-forms-found')).toHaveLength(1);
     // The suppressed reasoning never comes back (D-59); the other suggestion does.
     const pi = oneByClass(card, 'ps-explore');
     expect(textOf(pi)).toContain('EAD copy may not be enlarged');
@@ -224,9 +222,9 @@ describe('stored results drive every block', () => {
     expect(textOf(card)).toContain('Staff review is still required before filing.');
   });
 
-  it('General: two equal case cards, people and evidence, one evidence-vs-forms difference', async () => {
+  it('General: full equal cards, forms found, evidence and cross-form differences, translation, expired passport', async () => {
     const root = await mount();
-    await startCase(root, 'general', 'Morales and Reyes');
+    await startCase(root, 'general');
     await openStage(root, 'physical_scan');
     await runStage(root, [fakeFile('aos-package-scan.pdf')]);
 
@@ -237,8 +235,26 @@ describe('stored results drive every block', () => {
     expect(byClass(people, 'v2-ps-person')).toHaveLength(2);
     const result = oneByClass(root, 'v2-result');
     const attention = byClass(result, 'psr-notice--needs_attention');
-    expect(attention).toHaveLength(1);
-    expect(flatText(attention[0])).toContain("The beneficiary's birth certificate shows date of birth 09/30/1993. The I-485 shows 09/03/1993.");
+    const titles = attention.map((n) => flatText(n));
+    expect(titles).toHaveLength(3);
+    expect(titles[0]).toContain("The beneficiary's birth certificate shows date of birth 09/30/1993. The I-485 shows 09/03/1993.");
+    // D-100 #1, #6: a cross-form difference and an untranslated Spanish document, both counted.
+    expect(titles[1]).toContain("The forms disagree on the beneficiary's country of birth. It is MEXICO on the I-130A and the I-485, but GUATEMALA on the I-765.");
+    expect(titles[2]).toContain("The beneficiary's birth certificate is in Spanish. There is no English translation of it in the package.");
+    expect(oneByClass(result, 'psr-verdict').textContent).toBe('3 items need attention');
+    // D-100 #5: the expired passport is a Possible issue, never counted.
+    expect(textOf(oneByClass(result, 'ps-explore'))).toContain("The beneficiary's passport expired on 03/14/2024.");
+    // D-100 #3: forms found, information only.
+    const found = oneByClass(result, 'v2-forms-found');
+    expect(byTag(found, 'tr').map((r) => textOf(r).split('\n')[0])).toEqual(['I-130', 'I-130A', 'I-485', 'I-864', 'I-765']);
+    expect(byClass(found, 'psr-count')).toHaveLength(0);
+    // D-102: no "not on the case card yet" note in General.
+    expect(textOf(result)).not.toContain('Not on the');
+    // D-100: full cards for both people.
+    for (const c of cards) for (const k of ['Country of birth', 'Employer', 'Date of marriage']) expect(textOf(c)).toContain(k);
+    expect(textOf(cards.find((c) => textOf(c).includes('LUCIA')))).toContain('NOGALES, AZ');
+    // D-101: the folder named itself.
+    expect(textOf(oneByClass(root, 'v2-case-type-v'))).toBe('MORALES & REYES');
   });
 
   it('reopening a case reads the stored run back and draws the same result', async () => {
@@ -301,12 +317,12 @@ describe('text only', () => {
     }
   });
 
-  it('draws a hostile filename and facts from an uploaded document as text', async () => {
+  it('draws a hostile filename from an uploaded document as text', async () => {
     const root = await mount();
-    await startCase(root, 'daca_renewal', HOSTILE);
-    await pickFiles(root, [fakeFile(`${'<b>'}ead.pdf`)]);
-    expect(textOf(root)).toContain(HOSTILE);
-    expect(textOf(root)).toContain('<b>ead.pdf');
+    await startCase(root, 'daca_renewal');
+    const name = '<img src=x onerror=alert(1)><b>ead.pdf';
+    await pickFiles(root, [fakeFile(name)]);
+    expect(textOf(root)).toContain(name);
     expect(findAll(root, (n) => ['img', 'script', 'b'].includes(n.tagName))).toHaveLength(0);
   });
 
@@ -363,7 +379,7 @@ describe('size limits in the browser', () => {
 
   it('refuses an oversized file before anything is read or sent', async () => {
     const root = await mount();
-    await startCase(root, 'daca_renewal', 'Big');
+    await startCase(root, 'daca_renewal');
     await pickFiles(root, [fakeFile('huge.pdf', { size: 13 * MB })]);
     expect(api.readDocument).not.toHaveBeenCalled();
     expect(textOf(oneByClass(root, 'v2-error'))).toContain('huge.pdf is 13.0 MB. The limit is 12 MB per file.');
@@ -427,7 +443,7 @@ describe('SSN', () => {
 describe('evidence requirement', () => {
   it('DACA: stages stay locked with the server\'s reasons until the requirement is met', async () => {
     const root = await mount();
-    await startCase(root, 'daca_renewal', 'Gate');
+    await startCase(root, 'daca_renewal');
     for (const s of ['draft_review', 'preflight', 'physical_scan']) {
       expect(stepOf(root, s).className).toContain('v2-step--locked');
       expect(stepButton(root, s).disabled).toBe(true);
@@ -449,7 +465,7 @@ describe('evidence requirement', () => {
 
   it('DACA: "There is no evidence for this case" is a deliberate second step', async () => {
     const root = await mount();
-    await startCase(root, 'daca_renewal', 'No EAD');
+    await startCase(root, 'daca_renewal');
     await click(oneByClass(root, 'v2-noead-ask'));
     expect(textOf(root)).toContain('Only if there really is no evidence');
     await click(oneByClass(root, 'v2-noead-confirm'));
@@ -462,7 +478,7 @@ describe('evidence requirement', () => {
 
   it('General: no gate, the stages are open from the start', async () => {
     const root = await mount();
-    await startCase(root, 'general', 'Open');
+    await startCase(root, 'general');
     expect(byClass(root, 'v2-step--locked')).toHaveLength(0);
     expect(byClass(root, 'v2-gate')).toHaveLength(0);
     expect(byClass(root, 'v2-choose')).toHaveLength(1);
@@ -509,6 +525,21 @@ describe('sign-off', () => {
     await click(buttonByText(root, 'Go to Pre-flight'));
     await flush();
     expect(stepOf(root, 'preflight').className).toContain('v2-step--current');
+  });
+});
+
+// ── The folder names itself (D-101) ──────────────────────────────────────────
+
+describe('folder name', () => {
+  it('Start asks only for the case type; the folder is named once the EAD is read', async () => {
+    const root = await mount();
+    expect(findAll(root, (n) => n.id === 'ps2-case-label')).toHaveLength(0);
+    expect(findAll(oneByClass(root, 'v2-start'), (n) => n.tagName === 'input')).toHaveLength(0);
+    await startCase(root, 'daca_renewal');
+    expect(api.createCase).toHaveBeenCalledWith('daca_renewal');
+    expect(oneByClass(root, 'v2-case-type-v').textContent).toMatch(/^New case \d{2}\/\d{2}\/\d{4}$/);
+    await pickFiles(root, [fakeFile('ead-ana-rivera.pdf')]);
+    expect(oneByClass(root, 'v2-case-type-v').textContent).toBe('RIVERA, Ana');
   });
 });
 

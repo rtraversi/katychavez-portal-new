@@ -35,7 +35,7 @@ export function createApi({ fetchImpl = globalThis.fetch?.bind(globalThis), getT
   return {
     // Cases (D-77, D-83)
     findCases: (q) => call('GET', '/api/proof-scan-v2-cases', { query: { q } }),
-    createCase: (caseType, label) => call('POST', '/api/proof-scan-v2-case', { body: { case_type: caseType, label } }),
+    createCase: (caseType) => call('POST', '/api/proof-scan-v2-case', { body: { case_type: caseType } }),
     getCase: (id) => call('GET', '/api/proof-scan-v2-case', { query: { id } }),
 
     // People and the reference record (D-10, D-94)
