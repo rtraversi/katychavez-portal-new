@@ -2869,3 +2869,753 @@ body.help-drawer-lock { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .ps-explore *, .ps-explore *::after { transition: none !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PROOF SCAN v2 (pages/proof-scan-v2/). The approved v2 Lab stylesheet
+   (Anobe/proof-scan-lab/ui-lab-v2/v2-lab.css), scoped to .ps2 so the old
+   checker is untouched, with its fixed colours mapped to portal tokens so
+   light, dark and every theme work: document types use --color-info (EAD) and
+   --intake (intake); people and Possible issues use --horizon (violet).
+   ══════════════════════════════════════════════════════════════════════════ */
+.ps2 [hidden] { display: none !important; }
+.ps2 .v2-hint { color: var(--ink-soft); font-size: var(--text-sm); line-height: 1.55; margin: 0 0 var(--space-3); max-width: 70ch; }
+.ps2 .v2-stage-intro { margin-bottom: var(--space-4); }
+.ps2 .v2-link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--color-primary);
+}
+.ps2 .v2-link:hover { text-decoration: underline; }
+.ps2 .v2-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+/* ── Entry: case type, then stage ─────────────────────────────────────────── */
+.ps2 .v2-stage-pick { border: 0; margin: 0; padding: 0; min-width: 0; }
+.ps2 .v2-stage-pick legend { font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); padding: 0; }
+.ps2 .v2-stage-pick[disabled] { opacity: .55; }
+.ps2 .v2-stage-pick[disabled] .v2-stage-option { cursor: not-allowed; }
+.ps2 .v2-stage-options {
+  display: grid; gap: var(--space-2);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: var(--space-2);
+}
+.ps2 .v2-stage-option { cursor: pointer; display: block; position: relative; }
+.ps2 .v2-stage-option input { position: absolute; opacity: 0; pointer-events: none; }
+.ps2 .v2-stage-option-body {
+  display: flex; gap: var(--space-2); align-items: flex-start; height: 100%;
+  padding: var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface);
+  transition: border-color .14s ease, background-color .14s ease;
+}
+.ps2 .v2-stage-option:hover .v2-stage-option-body { border-color: var(--color-primary); }
+.ps2 .v2-stage-option input:focus-visible + .v2-stage-option-body { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-stage-option input:checked + .v2-stage-option-body {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--surface));
+}
+.ps2 .v2-stage-num {
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; background: var(--line); color: var(--ink-soft);
+}
+.ps2 .v2-stage-option input:checked + .v2-stage-option-body .v2-stage-num { background: var(--color-primary); color: var(--paper); }
+.ps2 .v2-stage-name { display: block; font-weight: 600; font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-stage-desc { display: block; font-size: 12px; color: var(--ink-soft); line-height: 1.4; margin-top: 2px; }
+@media (max-width: 900px) {
+.ps2 .v2-stage-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+.ps2 .v2-stage-options { grid-template-columns: 1fr; }
+}
+.ps2 .v2-stage-in { animation: psr-in .3s ease both; }
+@media (prefers-reduced-motion: reduce) {
+.ps2 .v2-stage-in { animation: none; }
+}
+/* ── Open-question placeholders: visible, labelled, never a guess ─────────── */
+.ps2 .v2-open {
+  display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6px;
+  font-size: 12px; color: var(--ink-soft);
+  border: 1px dashed var(--line-strong); border-radius: 999px;
+  padding: 2px 10px;
+}
+.ps2 .v2-open-q {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+  font-weight: 600; color: var(--ink);
+}
+.ps2 .v2-banner {
+  border: 1px dashed var(--line-strong); border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3); margin-bottom: var(--space-4);
+  font-size: var(--text-sm); font-weight: 600; color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+/* ── Sample pickers (stand-ins for uploads) ───────────────────────────────── */
+.ps2 .v2-add {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--line-strong); border-radius: var(--radius);
+}
+.ps2 .v2-add-label { font-size: var(--text-sm); color: var(--ink-soft); margin-right: var(--space-1); }
+.ps2 .v2-add-note { font-size: 12px; color: var(--ink-faint); margin-left: auto; }
+.ps2 .v2-add .btn[aria-pressed='true'] { border-color: var(--color-primary); color: var(--color-primary); }
+.ps2 .v2-inline-select { width: auto; min-width: 150px; }
+.ps2 .v2-quiet-note { font-size: var(--text-sm); color: var(--ink-soft); margin: 0 0 var(--space-3); }
+/* ── Evidence Zero documents ──────────────────────────────────────────────── */
+.ps2 .v2-doc-list { display: grid; gap: var(--space-3); }
+.ps2 .v2-doc {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4); background: var(--surface);
+}
+.ps2 .v2-doc--review { border-style: dashed; border-color: var(--line-strong); }
+.ps2 .v2-doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
+.ps2 .v2-doc-type { font-weight: 600; color: var(--ink); font-size: var(--text-sm); }
+.ps2 .v2-doc-file { font-size: 12px; color: var(--ink-faint); overflow-wrap: anywhere; }
+.ps2 .v2-doc-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.ps2 .v2-tag {
+  font-size: 11px; padding: 1px 8px; border-radius: 999px; white-space: nowrap;
+  background: var(--line); color: var(--ink-soft);
+}
+.ps2 .v2-tag--review { background: transparent; border: 1px dashed var(--line-strong); color: var(--ink); }
+.ps2 .v2-tag--future { background: transparent; border: 1px solid var(--line-strong); }
+.ps2 .v2-doc-facts {
+  display: grid; gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  padding: var(--space-3) 0; margin-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+.ps2 .v2-fact-uncertain { color: var(--ink-soft); font-weight: 400; font-style: italic; }
+.ps2 .v2-doc-review-note { font-size: var(--text-sm); color: var(--ink); margin: 0 0 var(--space-3); max-width: 70ch; line-height: 1.5; }
+.ps2 .v2-doc-foot { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+/* ── Reference record ─────────────────────────────────────────────────────── */
+.ps2 .v2-ref-status { margin-left: var(--space-3); font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.ps2 .v2-ref-group { border: 0; margin: 0 0 var(--space-4); padding: 0; min-width: 0; }
+.ps2 .v2-ref-group legend {
+  font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-faint); padding: 0; margin-bottom: var(--space-2);
+}
+.ps2 .v2-ref-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.ps2 .v2-ref-group--address .v2-ref-field--street { grid-column: span 2; }
+.ps2 .v2-ref-field { min-width: 0; }
+.ps2 .v2-ref-label { display: block; font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.ps2 .v2-ref-label-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 4px; }
+.ps2 .v2-ref-label-row .v2-ref-label { margin: 0; }
+.ps2 .v2-input {
+  width: 100%; box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink); font: inherit; font-size: var(--text-sm);
+}
+.ps2 .v2-input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.ps2 .v2-input:disabled { opacity: .55; }
+.ps2 .v2-textarea { resize: vertical; line-height: 1.5; }
+.ps2 .v2-ref-source { font-size: 11px; color: var(--ink-faint); margin-top: 3px; }
+.ps2 .v2-ssn-line { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ps2 .v2-ssn-mask { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-soft); }
+.ps2 .v2-input--ssn { width: 100%; }
+.ps2 .v2-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--ink); cursor: pointer; }
+.ps2 .v2-proposal {
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.ps2 .v2-proposal-text { font-size: 12px; color: var(--ink); margin-bottom: var(--space-2); }
+.ps2 .v2-proposal-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.ps2 .v2-proposal-actions .btn { font-size: 12px; padding: 4px 10px; }
+.ps2 .v2-ref-bar { margin-top: var(--space-2); }
+.ps2 .v2-expected-state { text-align: right; white-space: nowrap; color: var(--ink-soft); font-size: 12px; }
+/* ── Review scope ─────────────────────────────────────────────────────────── */
+.ps2 .v2-scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); max-width: 720px; }
+.ps2 .v2-scope-btn {
+  text-align: left; cursor: pointer; font: inherit;
+  padding: var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink);
+}
+.ps2 .v2-scope-btn:hover { border-color: var(--color-primary); }
+.ps2 .v2-scope-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-scope-btn[aria-pressed='true'] { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 7%, var(--surface)); }
+.ps2 .v2-scope-name { display: block; font-weight: 600; font-size: var(--text-sm); }
+.ps2 .v2-scope-desc { display: block; font-size: 12px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+@media (max-width: 520px) {
+.ps2 .v2-scope { grid-template-columns: 1fr; }
+}
+.ps2 .v2-ready { margin-bottom: var(--space-3); padding: var(--space-2) 0; }
+.ps2 .v2-ready-title { font-size: var(--text-sm); font-weight: 600; color: var(--ink); margin-bottom: var(--space-2); }
+/* ── Review result additions ──────────────────────────────────────────────── */
+.ps2 .psr-verdict--incomplete { color: var(--ink); }
+.ps2 .v2-reminder { font-size: 12px; color: var(--ink-soft); margin: calc(var(--space-3) * -1) 0 var(--space-4); }
+.ps2 .dk-sec > .v2-reminder { margin: var(--space-2) 0 var(--space-3); }
+.ps2 .v2-block-note { font-size: 12px; color: var(--ink-faint); margin: 0 0 var(--space-2); max-width: 76ch; }
+.ps2 .v2-block-empty { font-size: var(--text-sm); color: var(--ink-faint); margin: 0; }
+.ps2 .v2-result .psr-notice-body .v2-link { margin-top: 6px; }
+/* Needs info and awareness rows: quiet on purpose (D-47). No warning colour. */
+.ps2 .v2-info-row {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  font-size: var(--text-sm); color: var(--ink-soft);
+  padding: 3px var(--space-2); border-radius: 999px;
+}
+.ps2 .v2-info-row strong { font-weight: 600; color: var(--ink); }
+.ps2 .v2-info-mark { width: 1em; flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--ink-faint); text-align: center; }
+.ps2 .v2-needs-info > .v2-link,
+.ps2 .v2-notifications > .v2-link { margin: 4px 0 0 var(--space-2); }
+.ps2 .v2-check--pending,
+.ps2 .v2-check--na,
+.ps2 .v2-check--unmapped { color: var(--ink-soft); }
+.ps2 .v2-check--pending .psr-check-mark,
+.ps2 .v2-check--na .psr-check-mark,
+.ps2 .v2-check--unmapped .psr-check-mark { color: var(--ink-faint); }
+.ps2 .psr-fold-body > .v2-open { margin: 2px 0 6px; }
+/* ── Suggest as a future rule ─────────────────────────────────────────────── */
+.ps2 .v2-suggest {
+  margin-top: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface);
+  display: grid; gap: var(--space-2);
+}
+.ps2 .v2-suggest-scope { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.ps2 .v2-suggest-scope legend { width: 100%; }
+.ps2 .v2-suggest-scope .v2-hint { width: 100%; margin: 0; font-size: 12px; }
+.ps2 .v2-suggest .v2-hint { margin: 0; font-size: 12px; }
+/* ── Email preview ────────────────────────────────────────────────────────── */
+.ps2 .v2-email { margin-top: var(--space-3); }
+.ps2 .v2-email .v2-hint { margin: 4px 0 var(--space-2); font-size: 12px; }
+.ps2 .v2-email-preview {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4); background: var(--surface); max-width: 640px;
+}
+.ps2 .v2-email-flag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: var(--space-2); }
+.ps2 .v2-email-body { border-top: 1px solid var(--line); margin-top: var(--space-2); padding-top: var(--space-2); font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-email-body p { margin: 0 0 6px; }
+.ps2 .v2-email-link { color: var(--color-primary); overflow-wrap: anywhere; }
+/* ── Rulebook ─────────────────────────────────────────────────────────────── */
+.ps2 .v2-rule {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4);
+  padding: var(--space-2) 0; border-top: 1px solid var(--line);
+}
+.ps2 .v2-rule:last-child { border-bottom: 1px solid var(--line); }
+.ps2 .v2-rule-main { min-width: 0; }
+.ps2 .v2-rule-title { font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-rule-where { font-size: 12px; color: var(--ink-faint); margin-top: 1px; }
+.ps2 .v2-rule-meta { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; max-width: 50%; }
+.ps2 .v2-rule-origin { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.ps2 .dk-sec-head .psr-count { margin-left: var(--space-2); }
+@media (max-width: 620px) {
+.ps2 .v2-rule { flex-direction: column; gap: 4px; }
+.ps2 .v2-rule-meta { justify-content: flex-start; max-width: none; }
+}
+/* A-Number: the A- is fixed format, not editable text. */
+.ps2 .v2-affix {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface);
+}
+.ps2 .v2-affix:focus-within { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.ps2 .v2-affix-prefix {
+  display: flex; align-items: center; padding: 0 0 0 var(--space-3);
+  color: var(--ink-soft); font-size: var(--text-sm); user-select: none;
+}
+.ps2 .v2-affix .v2-input { border: 0; padding-left: 2px; }
+.ps2 .v2-affix .v2-input:focus-visible { outline: 0; }
+/* ── Rulebook: add a rule (Max 2026-10-02) ────────────────────────────────── */
+.ps2 .v2-addrule-form { display: grid; gap: var(--space-3); max-width: 760px; }
+.ps2 .v2-addrule-field { display: block; min-width: 0; }
+.ps2 .v2-addrule-grid { display: grid; gap: var(--space-3); grid-template-columns: 2fr 1fr 1fr 2fr; }
+@media (max-width: 700px) {
+.ps2 .v2-addrule-grid { grid-template-columns: 1fr 1fr; }
+}
+/* ── Pre-flight: client corrections (Max 2026-10-02) ──────────────────────── */
+.ps2 .v2-corr-add { margin-top: var(--space-3); }
+.ps2 .v2-corr-files { font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-corr { display: flex; align-items: baseline; gap: var(--space-2); padding: 6px 0; border-top: 1px solid var(--line); }
+.ps2 .v2-corr:first-of-type { border-top: 0; }
+.ps2 .v2-corr-mark { width: 1.2em; flex: 0 0 auto; text-align: center; font-weight: 700; }
+.ps2 .v2-corr .psr-check-text { flex: 1 1 auto; }
+.ps2 .v2-corr-tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.ps2 .v2-corr--fixed .v2-corr-mark,
+.ps2 .v2-corr--fixed .v2-corr-tag { color: var(--color-success); }
+.ps2 .v2-corr--fixed .v2-corr-tag { background: var(--color-success-bg); }
+.ps2 .v2-corr--not_fixed .v2-corr-mark,
+.ps2 .v2-corr--differs .v2-corr-mark,
+.ps2 .v2-corr--not_fixed .v2-corr-tag,
+.ps2 .v2-corr--differs .v2-corr-tag { color: var(--color-warning); }
+.ps2 .v2-corr--not_fixed .v2-corr-tag,
+.ps2 .v2-corr--differs .v2-corr-tag { background: var(--color-warning-bg); }
+.ps2 .v2-corr--unclear .v2-corr-mark { color: var(--ink-faint); }
+.ps2 .v2-corr--unclear .v2-corr-tag { color: var(--ink-soft); border: 1px dashed var(--line-strong); }
+.ps2 .v2-corr-sent { margin-top: var(--space-2); }
+.ps2 .v2-corr--not_carried .v2-corr-mark,
+.ps2 .v2-corr--not_carried .v2-corr-tag { color: var(--color-warning); }
+.ps2 .v2-corr--not_carried .v2-corr-tag { background: var(--color-warning-bg); }
+.ps2 .v2-corr--omitted_ok .v2-corr-mark { color: var(--ink-faint); }
+.ps2 .v2-corr--omitted_ok .v2-corr-tag { color: var(--ink-soft); background: transparent; border: 1px solid var(--line); }
+.ps2 .v2-doc-typefix { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--ink-soft); }
+.ps2 .v2-doc-typefix .v2-input { width: auto; padding: 2px var(--space-2); }
+.ps2 .v2-corr--no_page .v2-corr-mark,
+.ps2 .v2-corr--no_page .v2-corr-tag { color: var(--color-warning); }
+.ps2 .v2-corr--no_page .v2-corr-tag { background: var(--color-warning-bg); }
+.ps2 .v2-gate-note { font-size: 12px; color: var(--color-warning); font-weight: 600; }
+.ps2 .v2-noead { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+.ps2 .v2-noead-warn { font-size: 12px; color: var(--ink-soft); }
+/* ── Start: case type, then Start (Max 2026-10-02) ────────────────────────── */
+.ps2 .v2-start-label { display: block; font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); }
+.ps2 .v2-start-row { display: flex; gap: var(--space-2); align-items: stretch; max-width: 520px; }
+.ps2 .v2-start-row .ps-select { flex: 1 1 auto; min-width: 0; }
+.ps2 .v2-start .v2-hint { margin-top: var(--space-2); }
+.ps2 .v2-reset { margin-right: var(--space-3); font-size: 12px; }
+/* ── Case header: case type, tracker, summary, in one card ────────────────── */
+.ps2 .v2-case {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4) var(--space-5) var(--space-3);
+  margin: 0 0 var(--space-5);
+}
+.ps2 .v2-case-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.ps2 .v2-case-type { display: flex; align-items: baseline; gap: var(--space-2); }
+.ps2 .v2-case-type-k { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.ps2 .v2-case-type-v { font-size: var(--text-base); font-weight: 600; color: var(--ink); }
+.ps2 .v2-case-tags { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.ps2 .v2-pill { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.ps2 .v2-pill--ok { color: var(--color-success); background: var(--color-success-bg); }
+.ps2 .v2-pill--muted { color: var(--ink-soft); background: color-mix(in srgb, var(--ink-faint) 14%, transparent); }
+.ps2 .v2-pill--warn { color: var(--color-warning); background: var(--color-warning-bg); }
+.ps2 .v2-stages-locked { margin: 0 0 var(--space-3); text-align: center; font-size: 12px; color: var(--ink-soft); }
+.ps2 .v2-summary { border-top: 1px solid var(--line); padding-top: var(--space-2); }
+.ps2 .v2-summary .psr-summary-strip { padding-bottom: var(--space-2); }
+.ps2 .v2-summary .psr-client-details { border-bottom: 0; margin-bottom: 0; padding-bottom: var(--space-1); }
+.ps2 .v2-summary-empty { margin: var(--space-3) 0; font-size: var(--text-sm); color: var(--ink-faint); }
+/* ── Tracker: dots in a row, joined by a line through their centres; labels
+      sit underneath so the line never crosses text. ─────────────────────── */
+.ps2 .v2-tracker { margin: var(--space-4) 0 var(--space-3); }
+.ps2 .v2-track { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ps2 .v2-step { position: relative; display: flex; justify-content: center; }
+.ps2 .v2-step:not(:last-child)::after {
+  content: ''; position: absolute; z-index: 0;
+  top: 17px; left: calc(50% + 24px); right: calc(-50% + 24px);
+  height: 2px; border-radius: 2px; background: var(--line-strong);
+  transition: background-color .3s ease;
+}
+.ps2 .v2-step--done:not(:last-child)::after { background: var(--color-success); }
+.ps2 .v2-step-btn {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 0 var(--space-2) 2px; max-width: 100%;
+  background: none; border: 0; border-radius: var(--radius-md);
+  font: inherit; color: inherit; cursor: pointer; text-align: center;
+}
+.ps2 .v2-step-btn:disabled { cursor: default; }
+.ps2 .v2-step-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.ps2 .v2-step-btn:hover:not(:disabled) .v2-step-name { color: var(--color-primary); }
+.ps2 .v2-step-dot {
+  width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 700; line-height: 1;
+  background: var(--surface); color: var(--ink-soft);
+  border: 2px solid var(--line-strong);
+  transition: background-color .25s ease, border-color .25s ease, color .25s ease, box-shadow .25s ease;
+}
+.ps2 .v2-step-dot svg { width: 16px; height: 16px; display: block; }
+.ps2 .v2-step-name { font-size: var(--text-sm); font-weight: 600; color: var(--ink); white-space: nowrap; transition: color .15s ease; }
+.ps2 .v2-step-status { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
+.ps2 .v2-step--done .v2-step-dot { background: var(--color-success); border-color: var(--color-success); color: var(--on-acc); }
+.ps2 .v2-step--done .v2-step-status { color: var(--color-success); }
+.ps2 .v2-step--attention .v2-step-dot { background: var(--color-warning-bg); border-color: var(--color-warning); color: var(--color-warning); }
+.ps2 .v2-step--attention .v2-step-status { color: var(--color-warning); }
+.ps2 .v2-step--locked .v2-step-dot { color: var(--ink-faint); border-color: var(--line); background: transparent; }
+.ps2 .v2-step--locked .v2-step-name { color: var(--ink-faint); font-weight: 500; }
+.ps2 .v2-step--optional .v2-step-dot { border-style: dashed; }
+.ps2 .v2-step--current .v2-step-dot {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+.ps2 .v2-step--current.v2-step--todo .v2-step-dot { background: var(--color-primary); color: var(--color-primary-text); border-style: solid; }
+.ps2 .v2-step--current .v2-step-status { color: var(--color-primary); font-weight: 600; }
+/* ── Stage choice cards ───────────────────────────────────────────────────── */
+.ps2 .v2-stage-cards { display: grid; gap: var(--space-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ps2 .v2-stage-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left;
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+  font: inherit; color: inherit; cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.ps2 .v2-stage-card:hover { border-color: var(--color-primary); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.ps2 .v2-stage-card:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-stage-card-top { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 4px; }
+.ps2 .v2-stage-card .v2-step-dot { width: 28px; height: 28px; font-size: 12px; }
+.ps2 .v2-stage-card .v2-step-dot svg { width: 14px; height: 14px; }
+.ps2 .v2-stage-card-status { font-size: 11px; color: var(--ink-faint); }
+.ps2 .v2-stage-card--done .v2-step-dot { background: var(--color-success); border-color: var(--color-success); color: var(--on-acc); }
+.ps2 .v2-stage-card--done .v2-stage-card-status { color: var(--color-success); }
+.ps2 .v2-stage-card--attention .v2-step-dot { background: var(--color-warning-bg); border-color: var(--color-warning); color: var(--color-warning); }
+.ps2 .v2-stage-card--attention .v2-stage-card-status { color: var(--color-warning); }
+.ps2 .v2-stage-card .v2-stage-name { font-size: var(--text-base); }
+@media (max-width: 820px) {
+.ps2 .v2-case { padding: var(--space-3); }
+.ps2 .v2-step-status { display: none; }
+.ps2 .v2-step-name { font-size: 12px; white-space: normal; }
+.ps2 .v2-stage-cards { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+.ps2 .v2-step-dot,
+.ps2 .v2-step:not(:last-child)::after,
+.ps2 .v2-stage-card { transition: none; }
+}
+/* Max 2026-10-02: the portal's primary button put white text on a light blue in dark
+   mode. Use the portal's own on-accent text colour so the label reads. */
+.ps2 .btn--primary { color: var(--color-primary-text); }
+/* ── 1.2 interaction pieces in v2 (Max 2026-10-02) ────────────────────────────
+   .ps-drop, .ps-scan-btn and the ps-file-land / ps-report-unseal keyframes come
+   from the portal's own portal.css. These rules only fit them to v2. */
+.ps2 .v2-drop { margin-bottom: var(--space-3); padding: var(--space-6) var(--space-4); }
+.ps2 .v2-drop .ps-drop-icon { transition: color .2s ease, transform .3s cubic-bezier(.34,1.56,.64,1); }
+.ps2 .v2-drop:hover .ps-drop-icon { transform: translateY(-2px); }
+.ps2 .v2-drop-choices { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
+.ps2 .v2-drop-choices .btn[aria-pressed="true"] { border-color: var(--color-success); color: var(--color-success); }
+.ps2 .v2-drop-note { margin: var(--space-3) 0 0; font-size: 11px; color: var(--ink-faint); }
+.ps2 .v2-drop--secondary { padding: var(--space-4); }
+.ps2 .v2-drop--secondary .ps-drop-icon { width: 28px; height: 28px; margin-bottom: var(--space-2); }
+.ps2 .v2-drop--secondary .v2-link { margin-top: var(--space-2); }
+/* Evidence Zero: the zone lands green for a moment, then settles back. */
+.ps2 .v2-drop.is-landed {
+  border-color: var(--color-success); border-style: solid;
+  animation: ps-file-land .34s cubic-bezier(.34,1.56,.64,1) both;
+}
+.ps2 .v2-drop.is-landed .ps-drop-icon { color: var(--color-success); }
+.ps2 .v2-drop.is-landed::after {
+  content: '✓'; position: absolute; top: var(--space-3); right: var(--space-3);
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--color-success); color: var(--on-acc); border: 3px solid var(--surface);
+  font-size: 12px; font-weight: 700;
+}
+.ps2 .v2-form-pick { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.ps2 details.v2-ready { margin: 0 0 var(--space-3); }
+.ps2 details.v2-ready > summary { cursor: pointer; font-size: 12px; color: var(--ink-soft); list-style: none; }
+.ps2 details.v2-ready > summary::before { content: '▸ '; color: var(--ink-faint); }
+.ps2 details.v2-ready[open] > summary::before { content: '▾ '; }
+/* A new document card arrives; the fields it filled glow once. */
+.ps2 .v2-doc--new { animation: ps2-v2-doc-in .45s cubic-bezier(.34,1.56,.64,1) both; }
+@keyframes ps2-v2-doc-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+.ps2 .v2-ref-field--filled .v2-input,
+.ps2 .v2-ref-field--filled .v2-affix { animation: ps2-v2-filled 1.6s ease both; }
+@keyframes ps2-v2-filled {
+  0%   { border-color: var(--color-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 30%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+/* The report unseals, as in 1.2. */
+.ps2 .v2-reveal { animation: ps-report-unseal .42s cubic-bezier(.2,.8,.2,1) both; }
+/* ── Stage sign-off ───────────────────────────────────────────────────────── */
+.ps2 .v2-signoff {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
+  margin: var(--space-4) 0; padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg); border: 1px solid var(--line); background: var(--surface);
+  transition: background-color .25s ease, border-color .25s ease;
+}
+.ps2 .v2-signoff.is-on { border-color: color-mix(in srgb, var(--color-success) 45%, transparent); background: color-mix(in srgb, var(--color-success) 8%, var(--surface)); }
+.ps2 .v2-signoff-label { display: flex; align-items: center; gap: var(--space-3); cursor: pointer; }
+.ps2 .v2-signoff-input { position: absolute; opacity: 0; pointer-events: none; }
+.ps2 .v2-signoff-box {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 7px;
+  display: grid; place-items: center;
+  border: 2px solid var(--line-strong); color: transparent; background: var(--surface);
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+.ps2 .v2-signoff-box svg { width: 15px; height: 15px; }
+.ps2 .v2-signoff-input:focus-visible + .v2-signoff-box { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-signoff.is-on .v2-signoff-box { background: var(--color-success); border-color: var(--color-success); color: var(--on-acc); transform: scale(1.06); }
+.ps2 .v2-signoff-words { display: flex; flex-direction: column; }
+.ps2 .v2-signoff-title { font-size: var(--text-sm); font-weight: 600; color: var(--ink); }
+.ps2 .v2-signoff.is-on .v2-signoff-title { color: var(--color-success); }
+.ps2 .v2-signoff-sub { font-size: 12px; color: var(--ink-faint); }
+.ps2 .v2-signoff-next { display: flex; gap: var(--space-2); }
+/* Rulebook: one heading per form, rows carry only what differs. */
+.ps2 .v2-rule-group {
+  margin: var(--space-4) 0 var(--space-1); font-size: 11px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint);
+}
+.ps2 .v2-rule-tag { flex: 0 0 auto; align-self: center; }
+@media (prefers-reduced-motion: reduce) {
+.ps2 .v2-drop.is-landed,
+.ps2 .v2-doc--new,
+.ps2 .v2-reveal,
+.ps2 .v2-ref-field--filled .v2-input,
+.ps2 .v2-ref-field--filled .v2-affix { animation: none; }
+.ps2 .v2-signoff,
+.ps2 .v2-signoff-box,
+.ps2 .v2-drop .ps-drop-icon { transition: none; }
+}
+/* ── Uploaded files, inside the drop zone (Max 2026-10-02) ────────────────── */
+.ps2 .v2-drop.has-files { text-align: left; padding: var(--space-4); }
+.ps2 .v2-drop.has-files > .ps-drop-icon { display: none; }
+.ps2 .v2-drop.has-files > .ps-drop-title { margin-bottom: 0; }
+.ps2 .v2-drop.has-files > .ps-drop-meta { margin-bottom: var(--space-3); }
+.ps2 .v2-files { list-style: none; margin: 0 0 var(--space-2); padding: 0; display: grid; gap: 6px; }
+.ps2 .v2-file {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 8px var(--space-3); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-success) 6%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--color-success) 22%, var(--line));
+  animation: ps2-v2-file-in .32s cubic-bezier(.2,.8,.2,1) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+@keyframes ps2-v2-file-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.ps2 .v2-file-icon { width: 18px; height: 18px; flex: 0 0 auto; color: var(--color-success); }
+.ps2 .v2-file-main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.ps2 .v2-file-name { font-size: var(--text-sm); font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps2 .v2-file-meta { font-size: 11px; color: var(--ink-faint); }
+.ps2 .v2-file-tags { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 60%; }
+.ps2 .v2-file-tag {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+.ps2 .v2-drop.has-files .v2-drop-choices { justify-content: flex-start; }
+.ps2 .v2-btn-sm { padding: 3px 10px; font-size: 12px; min-height: 0; }
+/* Scope toggle: the chosen one is unmistakable. */
+.ps2 .v2-scope-btn[aria-pressed="true"] {
+  border-color: var(--color-primary) !important;
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--surface)) !important;
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+.ps2 .v2-scope-btn[aria-pressed="true"] .v2-scope-name { color: var(--color-primary); }
+/* ── Possible issues: its own violet, never red/amber/green (D-39) ────────── */
+.ps2 .ps-explore {
+  --pi: var(--horizon); --pi-2: color-mix(in srgb, var(--horizon) 65%, var(--color-info)); --pi-ink: color-mix(in srgb, var(--horizon) 82%, var(--ink));
+  border-color: color-mix(in srgb, var(--pi) 30%, var(--line));
+  background: color-mix(in srgb, var(--pi) 3%, var(--surface));
+  border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm);
+}
+.ps2 .ps-explore > summary,
+.ps2 .ps-explore > summary:hover {
+  background: linear-gradient(100deg, color-mix(in srgb, var(--pi) 20%, transparent), color-mix(in srgb, var(--pi-2) 10%, transparent));
+}
+.ps2 .ps-explore > summary::before {
+  content: ''; width: 18px; height: 18px; flex: 0 0 auto; background: var(--pi-ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6z'/%3E%3Cpath d='M19 14l.9 2.6L22 17.5l-2.1.9L19 21l-.9-2.6L16 17.5l2.1-.9z'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6z'/%3E%3Cpath d='M19 14l.9 2.6L22 17.5l-2.1.9L19 21l-.9-2.6L16 17.5l2.1-.9z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.ps2 .ps-explore-count { color: var(--on-acc) !important; background: linear-gradient(135deg, var(--pi), var(--pi-2)) !important; border-radius: 999px; }
+.ps2 .ps-explore article { position: relative; padding-left: 24px; }
+.ps2 .ps-explore article::before {
+  content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0;
+  background: linear-gradient(var(--pi), var(--pi-2));
+}
+.ps2 .ps-explore article:hover { background: color-mix(in srgb, var(--pi) 5%, transparent); }
+.ps2 .ps-explore .ps-explore-accept { color: var(--on-acc); background: var(--pi); border-color: var(--pi); }
+.ps2 .ps-explore .ps-explore-accept:hover:not(:disabled) { background: var(--pi-ink); border-color: var(--pi-ink); color: var(--on-acc); }
+.ps2 .ps-explore-source { color: var(--pi-ink) !important; }
+.ps2 .ps-explore pre { border-left-color: var(--pi) !important; background: color-mix(in srgb, var(--pi) 7%, transparent); }
+.ps2 .ps-explore-item.is-reviewed { background: color-mix(in srgb, var(--pi) 6%, transparent); }
+.ps2 .ps-explore-item.is-reviewed::before { opacity: .45; }
+.ps2 .ps-explore .ps-explore-note[role='status'] { color: var(--pi-ink); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+.ps2 .v2-file { animation: none; }
+}
+.ps2 .v2-ref-field--email { grid-column: span 2; }
+/* Rulebook: edit in place. */
+.ps2 .v2-rule-edit { flex: 0 0 auto; align-self: center; opacity: .55; transition: opacity .15s ease; }
+.ps2 .v2-rule:hover .v2-rule-edit,
+.ps2 .v2-rule-edit:focus-visible { opacity: 1; }
+.ps2 .v2-rule--editing { display: block; padding: var(--space-3); margin: 4px 0; border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--surface)); border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--line)); }
+.ps2 .v2-addrule-grid--3 { grid-template-columns: 2fr 1fr 1fr; }
+/* ── Visual pass 2 (Max 2026-10-02): colour that carries meaning ──────────── */
+/* Document types: EAD blue, intake teal, anything else slate. */
+.ps2 .v2-doc { --doc: var(--ink-faint); position: relative; overflow: hidden; }
+.ps2 .v2-doc[data-type="ead"] { --doc: var(--color-info); }
+.ps2 .v2-doc[data-type="intake"] { --doc: var(--intake); }
+.ps2 .v2-doc::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--doc); }
+.ps2 .v2-doc--review::before { background: repeating-linear-gradient(var(--doc) 0 6px, transparent 6px 10px); }
+.ps2 .v2-doc-head { align-items: center; }
+.ps2 .v2-doc-tile {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+  color: var(--doc); background: color-mix(in srgb, var(--doc) 13%, transparent);
+}
+.ps2 .v2-doc-tile svg { width: 22px; height: 22px; }
+.ps2 .v2-doc-titles { flex: 1 1 auto; min-width: 0; }
+.ps2 .v2-doc-type { color: var(--ink); }
+.ps2 .v2-doc-tags .v2-tag--review { color: var(--color-warning); background: var(--color-warning-bg); border: 0; }
+/* Where each value came from: a small coloured dot before the source line. */
+.ps2 .v2-ref-source::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 6px; vertical-align: 1px; background: var(--line-strong);
+}
+.ps2 .v2-src--ead::before { background: var(--color-info); }
+.ps2 .v2-src--intake::before { background: var(--intake); }
+.ps2 .v2-src--doc::before { background: var(--ink-faint); }
+.ps2 .v2-src--staff::before { background: var(--color-primary); box-shadow: inset 0 0 0 2px var(--surface); border: 1px solid var(--color-primary); }
+.ps2 .v2-src--none::before { background: transparent; border: 1px dashed var(--ink-faint); }
+/* Selects line up with the inputs beside them. */
+.ps2 select.v2-input { height: 42.5px; padding-top: 0; padding-bottom: 0; }
+.ps2 .v2-ref-grid .v2-input,
+.ps2 .v2-affix { min-height: 42.5px; }
+/* A suggested change reads as "old → new". */
+.ps2 .v2-proposal {
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--line)) !important;
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--surface)) !important;
+  border-radius: var(--radius-md);
+}
+.ps2 .v2-proposal-from { font-size: 11px; font-weight: 600; color: var(--color-primary); margin-bottom: 4px; }
+.ps2 .v2-proposal-swap { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-bottom: var(--space-2); font-size: var(--text-sm); }
+.ps2 .v2-proposal-old { color: var(--ink-faint); text-decoration: line-through; }
+.ps2 .v2-proposal-arrow { color: var(--color-primary); font-weight: 700; }
+.ps2 .v2-proposal-new { color: var(--ink); font-weight: 600; }
+/* Needs info, please confirm, for awareness: each its own soft colour. */
+.ps2 .v2-needs-info,
+.ps2 .v2-confirm,
+.ps2 .v2-notifications {
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-3) var(--space-2);
+  margin-top: var(--space-3);
+}
+.ps2 .v2-needs-info { background: color-mix(in srgb, var(--ink-faint) 9%, transparent); }
+.ps2 .v2-confirm { background: color-mix(in srgb, var(--color-info) 9%, transparent); }
+.ps2 .v2-notifications { background: color-mix(in srgb, var(--color-info) 6%, transparent); }
+.ps2 .v2-info-mark {
+  width: 18px !important; height: 18px; border-radius: 50%; display: inline-grid !important; place-items: center;
+  font-size: 11px !important; flex: 0 0 auto;
+}
+.ps2 .v2-needs-info .v2-info-mark { background: color-mix(in srgb, var(--ink-faint) 22%, transparent); color: var(--ink-soft); }
+.ps2 .v2-confirm .v2-info-mark,
+.ps2 .v2-notifications .v2-info-mark { background: color-mix(in srgb, var(--color-info) 18%, transparent); color: var(--color-info); }
+/* The email preview looks like an email. */
+.ps2 .v2-email-preview { border-radius: var(--radius-lg) !important; overflow: hidden; padding: 0 !important; box-shadow: var(--shadow-sm); }
+.ps2 .v2-email-bar {
+  display: flex; align-items: center; gap: var(--space-2); padding: 8px var(--space-3);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--surface)); color: var(--color-primary);
+}
+.ps2 .v2-email-bar svg { width: 18px; height: 18px; }
+.ps2 .v2-email-bar .v2-email-flag { margin: 0; color: var(--color-primary); }
+.ps2 .v2-email-preview > .psr-nf { padding: 4px var(--space-3); }
+.ps2 .v2-email-body { margin: var(--space-2) var(--space-3) var(--space-3) !important; }
+.ps2 .v2-doc-typefix select.v2-input { height: 28px; min-height: 0; font-size: 12px; }
+/* SSN: hidden by default, one eye toggle (Max 2026-10-06). */
+.ps2 .v2-ssn { display: inline-flex; align-items: center; gap: 6px; }
+.ps2 .v2-ssn-text { font-variant-numeric: tabular-nums; }
+.ps2 .v2-ssn-eye {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: var(--ink-faint); cursor: pointer;
+}
+.ps2 .v2-ssn-eye:hover { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+.ps2 .v2-ssn-eye:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.ps2 .v2-ssn-eye svg { width: 16px; height: 16px; }
+.ps2 .v2-ssn-input { position: relative; flex: 1 1 auto; }
+.ps2 .v2-ssn-input .v2-input { padding-right: 36px; }
+.ps2 .v2-ssn-input .v2-input[readonly] { color: var(--ink-soft); cursor: default; }
+.ps2 .v2-ssn-eye--field { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+/* ── People on a case (D-94) and General (D-90 to D-95) ───────────────────── */
+.ps2 .v2-case-folder { display: inline-grid; place-items: center; width: 22px; height: 22px; color: var(--color-primary); }
+.ps2 .v2-case-folder svg { width: 18px; height: 18px; }
+.ps2 .v2-case-type { align-items: center; }
+.ps2 .v2-pill--type { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent); }
+.ps2 .v2-pill--role { color: var(--horizon); background: color-mix(in srgb, var(--horizon) 14%, transparent); }
+.ps2 .v2-pill--new { color: var(--color-success); background: var(--color-success-bg); }
+.ps2 .v2-main-role { font-size: 11px; font-weight: 600; color: var(--ink-soft); margin-top: var(--space-2); }
+.ps2 .v2-people { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); padding: var(--space-3) 0 var(--space-2); border-top: 1px solid var(--line); }
+.ps2 .v2-person { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: color-mix(in srgb, var(--horizon) 5%, var(--surface)); border: 1px solid var(--line); }
+.ps2 .v2-person-name { font-weight: 600; font-size: var(--text-sm); color: var(--ink); margin-top: 4px; }
+.ps2 .v2-person-meta,
+.ps2 .v2-person-src { font-size: 11px; color: var(--ink-faint); }
+.ps2 .v2-src--scan::before { background: var(--horizon); }
+.ps2 .v2-role-pick { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.ps2 .v2-role-pick .v2-ref-label { margin: 0; }
+.ps2 .v2-people-edit { display: grid; gap: var(--space-3); }
+.ps2 .v2-person-edit { padding: var(--space-3); border-radius: var(--radius-lg); border: 1px solid var(--line); background: var(--surface); position: relative; overflow: hidden; }
+.ps2 .v2-person-edit::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--horizon); }
+.ps2 .v2-person-edit-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); }
+.ps2 .v2-person-edit-head select.v2-input { height: 32px; width: auto; }
+.ps2 .v2-person-add { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-3); }
+.ps2 .v2-person-add select.v2-input { height: 38px; width: auto; }
+.ps2 .v2-owners { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ps2 .v2-owners-k { font-size: 12px; color: var(--ink-soft); }
+.ps2 .v2-owner-chip {
+  font: inherit; font-size: 12px; padding: 2px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: transparent; color: var(--ink-soft);
+}
+.ps2 .v2-owner-chip.is-on { border-color: var(--horizon); background: color-mix(in srgb, var(--horizon) 14%, transparent); color: var(--ink); font-weight: 600; }
+.ps2 .v2-doc[data-type="birth_certificate"],
+.ps2 .v2-doc[data-type="marriage_certificate"] { --doc: var(--horizon); }
+.ps2 .v2-ps-people-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.ps2 .v2-ps-person { padding: var(--space-3); border-radius: var(--radius-lg); border: 1px solid var(--line); background: color-mix(in srgb, var(--horizon) 4%, var(--surface)); }
+.ps2 .v2-ps-person-top { display: flex; gap: 6px; flex-wrap: wrap; }
+.ps2 .v2-ps-k { margin-top: var(--space-2); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.ps2 .v2-ps-tags { justify-content: flex-start; max-width: none; margin-top: 4px; }
+.ps2 .v2-ps-ev { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: var(--text-sm); }
+.ps2 .v2-ps-ev:last-child { border-bottom: 0; }
+.ps2 .v2-ps-ev-name { flex: 1 1 auto; color: var(--ink); }
+/* ── General: one full case card per person (D-99) ────────────────────────── */
+.ps2 .v2-people-cards { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); padding: var(--space-3) 0 var(--space-2); }
+.ps2 .v2-person-card {
+  position: relative; overflow: hidden; padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg); border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--horizon) 4%, var(--surface));
+}
+.ps2 .v2-person-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--horizon); }
+.ps2 .v2-person-top { display: flex; gap: 6px; flex-wrap: wrap; }
+.ps2 .v2-person-card .v2-person-name { font-size: var(--text-base); margin: 6px 0 var(--space-2); }
+.ps2 .v2-person-facts { display: grid; gap: var(--space-2) var(--space-3); grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.ps2 .v2-person-card .v2-person-src { margin-top: var(--space-2); }
+.ps2 .v2-src--forms::before { background: transparent; border: 1px dashed var(--color-warning); }
+/* ── Evidence matches the forms (D-98) ─────────────────────────────────────── */
+.ps2 .v2-match { border-radius: var(--radius-md); }
+.ps2 .v2-match-row { display: flex; gap: var(--space-2); align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--line); }
+.ps2 .v2-match-row:first-of-type { border-top: 0; }
+.ps2 .v2-match-mark { width: 20px; height: 20px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.ps2 .v2-match-row--ok .v2-match-mark { color: var(--on-acc); background: var(--color-success); }
+.ps2 .v2-match-row--bad .v2-match-mark { color: var(--color-warning); background: var(--color-warning-bg); }
+.ps2 .v2-match-text { font-size: var(--text-sm); color: var(--ink); display: flex; flex-direction: column; }
+.ps2 .v2-match-detail { color: var(--ink-soft); font-size: 12px; }
+.ps2 .v2-match-row--bad .v2-match-detail { color: var(--color-warning); }
+/* ── Portal additions: what the real page has that the Lab did not ───────── */
+.ps2 .v2-tabs { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+.ps2 .v2-tab {
+  font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--ink-soft);
+}
+.ps2 .v2-tab:hover { border-color: var(--color-primary); color: var(--ink); }
+.ps2 .v2-tab.is-on { border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 10%, var(--surface)); }
+.ps2 .v2-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-error {
+  margin: var(--space-2) 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md);
+  font-size: var(--text-sm); color: var(--color-danger); background: var(--color-danger-bg);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+}
+.ps2 .v2-case-back { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+.ps2 .v2-start-name { flex: 1 1 auto; min-width: 0; }
+.ps2 .v2-start-row + .v2-hint { margin-top: var(--space-2); }
+.ps2 .v2-start-label + .v2-start-row { margin-bottom: 0; }
+.ps2 .v2-start .v2-start-label:not(:first-child) { margin-top: var(--space-4); }
+.ps2 .v2-case-list { margin-top: var(--space-3); }
+.ps2 .v2-case-row { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.ps2 .v2-case-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-file-remove { flex: 0 0 auto; }
+.ps2 .v2-drop.is-busy { opacity: .75; cursor: progress; }
+.ps2 .v2-drop.is-busy .ps-drop-icon { animation: ps2-busy 1.2s ease-in-out infinite; }
+@keyframes ps2-busy { 50% { transform: translateY(-3px); color: var(--color-primary); } }
+.ps2 .v2-corrected { display: inline-flex; }
+.ps2 .v2-run-bar { align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.ps2 .v2-email-hint { font-size: 12px; margin-top: calc(var(--space-2) * -1); }
+.ps2 .v2-ref-error { color: var(--color-danger); }
+.ps2 .v2-person-section .dk-sec-head h2 { text-transform: none; }
+.ps2 .v2-person-edit-head { gap: var(--space-3); flex-wrap: wrap; }
+.ps2 .v2-person-actions { display: flex; align-items: center; gap: var(--space-3); }
+.ps2 .v2-gate {
+  margin-top: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md);
+  border: 1px dashed var(--line-strong); background: color-mix(in srgb, var(--color-warning) 5%, var(--surface));
+}
+.ps2 .v2-gate.is-ready { border-style: solid; border-color: color-mix(in srgb, var(--color-success) 40%, var(--line)); background: color-mix(in srgb, var(--color-success) 6%, var(--surface)); }
+.ps2 .v2-gate-head { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 4px; }
+.ps2 .v2-gate-line { margin: 2px 0; font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-gate-missing::before { content: '\2022'; color: var(--color-warning); margin-right: 6px; }
+.ps2 .v2-gate.is-ready .v2-gate-line { color: var(--color-success); }
+.ps2 .psr-check--needs_info .psr-check-mark, .ps2 .psr-check--please_confirm .psr-check-mark { color: var(--color-info); }
+.ps2 .psr-out--needs_info, .ps2 .psr-out--please_confirm { color: var(--ink-soft); }
+.ps2 .v2-pi-facts { margin: 4px 0 var(--space-2); }
+.ps2 .v2-rule-retire { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ps2 .v2-rulebook-type { max-width: 420px; }
+.ps2 .v2-rulebook-version { font-size: 12px; color: var(--ink-faint); }
+.ps2 .v2-not-this-stage { margin-top: var(--space-2); }
+.ps2 .v2-ps-extra { margin-top: var(--space-2); }
+.ps2 .v2-ps-extra .psr-block:first-child { margin-top: var(--space-3); }
+.ps2 .v2-stage-card { width: 100%; }
+.ps2 .v2-corr--check .v2-corr-mark, .ps2 .v2-corr--check .v2-corr-tag { color: var(--color-warning); }
+.ps2 .v2-corr--check .v2-corr-tag { background: var(--color-warning-bg); }
+.ps2 .v2-corr--unreadable .v2-corr-mark { color: var(--ink-faint); }
+.ps2 .v2-corr--unreadable .v2-corr-tag { color: var(--ink-soft); border: 1px dashed var(--line-strong); }
+.ps2 .v2-doc-facts .psr-fact-v { overflow-wrap: anywhere; }
+.ps2 .v2-rule .v2-rule-main { flex: 1 1 auto; }
