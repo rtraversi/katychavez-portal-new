@@ -37,7 +37,7 @@ const read = (over = {}) => ({
 });
 
 async function newCase(case_type = 'daca_renewal', role) {
-  return (await call(caseRoute, '/api/proof-scan-v2-case', { method: 'POST', body: { case_type, label: 'Test', ...(role ? { role } : {}) } })).body;
+  return (await call(caseRoute, '/api/proof-scan-v2-case', { method: 'POST', body: { case_type, ...(role ? { role } : {}) } })).body;
 }
 const upload = (case_id, file = pdfFile('ead.pdf')) =>
   call(evidenceRoute, '/api/proof-scan-v2-evidence', { method: 'POST', body: { case_id, ...file } });
@@ -306,7 +306,7 @@ describe('people (D-94)', () => {
 
 describe('fail closed', () => {
   it.each([
-    ['an unknown document type', { ...read(), doc_type: 'passport' }],
+    ['an unknown document type', { ...read(), doc_type: 'tax_return' }],
     ['an extra property', { ...read(), verdict: 'ok' }],
     ['a missing fact', (() => { const r = read(); delete r.facts.email; return r; })()],
     ['not JSON at all', 'here is the document'],

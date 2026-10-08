@@ -1,8 +1,9 @@
 // proof-scan-v2-case.js: create a Proof Scan case, or open one.
 //
-//   POST { case_type, label, role? }  create. The case type is locked from here
+//   POST { case_type, role? }         create. The case type is locked from here
 //                                     on (D-77); the folder is not linked to any
-//                                     matter or client record (D-83).
+//                                     matter or client record (D-83), and it names
+//                                     itself from its people (D-101).
 //   GET  ?id=<case id>                open: people, documents, open suggestions,
 //                                     runs, sign-offs and the evidence requirement.
 
@@ -11,12 +12,10 @@ import { requireStaff, readJson, json, guarded, methodNotAllowed } from './_proo
 import { validate } from './_schemas.js';
 import * as store from './_proof-scan-v2-store.js';
 import { loadCase, publicCaseView } from './_proof-scan-v2-case.js';
-import { CASE_TYPES, ROLES } from './_proof-scan-v2-common.js';
+import { CASE_TYPES, ROLES, caseLabel } from './_proof-scan-v2-common.js';
 
 const CreateCaseSchema = z.object({
   case_type: z.enum(CASE_TYPES),
-  label: z.string().trim().min(1).max(200)
-    .regex(/^[^\x00-\x1f\x7f-\x9f\u2028\u2029]+$/, 'contains characters that are not allowed'),
   role: z.enum(ROLES).optional(),
 }).strict();
 
@@ -39,7 +38,8 @@ export const onRequest = guarded('proof-scan-v2-case', async ({ request, env }) 
     if (parsed.response) return parsed.response;
     const v = validate(CreateCaseSchema, parsed.body);
     if (v.error) return v.error;
-    const { case_type, label } = v.data;
+    const { case_type } = v.data;
+    const label = caseLabel(case_type, [], new Date().toISOString());
 
     // DACA is always one applicant (D-94). General starts with the beneficiary
     // unless staff chose another role; more cards are added later.

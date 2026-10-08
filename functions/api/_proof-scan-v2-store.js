@@ -63,6 +63,14 @@ export async function peopleByANumber(admin, aNumber) {
   return run('people by A-Number', admin.from('proof_scan_people').select('id, case_id').eq('a_number', aNumber));
 }
 
+export async function peopleByName(admin, word) {
+  const [a, b] = await Promise.all([
+    run('people by last name', admin.from('proof_scan_people').select('id, case_id').ilike('last_name', `%${word}%`).limit(50)),
+    run('people by first name', admin.from('proof_scan_people').select('id, case_id').ilike('first_name', `%${word}%`).limit(50)),
+  ]);
+  return [...a, ...b];
+}
+
 export async function getPerson(admin, id) {
   return one(await run('get person', admin.from('proof_scan_people').select('*').eq('id', id).limit(1)));
 }

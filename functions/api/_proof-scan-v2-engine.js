@@ -12,15 +12,18 @@
 //                  suggestions the route should write once the run is stored
 
 import {
-  REFERENCE_FIELDS, OPTIONAL_FIELDS, NAME_FIELDS, ADDRESS_FIELDS, FIELD_LABELS, ROLE_LABELS,
+  REFERENCE_FIELDS, OPTIONAL_FIELDS, NAME_FIELDS, ADDRESS_FIELDS, EXTRA_FIELDS, FIELD_LABELS, ROLE_LABELS,
   DOC_TYPE_LABELS, STAGE_LABELS, CASE_TYPE_LABELS, sameValue, sameName, normText, digits, toCardValue,
-  displayValue, formatName, formatAddress, truthValue, mainPerson, redactSsn, ssnDigits, maskSsn,
+  displayValue, formatName, formatAddress, truthValue, mainPerson, redactSsn, ssnDigits, maskSsn, normalizeDate,
   reportState, reportStateLanguage, STAFF_REVIEW_REMINDER,
 } from './_proof-scan-v2-common.js';
 
 export const RESULT_SCHEMA_VERSION = 2;
-export const CONSISTENCY = new Set(['PS-301', 'PS-302', 'PS-303']); // D-47 "our errors"
+export const CONSISTENCY = new Set(['PS-301', 'PS-302', 'PS-303', 'PS-305']); // D-47 "our errors"
 export const EVIDENCE_RULE = 'PS-304';                                // D-98, server-computed
+export const SHARED_FACTS_RULE = 'PS-305';                            // D-100 #1, server-computed
+export const TRANSLATION_RULE = 'PS-306';                             // D-100 #6, server-computed
+const SERVER_RULES = new Set([EVIDENCE_RULE, SHARED_FACTS_RULE, TRANSLATION_RULE]);
 
 // D-81: a form is compared only on the address parts it has. Known DACA forms;
 // any other form is compared on whatever it shows.
@@ -68,13 +71,19 @@ export function selectRules({ ruleSet, stage, scope, form, hasMarkedFiles }) {
     const state = rule.stages?.[stage]?.state || 'not_this_stage';
     if (state === 'later') { out.later.push(rule); continue; }
     if (state === 'not_this_stage') { out.notThisStage.push(rule); continue; }
+    // D-100 #6: checked at Draft Review and Pre-flight only when evidence is part
+    // of the run, which only the observations can say; decided after the call.
+    if (state === 'if_evidence') {
+      if (SERVER_RULES.has(rule.rule_id)) { out.server.push(rule); continue; }
+      out.conditional.push(rule);
+    }
     if (state === 'if_marked') {
       // D-71: checked only when the client's markups show it, so only asked
       // about when there are marked-up pages at all.
       if (stage !== 'preflight' || !hasMarkedFiles) { out.notThisStage.push(rule); continue; }
       out.conditional.push(rule);
     }
-    if (rule.rule_id === EVIDENCE_RULE) { out.server.push(rule); continue; }
+    if (SERVER_RULES.has(rule.rule_id)) { out.server.push(rule); continue; }
     out.ask.push(rule);
   }
 
@@ -109,8 +118,15 @@ function whereOf(rule) {
 
 const shown = (field, v) => (blank(v) ? 'blank' : displayValue(field, v));
 
-// D-98: every fact a document carries against the forms about the same person.
-const EVIDENCE_FIELDS = ['first_name', 'last_name', 'date_of_birth', 'marriage_date', 'a_number'];
+// D-98, D-100 #2: every fact a document carries against the forms about the
+// same person, on the full fact list.
+const EVIDENCE_FIELDS = ['first_name', 'last_name', 'date_of_birth', 'a_number', 'ead_expiration', ...EXTRA_FIELDS];
+
+// D-100 #1: facts compared form against form, per person. Name, A-Number and
+// address stay with PS-301 to PS-303, which the model reports; everything else
+// shared by two forms about the same person is compared here.
+const SHARED_FACTS = [...REFERENCE_FIELDS.filter((f) => !NAME_FIELDS.includes(f) && !ADDRESS_FIELDS.includes(f) && f !== 'a_number'), 'ssn'];
+const isEnglish = (lang) => /^(english|en|eng)$/i.test(String(lang || '').trim());
 
 export function evaluateRun(input) {
   const {
@@ -215,6 +231,7 @@ export function evaluateRun(input) {
     const o = obsByRule.get(rule.rule_id);
     // D-71: departures only when the client's markups show any.
     if (setting.state === 'if_marked' && !departuresMarked) { suppressed.push(rule.rule_id); continue; }
+    if (setting.state === 'if_evidence' && !obs.evidence_found.length) { suppressed.push(rule.rule_id); continue; }
     // D-21: a missing form is one item; its own checks are not repeated.
     const dependsOnMissing = (rule.applies_to_item_ids || []).some((id) => missingItemIds.has(id));
     const formMissing = scope !== 'individual' && rule.form && !formsPresent.has(formKey(rule.form));
@@ -316,7 +333,7 @@ export function evaluateRun(input) {
         const scanned = { first_name: v.first_name, middle_name: v.middle_name, last_name: v.last_name };
         if (!sameName(scanned, person)) add(person, 'name', formatName(scanned), formatName(person), f.form);
       }
-      for (const field of ['a_number', 'date_of_birth', 'ead_expiration', 'phone', 'email']) {
+      for (const field of ['a_number', 'date_of_birth', 'ead_expiration', 'phone', 'email', ...EXTRA_FIELDS]) {
         if (blank(v[field]) || strong(field) == null) continue;
         if (!sameValue(field, strong(field), v[field])) add(person, field, displayValue(field, v[field]), displayValue(field, strong(field)), f.form);
       }
@@ -336,9 +353,12 @@ export function evaluateRun(input) {
       }
     }
     // Q-46: a value never added to a card is a light note here, not attention.
-    for (const p of virtual.filter((x) => !x._new)) {
-      const missing = REFERENCE_FIELDS.filter((field) => !OPTIONAL_FIELDS.has(field) && field !== 'apt_type' && field !== 'apt_number'
-        && truthValue(p, field) == null);
+    // D-102: never in General (its cards are built from the package itself), and
+    // in DACA only the fields the forms in this package actually use.
+    for (const p of general ? [] : virtual.filter((x) => !x._new)) {
+      const used = (field) => forms.some((f) => personFor(f.person_role) === p && f.values[field] != null && formHasField(f.form, field));
+      const missing = REFERENCE_FIELDS.filter((field) => field !== 'apt_type' && field !== 'apt_number'
+        && truthValue(p, field) == null && used(field));
       if (missing.length) notes.push({ kind: 'never_added', person_role: p.role, fields: missing, title: `Not on the ${roleText(p.role)}'s case card yet: ${missing.map((m) => FIELD_LABELS[m]).join(', ')}. The package was checked for consistency instead.` });
     }
   }
@@ -347,16 +367,17 @@ export function evaluateRun(input) {
   const evidenceRows = [];
   const evidenceRule = selection.server.find((r) => r.rule_id === EVIDENCE_RULE);
   const unclearOwners = [];
+  const roleOf = (pid) => virtual.find((p) => p.id === pid)?.role;
+  // Evidence read reliably: the Evidence Zero cards and the documents in these files.
+  const evidence = [
+    ...documents.filter((d) => d.status === 'current' && (d.owner_ids || []).length)
+      .map((d) => ({ doc_type: d.doc_type, label: DOC_TYPE_LABELS[d.doc_type], roles: d.owner_ids.map(roleOf).filter(Boolean), facts: d.facts || {}, source: 'evidence_zero', where: d.filename || '' })),
+    ...obs.evidence_found.filter((e) => {
+      if (!e.owner_roles.length && general) { unclearOwners.push(e); return false; }
+      return e.read_quality === 'clear'; // D-54: an unreliable read never makes a difference
+    }).map((e) => ({ doc_type: e.doc_type, label: DOC_TYPE_LABELS[e.doc_type], roles: e.owner_roles, facts: e.facts, source: 'package', where: `${e.file}, pages ${e.pages}` })),
+  ];
   if (evidenceRule) {
-    const roleOf = (pid) => virtual.find((p) => p.id === pid)?.role;
-    const evidence = [
-      ...documents.filter((d) => d.status === 'current' && (d.owner_ids || []).length)
-        .map((d) => ({ label: DOC_TYPE_LABELS[d.doc_type], roles: d.owner_ids.map(roleOf).filter(Boolean), facts: d.facts || {}, source: 'evidence_zero' })),
-      ...obs.evidence_found.filter((e) => {
-        if (!e.owner_roles.length && general) { unclearOwners.push(e); return false; }
-        return e.read_quality === 'clear'; // D-54: an unreliable read never makes a difference
-      }).map((e) => ({ label: DOC_TYPE_LABELS[e.doc_type], roles: e.owner_roles, facts: e.facts, source: 'package' })),
-    ];
     for (const ev of evidence) {
       const owners = caseType === 'daca_renewal' ? [mainPerson(virtual)?.role] : ev.roles;
       for (const field of EVIDENCE_FIELDS) {
@@ -399,6 +420,79 @@ export function evaluateRun(input) {
     });
   }
 
+  // ── Every shared fact matches across the forms, per person (D-100 #1, PS-305) ──
+  // Form against form, so no value is treated as truth (D-79, D-99). A field
+  // already reported against the case card or the evidence is not reported twice.
+  const formDiffs = [];
+  const sharedRule = selection.server.find((r) => r.rule_id === SHARED_FACTS_RULE);
+  let sharedCompared = 0;
+  if (sharedRule) {
+    const reported = (role, field) => [...differences, ...cardDiffs, ...evidenceDiffs]
+      .some((d) => d.person_role === role && d.field === field);
+    const byPerson = new Map();
+    for (const f of forms) {
+      const person = personFor(f.person_role);
+      const role = person?.role || f.person_role;
+      if (!role) continue;
+      if (!byPerson.has(role)) byPerson.set(role, []);
+      byPerson.get(role).push(f);
+    }
+    for (const [role, list] of byPerson) {
+      for (const field of SHARED_FACTS) {
+        const seen = list.filter((f) => !blank(f.values[field]) && formHasField(f.form, field));
+        if (seen.length < 2) continue;
+        sharedCompared += 1;
+        const groups = [];
+        for (const f of seen) {
+          const g = groups.find((x) => sameValue(field, x.value, f.values[field]));
+          if (g) g.forms.push(f.form); else groups.push({ value: f.values[field], forms: [f.form] });
+        }
+        if (groups.length < 2 || reported(role, field)) continue;
+        const show = (v) => (field === 'ssn' ? maskSsn(digits(v).slice(-4)) : displayValue(field, v));
+        const who = general ? `the ${roleText(role)}'s ` : '';
+        const parts = groups.map((g) => `${show(g.value)} on the ${[...new Set(g.forms)].join(' and the ')}`);
+        formDiffs.push({
+          kind: 'form_difference', key: `forms:${role}:${field}`, person_role: role, field,
+          forms: groups.flatMap((g) => g.forms), values: groups.map((g) => ({ value: show(g.value), forms: [...new Set(g.forms)] })),
+          title: `The forms disagree on ${who}${FIELD_LABELS[field]}. It is ${parts.join(', but ')}.`,
+        });
+      }
+    }
+    checks.push({
+      rule_id: SHARED_FACTS_RULE, status: formDiffs.length ? 'needs_attention' : sharedCompared ? 'clear' : 'nothing_to_compare',
+      severity: sharedRule.severity, form: null, where: '',
+      title: formDiffs.length || sharedCompared ? checkTitle(sharedRule, sharedRule.stages?.[stage], formDiffs.length ? 'needs_attention' : 'clear')
+        : 'No fact appears on more than one form for the same person.',
+      expected: null, consistency: true, summary: null, reason: null, evidence: null, locations: [], counted_by_items: true,
+    });
+  }
+
+  // ── Foreign-language evidence needs a translation (D-100 #6, PS-306) ──
+  const translationItems = [];
+  const translationRule = selection.server.find((r) => r.rule_id === TRANSLATION_RULE);
+  const translationState = translationRule?.stages?.[stage]?.state;
+  if (translationRule && !(translationState === 'if_evidence' && !obs.evidence_found.length)) {
+    const readable = obs.evidence_found.filter((e) => e.read_quality !== 'unreadable');
+    for (const e of readable) {
+      if (isEnglish(e.language) || e.has_english_translation) continue;
+      const owner = e.owner_roles.map(roleText).filter(Boolean).join(' and ');
+      translationItems.push({
+        kind: 'translation', key: `translation:${e.file}:${e.pages}`, person_role: e.owner_roles[0] || null,
+        where: `${e.file}, pages ${e.pages}`,
+        title: `The ${owner ? `${owner}'s ` : ''}${DOC_TYPE_LABELS[e.doc_type].toLowerCase()} is in ${redactSsn(e.language)}. There is no English translation of it in the package.`,
+      });
+    }
+    checks.push({
+      rule_id: TRANSLATION_RULE, status: translationItems.length ? 'needs_attention' : readable.length ? 'clear' : 'nothing_to_compare',
+      severity: translationRule.severity, form: null, where: '',
+      title: readable.length ? checkTitle(translationRule, translationRule.stages?.[stage], translationItems.length ? 'needs_attention' : 'clear')
+        : 'No evidence in these files to check for translations.',
+      expected: null, consistency: false, summary: null, reason: null, evidence: null, locations: [], counted_by_items: true,
+    });
+  } else if (translationRule) {
+    suppressed.push(TRANSLATION_RULE);
+  }
+
   // ── Corrections that did not reach another form fold into consistency (D-72) ──
   const correctionAttention = [];
   if (corrections) {
@@ -427,7 +521,7 @@ export function evaluateRun(input) {
   // ── Counting (D-23, D-36) ──
   const checkAttention = checks.filter((c) => c.status === 'needs_attention' && !c.counted_by_items);
   for (const c of checkAttention) attention.push({ kind: 'check', key: `rule:${c.rule_id}`, rule_id: c.rule_id, form: c.form, title: c.title });
-  attention.push(...differences, ...cardDiffs, ...evidenceDiffs, ...correctionAttention);
+  attention.push(...differences, ...cardDiffs, ...evidenceDiffs, ...formDiffs, ...translationItems, ...correctionAttention);
   const notChecked = checks.filter((c) => c.status === 'not_checked').length + unreadableItems.length;
   const state = reportState(attention.length, notChecked);
 
@@ -443,6 +537,30 @@ export function evaluateRun(input) {
       title: redactSsn(p.title), description: redactSsn(p.description), evidence: redactSsn(p.evidence),
       why_it_matters: redactSsn(p.why_it_matters), uncertainty: redactSsn(p.uncertainty), reasoning_key: p.reasoning_key,
     }));
+  // D-100 #5: evidence whose own expiration date has passed is a Possible issue,
+  // never counted. An EAD on a DACA renewal is expected to be expiring: that is
+  // what the renewal is for, so it is not raised.
+  const today = String(scannedAt || new Date().toISOString()).slice(0, 10);
+  const expiredSeen = new Set();
+  for (const ev of evidence) {
+    if (ev.doc_type === 'ead' && caseType === 'daca_renewal') continue;
+    const expiry = normalizeDate(ev.facts.expiration_date) || (ev.doc_type === 'ead' ? normalizeDate(ev.facts.ead_expiration) : null);
+    if (!expiry || expiry >= today || suppressedSet.has('expired_evidence')) continue;
+    const label = DOC_TYPE_LABELS[ev.doc_type];
+    const owner = (caseType === 'daca_renewal' ? [mainPerson(virtual)?.role] : ev.roles).map(roleText).filter(Boolean).join(' and ');
+    const key = `${ev.doc_type}|${ev.roles.join(',')}|${expiry}`;
+    if (expiredSeen.has(key)) continue;
+    expiredSeen.add(key);
+    possibleIssues.push({
+      title: `The ${owner ? `${owner}'s ` : ''}${label.toLowerCase()} expired on ${displayValue('expiration_date', expiry)}.`,
+      description: `The ${label.toLowerCase()} in the evidence has an expiration date that has passed.`,
+      evidence: ev.where || label,
+      why_it_matters: 'An expired document may need to be replaced or explained, depending on what it is filed to show.',
+      uncertainty: 'An expired document can still be the right evidence, for example to show a past entry or identity.',
+      reasoning_key: 'expired_evidence',
+    });
+  }
+
   // D-94: a document whose owner is unclear goes to Possible issues.
   for (const e of unclearOwners) {
     if (suppressedSet.has('evidence_owner_unclear')) break;

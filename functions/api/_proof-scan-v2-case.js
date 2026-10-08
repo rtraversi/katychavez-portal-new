@@ -7,7 +7,7 @@
 
 import * as store from './_proof-scan-v2-store.js';
 import {
-  publicPerson, publicSuggestion, evidenceRequirement, GATE_MESSAGES, CASE_TYPE_LABELS,
+  publicPerson, publicSuggestion, evidenceRequirement, GATE_MESSAGES, CASE_TYPE_LABELS, caseLabel,
 } from './_proof-scan-v2-common.js';
 import { HttpError } from './_proof-scan-v2-http.js';
 
@@ -38,7 +38,17 @@ export function gateFor(snapshot) {
   return { ...gate, messages: gate.missing.map((k) => GATE_MESSAGES[k]) };
 }
 
+// D-101: the folder names itself from its people. Every route that changes a
+// case answers with publicCaseView, so the name is brought up to date here.
+async function syncLabel(admin, kase, people) {
+  const label = caseLabel(kase.case_type, people, kase.created_at);
+  if (label === kase.label) return kase;
+  await store.updateCase(admin, kase.id, { label });
+  return { ...kase, label };
+}
+
 export async function publicCaseView(admin, snapshot) {
+  snapshot = { ...snapshot, case: await syncLabel(admin, snapshot.case, snapshot.people) };
   const [runs, signoffs] = await Promise.all([
     store.listRuns(admin, snapshot.case.id),
     store.listSignoffs(admin, snapshot.case.id),

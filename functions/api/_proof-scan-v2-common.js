@@ -30,18 +30,29 @@ export const REPEATABLE_ROLES = new Set(['household_member']);
 
 // The reference record, in the Lab's order (D-12, D-64, D-82). SSN is handled
 // separately: it is never a plain column (D-80).
+// D-100: plus every other fact the portal's form maps fill per person
+// (supabase/migrations/1600-*.sql and 1514 "source" values): USCIS online
+// account number, country of birth and citizenship, I-94 number and expiry,
+// last entry date and port of entry, employer, marriage date and place.
+export const EXTRA_FIELDS = [
+  'uscis_account_number', 'country_of_birth', 'country_of_citizenship',
+  'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry',
+  'employer', 'marriage_date', 'marriage_place',
+];
 export const REFERENCE_FIELDS = [
   'first_name', 'middle_name', 'last_name',
   'street', 'apt_type', 'apt_number', 'city', 'state', 'zip',
   'in_care_of', 'province', 'postal_code', 'country',
   'date_of_birth', 'a_number', 'ead_expiration',
   'phone', 'email',
+  ...EXTRA_FIELDS,
 ];
-export const OPTIONAL_FIELDS = new Set(['in_care_of', 'province', 'postal_code', 'country']); // D-82
+// Shown and expected only when a source carries them (D-82, D-100).
+export const OPTIONAL_FIELDS = new Set(['in_care_of', 'province', 'postal_code', 'country', ...EXTRA_FIELDS]);
 export const NAME_FIELDS = ['first_name', 'middle_name', 'last_name'];
 export const ADDRESS_FIELDS = ['street', 'apt_type', 'apt_number', 'city', 'state', 'zip',
   'in_care_of', 'province', 'postal_code', 'country'];
-export const DATE_FIELDS = new Set(['date_of_birth', 'ead_expiration', 'marriage_date']);
+export const DATE_FIELDS = new Set(['date_of_birth', 'ead_expiration', 'marriage_date', 'i94_expiration', 'last_entry_date', 'expiration_date']);
 export const APT_TYPES = ['Apt.', 'Ste.', 'Flr.'];
 
 export const FIELD_LABELS = {
@@ -51,15 +62,21 @@ export const FIELD_LABELS = {
   postal_code: 'postal code', country: 'country', date_of_birth: 'date of birth',
   a_number: 'A-Number', ead_expiration: 'EAD expiration date', phone: 'phone', email: 'email',
   ssn: 'Social Security number', marriage_date: 'marriage date', name: 'name', address: 'address',
+  uscis_account_number: 'USCIS online account number', country_of_birth: 'country of birth',
+  country_of_citizenship: 'country of citizenship', i94_number: 'I-94 number', i94_expiration: 'I-94 expiration date',
+  last_entry_date: 'last entry date', port_of_entry: 'port of entry', employer: 'employer',
+  marriage_place: 'place of marriage', expiration_date: 'expiration date',
 };
 
 // Document types Evidence Zero may identify. Only the Lab's own set; no new
 // evidence categories are invented here (D-55, rule 4 of the continuation
 // protocol).
-export const DOC_TYPES = ['ead', 'intake', 'birth_certificate', 'marriage_certificate', 'other'];
+// D-100 #5 names passports, I-94s and green cards as evidence that can expire.
+export const DOC_TYPES = ['ead', 'intake', 'birth_certificate', 'marriage_certificate', 'passport', 'i94', 'green_card', 'other'];
 export const DOC_TYPE_LABELS = {
   ead: 'EAD', intake: 'Intake', birth_certificate: 'Birth certificate',
-  marriage_certificate: 'Marriage certificate', other: 'Other document',
+  marriage_certificate: 'Marriage certificate', passport: 'Passport', i94: 'I-94', green_card: 'Green card',
+  other: 'Other document',
 };
 
 // ── Normalising ──────────────────────────────────────────────────────────────
@@ -139,7 +156,7 @@ export function toCardValue(field, raw) {
 // (N-016); dates compare as dates whatever their printed format; everything else
 // ignores case, spacing and punctuation.
 export function sameValue(field, a, b) {
-  if (field === 'a_number' || field === 'phone' || field === 'ssn' || field === 'zip') {
+  if (field === 'a_number' || field === 'phone' || field === 'ssn' || field === 'zip' || field === 'uscis_account_number') {
     return digits(a) === digits(b);
   }
   if (DATE_FIELDS.has(field)) {
@@ -292,4 +309,31 @@ export function reportState(attentionCount, notCheckedCount) {
   if (attentionCount > 0) return 'items_need_attention';
   if (notCheckedCount > 0) return 'review_incomplete';
   return 'no_issues_found';
+}
+
+// ── Folder name (D-101) ──────────────────────────────────────────────────────
+// Staff no longer name the folder. It is named from the people on the case once
+// a document, form or scan reveals them: DACA "RIVERA, Ana"; General the main
+// last names, petitioner first, e.g. "MORALES & REYES". Until then "New case"
+// with the date it started. The case type is shown beside it, never repeated in it.
+const LABEL_ROLE_ORDER = ['petitioner', 'beneficiary', 'applicant', 'sponsor', 'joint_sponsor', 'household_member'];
+const titleCase = (v) => String(v).toLowerCase().replace(/(^|[\s'-])([a-zà-ÿ])/g, (_, a, b) => a + b.toUpperCase());
+
+export function caseLabel(caseType, people, createdAt) {
+  const named = (people || []).filter((p) => !isBlank(p.last_name));
+  if (caseType === 'daca_renewal' || named.length === 1) {
+    const main = mainPerson(people || []);
+    const p = main && !isBlank(main.last_name) ? main : named[0];
+    if (p) {
+      const first = isBlank(p.first_name) ? '' : `, ${titleCase(String(p.first_name).trim())}`;
+      return `${String(p.last_name).trim().toUpperCase()}${first}`.slice(0, 200);
+    }
+  } else if (named.length) {
+    const ordered = [...named].sort((a, b) => (Number(b.is_main) - Number(a.is_main))
+      || LABEL_ROLE_ORDER.indexOf(a.role) - LABEL_ROLE_ORDER.indexOf(b.role));
+    const top = ordered.slice(0, 2).sort((a, b) => LABEL_ROLE_ORDER.indexOf(a.role) - LABEL_ROLE_ORDER.indexOf(b.role));
+    const names = [...new Set(top.map((p) => String(p.last_name).trim().toUpperCase()))];
+    return names.join(' & ').slice(0, 200);
+  }
+  return `New case ${formatDate(String(createdAt || '').slice(0, 10)) || ''}`.trim();
 }

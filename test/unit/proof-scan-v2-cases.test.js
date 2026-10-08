@@ -32,13 +32,13 @@ const create = (body) => call(caseRoute, '/api/proof-scan-v2-case', { method: 'P
 const person = (body) => call(personRoute, '/api/proof-scan-v2-person', { method: 'POST', body });
 
 async function dacaCase() {
-  const { body } = await create({ case_type: 'daca_renewal', label: 'Test Person A' });
+  const { body } = await create({ case_type: 'daca_renewal' });
   return body;
 }
 
 describe('access', () => {
   const routes = [
-    [caseRoute, '/api/proof-scan-v2-case', { method: 'POST', body: { case_type: 'general', label: 'x' } }],
+    [caseRoute, '/api/proof-scan-v2-case', { method: 'POST', body: { case_type: 'general' } }],
     [casesRoute, '/api/proof-scan-v2-cases', {}],
     [personRoute, '/api/proof-scan-v2-person', { method: 'POST', body: { action: 'approve', person_id: crypto.randomUUID() } }],
     [suggestionRoute, '/api/proof-scan-v2-suggestion', { method: 'POST', body: { suggestion_id: crypto.randomUUID(), decision: 'keep' } }],
@@ -62,7 +62,7 @@ describe('access', () => {
   });
 
   it('asks for proof_scan write access on writes and read access on reads', async () => {
-    await create({ case_type: 'general', label: 'Test' });
+    await create({ case_type: 'general' });
     expect(helpersMock.verifyAuth.mock.calls.at(-1).slice(2)).toEqual(['write', 'proof_scan']);
     await call(casesRoute, '/api/proof-scan-v2-cases');
     expect(helpersMock.verifyAuth.mock.calls.at(-1).slice(2)).toEqual(['read', 'proof_scan']);
@@ -79,13 +79,13 @@ describe('cases', () => {
   });
 
   it('creates a General case with the beneficiary first, or the role staff chose', async () => {
-    expect((await create({ case_type: 'general', label: 'A' })).body.people[0].role).toBe('beneficiary');
-    expect((await create({ case_type: 'general', label: 'B', role: 'petitioner' })).body.people[0].role).toBe('petitioner');
+    expect((await create({ case_type: 'general' })).body.people[0].role).toBe('beneficiary');
+    expect((await create({ case_type: 'general', role: 'petitioner' })).body.people[0].role).toBe('petitioner');
   });
 
   it('refuses an unknown case type and carries no matter or client link (D-83)', async () => {
-    expect((await create({ case_type: 'aos', label: 'A' })).status).toBe(400);
-    expect((await create({ case_type: 'general', label: 'A', matter_id: 'm' })).status).toBe(400);
+    expect((await create({ case_type: 'aos' })).status).toBe(400);
+    expect((await create({ case_type: 'general', matter_id: 'm' })).status).toBe(400);
   });
 
   it('opens a case with people, documents, suggestions, runs, sign-offs and the evidence requirement', async () => {
@@ -102,10 +102,12 @@ describe('cases', () => {
 
   it('finds cases by client name or by A-Number in any format', async () => {
     const a = await dacaCase();
-    await create({ case_type: 'general', label: 'Someone Else' });
-    await person({ action: 'edit', person_id: a.people[0].id, fields: { a_number: 'A-012-345-678' } });
-    const byName = await call(casesRoute, '/api/proof-scan-v2-cases', { query: { q: 'person a' } });
-    expect(byName.body.cases.map((c) => c.label)).toEqual(['Test Person A']);
+    await create({ case_type: 'general' });
+    await person({ action: 'edit', person_id: a.people[0].id, fields: { first_name: 'Anna', last_name: 'Persona', a_number: 'A-012-345-678' } });
+    for (const q of ['persona', 'Anna Persona', 'PERSONA, Anna']) {
+      const byName = await call(casesRoute, '/api/proof-scan-v2-cases', { query: { q } });
+      expect(byName.body.cases.map((c) => c.label), q).toEqual(['PERSONA, Anna']);
+    }
     for (const q of ['A012345678', '012-345-678', '012345678']) {
       const r = await call(casesRoute, '/api/proof-scan-v2-cases', { query: { q } });
       expect(r.body.cases.map((c) => c.id), q).toEqual([a.case.id]);
@@ -122,7 +124,7 @@ describe('people (D-94)', () => {
   });
 
   it('adds, re-roles, re-mains and removes General cards', async () => {
-    const view = (await create({ case_type: 'general', label: 'Family' })).body;
+    const view = (await create({ case_type: 'general' })).body;
     const added = await person({ action: 'add', case_id: view.case.id, role: 'petitioner' });
     expect(added.status).toBe(200);
     expect(added.body.people.map((p) => p.role)).toEqual(['beneficiary', 'petitioner']);
@@ -136,7 +138,7 @@ describe('people (D-94)', () => {
   });
 
   it('allows several household members', async () => {
-    const view = (await create({ case_type: 'general', label: 'Family' })).body;
+    const view = (await create({ case_type: 'general' })).body;
     await person({ action: 'add', case_id: view.case.id, role: 'household_member' });
     expect((await person({ action: 'add', case_id: view.case.id, role: 'household_member' })).status).toBe(200);
   });
@@ -319,7 +321,7 @@ describe('SSN (D-80)', () => {
 describe('database failures', () => {
   it('says plainly when the v2 migrations are not applied', async () => {
     db.fail('proof_scan_cases', { code: '42P01', message: 'relation "proof_scan_cases" does not exist' });
-    const r = await create({ case_type: 'general', label: 'A' });
+    const r = await create({ case_type: 'general' });
     expect(r.status).toBe(503);
     expect(r.body.error).toContain('2000 to 2003');
   });

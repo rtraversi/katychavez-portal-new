@@ -145,7 +145,8 @@ export function observations({ rules = {}, items = {}, forms = [], evidence = []
       out.package_items = askedItemIds(body).map((item_id) => ({ item_id, status: items[item_id] || 'present', locations: [] }));
     }
     out.forms_found = forms;
-    out.evidence_found = evidence;
+    // English with no translation needed, unless a test says otherwise (D-100 #6).
+    out.evidence_found = evidence.map((e) => ({ language: 'English', has_english_translation: true, ...e, facts: evidenceFacts(e.facts) }));
     if (props.markups) out.markups = markups || [];
     out.possible_issues = possible;
     return out;

@@ -70,9 +70,10 @@ const zText = z.string().max(2000).nullable();
 
 // ── Evidence Zero: read one document (specs E.1) ─────────────────────────────
 
-// What a document can tell us. The reference fields, the full SSN (D-80), and the
-// marriage date a marriage certificate carries (D-98).
-export const FACT_FIELDS = [...REFERENCE_FIELDS, 'ssn', 'marriage_date'];
+// What a document can tell us: every reference field (D-100, the marriage date
+// and place among them), the full SSN (D-80), and the document's own expiration
+// date (D-100 #5; for an EAD that is also ead_expiration).
+export const FACT_FIELDS = [...REFERENCE_FIELDS, 'ssn', 'expiration_date'];
 
 export function evidenceZeroSchema() {
   return {
@@ -134,7 +135,7 @@ You report what the document says. You never decide whether anything is right or
 3. unreadable_fields: facts that are printed but cannot be read with confidence.
 4. issued_date: the issue date, as printed, or null.
 5. owner_roles: which of the people below this document is about. A document about two people (a marriage certificate) lists both. Leave it empty if you cannot tell.
-6. facts: every listed fact exactly as printed on THIS document. null when the document does not print it. Never normalise, correct, or complete a value. Address parts such as In Care Of, province, postal code and country are filled only when the document prints them. The ssn field may carry the full number when it is printed; no other field may.
+6. facts: every listed fact exactly as printed on THIS document. null when the document does not print it. Never normalise, correct, or complete a value. Address parts such as In Care Of, province, postal code and country are filled only when the document prints them. expiration_date is the document's own expiry (a passport, I-94, EAD or green card), if it has one. The ssn field may carry the full number when it is printed; no other field may.
 
 People on the case:
 ${describePeople(people)}`;
@@ -146,7 +147,13 @@ export const CHECK_STATUSES = ['clear', 'needs_attention', 'blank', 'not_checked
 export const ITEM_STATUSES = ['present', 'missing', 'unreadable'];
 // What a form can show about a person. ssn is the full number (D-80).
 export const FORM_VALUE_FIELDS = [...REFERENCE_FIELDS, 'ssn'];
-export const EVIDENCE_FACT_FIELDS = ['first_name', 'middle_name', 'last_name', 'date_of_birth', 'marriage_date', 'a_number'];
+// D-100 #2: evidence is compared with the forms on the full fact list, so the
+// model reports every fact a document prints that is on that list.
+export const EVIDENCE_FACT_FIELDS = [
+  'first_name', 'middle_name', 'last_name', 'date_of_birth', 'a_number',
+  'uscis_account_number', 'country_of_birth', 'country_of_citizenship', 'i94_number', 'i94_expiration',
+  'last_entry_date', 'port_of_entry', 'employer', 'marriage_date', 'marriage_place', 'expiration_date',
+];
 // Fields a client may correct by hand (D-68). 'departures' switches on the
 // I-821D departures check at Pre-flight (D-71); 'other' is anything else.
 export const MARKUP_FIELDS = [...REFERENCE_FIELDS, 'departures', 'other'];
@@ -217,9 +224,11 @@ export function stageRunSchema({ ruleIds, itemIds, withMarkups }) {
     type: 'array',
     description: 'Supporting documents in these files that are not USCIS forms (an EAD copy, a birth certificate, a marriage certificate).',
     items: {
-      type: 'object', additionalProperties: false, required: ['doc_type', 'file', 'pages', 'owner_roles', 'read_quality', 'facts'],
+      type: 'object', additionalProperties: false, required: ['doc_type', 'file', 'pages', 'owner_roles', 'read_quality', 'language', 'has_english_translation', 'facts'],
       properties: {
         doc_type: { type: 'string', enum: DOC_TYPES },
+        language: { type: 'string', description: 'The language the document is written in, e.g. "English", "Spanish".' },
+        has_english_translation: { type: 'boolean', description: 'For a document not in English: whether a certified English translation of it is in these files. true for an English document.' },
         file: { type: 'string' },
         pages: { type: 'string' },
         owner_roles: { type: 'array', items: { type: 'string', enum: ROLES }, description: 'Whose document it is. Empty if you cannot tell.' },
@@ -284,6 +293,7 @@ export function stageRunValidator({ ruleIds, itemIds, withMarkups }) {
     evidence_found: z.array(z.object({
       doc_type: z.enum(DOC_TYPES), file: zShort, pages: z.string().max(100),
       owner_roles: z.array(z.enum(ROLES)).max(6), read_quality: z.enum(['clear', 'partial', 'unreadable']),
+      language: z.string().trim().min(1).max(60), has_english_translation: z.boolean(),
       facts: z.object(Object.fromEntries(EVIDENCE_FACT_FIELDS.map((f) => [f, z.string().max(300).nullable()]))).strict(),
     }).strict()).max(60),
     possible_issues: z.array(z.object({
@@ -389,7 +399,7 @@ FORMS FOUND
 List every form in the files, once per copy, with the person it is about and the values it shows. For each value: null when the form has no such field, "" when the field is there but blank, otherwise exactly as printed. Never normalise, correct, or fill in a value. The ssn value may carry the full number; no other field or text may.
 
 EVIDENCE FOUND
-List supporting documents that are not USCIS forms, with whose they are and the facts they print. A damaged or partly illegible document is "partial".
+List supporting documents that are not USCIS forms, with whose they are and the facts they print, including the document's own expiration date if it has one. Say what language each is written in and, for one not in English, whether a certified English translation of it is in these files. A damaged or partly illegible document is "partial".
 ${withMarkups ? `
 CLIENT CORRECTIONS
 The marked-up files carry the client's handwritten corrections. For every handwritten change, report what was typed, what the handwriting seems to say and how sure you are, and what the corrected pages now show for that field. Handwriting is hard to read: when in doubt, say uncertain. If the corrected pages do not include that form, say so.
