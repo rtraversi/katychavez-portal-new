@@ -15,7 +15,8 @@ const now = () => new Date(clock += 1000).toISOString();
 // Unset columns come back as null from Postgres, not undefined.
 const PERSON_COLUMNS = ['first_name', 'middle_name', 'last_name', 'street', 'apt_type', 'apt_number', 'city',
   'state', 'zip', 'in_care_of', 'province', 'postal_code', 'country', 'date_of_birth', 'a_number',
-  'ead_expiration', 'phone', 'email'];
+  'ead_expiration', 'phone', 'email', 'uscis_account_number', 'country_of_birth', 'country_of_citizenship',
+  'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry', 'employer', 'marriage_date', 'marriage_place'];
 
 const DEFAULTS = {
   proof_scan_cases: () => ({ created_at: now(), updated_at: now() }),

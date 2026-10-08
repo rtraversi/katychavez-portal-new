@@ -62,16 +62,16 @@ $$;
 -- SEED (before any fixture touches the rule tables)
 -- ═════════════════════════════════════════════════════════════════════════════
 
-SELECT dbcheck.record('seed: DACA renewal has 40 rules and 8 package items',
-  (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('daca_renewal')) = 40
+SELECT dbcheck.record('seed: DACA renewal has 42 rules and 8 package items',
+  (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('daca_renewal')) = 42
   AND (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('daca_renewal')) = 8,
   format('rules=%s items=%s',
     (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('daca_renewal')),
     (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('daca_renewal'))));
 
-SELECT dbcheck.record('seed: General has the 8 firm-wide rules and 0 package items',
+SELECT dbcheck.record('seed: General has the 10 firm-wide rules and 0 package items',
   (SELECT array_agg(rule_id ORDER BY rule_id) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('general'))
-    = ARRAY['PS-101','PS-102','PS-103','PS-201','PS-301','PS-302','PS-303','PS-304']
+    = ARRAY['PS-101','PS-102','PS-103','PS-201','PS-301','PS-302','PS-303','PS-304','PS-305','PS-306']
   AND (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('general')) = 0,
   format('rules=%s items=%s',
     (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('general')),
@@ -82,13 +82,27 @@ SELECT dbcheck.record('seed: every rule has a Draft Review, Pre-flight and Physi
     SELECT 1 FROM public.proof_scan_rules r
     WHERE (SELECT array_agg(stage ORDER BY stage) FROM public.proof_scan_rule_stage_settings s WHERE s.rule_pk = r.id)
           IS DISTINCT FROM ARRAY['draft_review','physical_scan','preflight'])
-  AND (SELECT count(*) FROM public.proof_scan_rules) = 48,
+  AND (SELECT count(*) FROM public.proof_scan_rules) = 52,
   format('rules without all three: %s',
     (SELECT count(*) FROM public.proof_scan_rules r
      WHERE (SELECT count(*) FROM public.proof_scan_rule_stage_settings s WHERE s.rule_pk = r.id) <> 3)));
 
 SELECT dbcheck.record('seed: every Physical Scan setting is checked',
   NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE stage = 'physical_scan' AND state <> 'checked'));
+
+SELECT dbcheck.record('seed: PS-306 translations: checked at Physical Scan, only with evidence before (D-100)',
+  (SELECT array_agg(r.rule_set_id::text || ':' || s.stage || '=' || s.state ORDER BY r.rule_set_id, s.stage) IS NOT NULL
+   FROM public.proof_scan_rules r JOIN public.proof_scan_rule_stage_settings s ON s.rule_pk = r.id WHERE r.rule_id = 'PS-306')
+  AND (SELECT count(*) FROM public.proof_scan_rules WHERE rule_id = 'PS-306' AND scope = 'firm') = 2
+  AND NOT EXISTS (SELECT 1 FROM public.proof_scan_rules r JOIN public.proof_scan_rule_stage_settings s ON s.rule_pk = r.id
+                  WHERE r.rule_id = 'PS-306' AND s.state <> CASE WHEN s.stage = 'physical_scan' THEN 'checked' ELSE 'if_evidence' END));
+
+SELECT dbcheck.record('cases: a person card holds the D-100 facts, dates as dates',
+  (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'proof_scan_people'
+     AND column_name IN ('uscis_account_number','country_of_birth','country_of_citizenship','i94_number','i94_expiration',
+                         'last_entry_date','port_of_entry','employer','marriage_date','marriage_place')) = 10
+  AND (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'proof_scan_people'
+     AND column_name IN ('i94_expiration','last_entry_date','marriage_date') AND data_type = 'date') = 3);
 
 SELECT dbcheck.record('seed: one current rule set per case type',
   (SELECT count(*) FROM public.proof_scan_rule_sets WHERE is_current) = 2

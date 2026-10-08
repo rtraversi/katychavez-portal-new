@@ -10,7 +10,7 @@
 --   proof_scan_package_items        what a final package must contain, per version
 --   proof_scan_rules                one row per check, per version
 --   proof_scan_rule_stage_settings  per rule and stage: checked / if_filled /
---                                   if_marked / later / not_this_stage
+--                                   if_marked / if_evidence / later / not_this_stage
 --   proof_scan_rule_changes         internal change log (not shown, D-61)
 --
 -- VERSIONING (D-60, D-76): a rule-set version is never edited after a run has
@@ -91,13 +91,15 @@ CREATE INDEX IF NOT EXISTS proof_scan_rules_set_idx ON public.proof_scan_rules (
 -- checked         the check runs at this stage
 -- if_filled       runs only if the field is filled in; blank = needs info (D-70)
 -- if_marked       runs only if the client's markups show it (D-71 departures)
+-- if_evidence     runs only if evidence is part of the run (D-100 #6 translations)
 -- later           not expected yet; a later stage checks it (D-3, D-57)
 -- not_this_stage  not checked at this stage
 CREATE TABLE IF NOT EXISTS public.proof_scan_rule_stage_settings (
   id               uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
   rule_pk          uuid    NOT NULL REFERENCES public.proof_scan_rules(id) ON DELETE CASCADE,
   stage            text    NOT NULL CHECK (stage IN ('draft_review', 'preflight', 'physical_scan')),
-  state            text    NOT NULL CHECK (state IN ('checked', 'if_filled', 'if_marked',
+  -- if_evidence (D-100 #6): checked only when evidence is part of the run.
+  state            text    NOT NULL CHECK (state IN ('checked', 'if_filled', 'if_marked', 'if_evidence',
                                                      'later', 'not_this_stage')),
   -- Optional stage wording (D-69: the I-765WS template sentence at Draft Review).
   stage_title      text,

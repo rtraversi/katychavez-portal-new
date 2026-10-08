@@ -11,7 +11,7 @@
 
 import { REVIEW_STAGES } from './_proof-scan-v2-common.js';
 
-export const STAGE_STATES = ['checked', 'if_filled', 'if_marked', 'later', 'not_this_stage'];
+export const STAGE_STATES = ['checked', 'if_filled', 'if_marked', 'if_evidence', 'later', 'not_this_stage'];
 const CASE_PREFIX = { daca_renewal: 'DACA', general: 'GEN' };
 
 // The next free ID for a staff-added or learned rule. Firm-wide rules share one

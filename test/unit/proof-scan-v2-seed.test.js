@@ -8,12 +8,13 @@ const seedSql = Object.values(import.meta.glob('../../supabase/migrations/2003_p
 }))[0];
 
 const REVIEW_STAGES = ['draft_review', 'preflight', 'physical_scan'];
-const STATES = ['checked', 'if_filled', 'if_marked', 'later', 'not_this_stage'];
+const STATES = ['checked', 'if_filled', 'if_marked', 'if_evidence', 'later', 'not_this_stage'];
 const BASE_FIRM_WIDE = ['PS-101', 'PS-102', 'PS-103', 'PS-201', 'PS-301', 'PS-302', 'PS-303'];
 // D-98: the evidence check, added for v2. Not in the v1.2 profile.
-const FIRM_WIDE = [...BASE_FIRM_WIDE, 'PS-304'];
+const FIRM_WIDE = [...BASE_FIRM_WIDE, 'PS-304', 'PS-305', 'PS-306'];
 const v12Ids = v12.rules.map((r) => r.rule_id);
-const withoutNew = (rules) => rules.filter((r) => r.rule_id !== 'PS-304');
+const NEW_IN_V2 = ['PS-304', 'PS-305', 'PS-306'];
+const withoutNew = (rules) => rules.filter((r) => !NEW_IN_V2.includes(r.rule_id));
 
 const ruleSet = (caseType) => seed.rule_sets.find((rs) => rs.case_type === caseType);
 const daca = ruleSet('daca_renewal');
@@ -22,10 +23,11 @@ const rule = (rs, id) => rs.rules.find((r) => r.rule_id === id);
 const allRules = () => seed.rule_sets.flatMap((rs) => rs.rules.map((r) => [rs.case_type, r]));
 
 describe('Proof Scan v2 seed: DACA renewal', () => {
-  it('has the 39 v1.2 checks, same IDs, same order, plus PS-304 (D-98)', () => {
-    expect(daca.rules).toHaveLength(40);
+  it('has the 39 v1.2 checks, same IDs, same order, plus PS-304 (D-98), PS-305 and PS-306 (D-100)', () => {
+    expect(daca.rules).toHaveLength(42);
     expect(withoutNew(daca.rules).map((r) => r.rule_id)).toEqual(v12Ids);
-    expect(daca.rules.map((r) => r.rule_id).indexOf('PS-304')).toBe(v12Ids.indexOf('PS-303') + 1);
+    const ids = daca.rules.map((r) => r.rule_id);
+    expect(ids.slice(ids.indexOf('PS-303'), ids.indexOf('PS-303') + 4)).toEqual(['PS-303', 'PS-304', 'PS-305', 'PS-306']);
   });
 
   it('has exactly the 8 v1.2 package items, unchanged', () => {
@@ -73,7 +75,7 @@ describe('Proof Scan v2 seed: evidence matches the forms (D-98)', () => {
 });
 
 describe('Proof Scan v2 seed: General (D-90 to D-95)', () => {
-  it('has exactly the 8 firm-wide checks', () => {
+  it('has exactly the 10 firm-wide checks', () => {
     expect(general.rules.map((r) => r.rule_id).sort()).toEqual([...FIRM_WIDE].sort());
     expect(general.rules.every((r) => r.scope === 'firm')).toBe(true);
   });
@@ -86,7 +88,7 @@ describe('Proof Scan v2 seed: General (D-90 to D-95)', () => {
     for (const r of general.rules) expect(r.stages, r.rule_id).toEqual(rule(daca, r.rule_id).stages);
   });
 
-  it('the DACA firm-wide checks are exactly the same 8', () => {
+  it('the DACA firm-wide checks are exactly the same 10', () => {
     expect(daca.rules.filter((r) => r.scope === 'firm').map((r) => r.rule_id).sort()).toEqual([...FIRM_WIDE].sort());
   });
 });
@@ -160,10 +162,28 @@ describe('Proof Scan v2 seed: stage settings', () => {
     const on = daca.rules.filter((r) => r.stages.preflight.state === 'checked').map((r) => r.rule_id).sort();
     expect(on).toEqual([
       'DACA-765-009', 'DACA-821D-010', 'DACA-G1450-004', 'DACA-G1450-005', 'DACA-G1450-006',
-      'DACA-G28-004', 'PS-201', 'PS-301', 'PS-302', 'PS-303', 'PS-304',
+      'DACA-G28-004', 'PS-201', 'PS-301', 'PS-302', 'PS-303', 'PS-304', 'PS-305',
     ]);
     const conditional = daca.rules.filter((r) => r.stages.preflight.state === 'if_marked').map((r) => r.rule_id);
     expect(conditional).toEqual(['DACA-821D-007']);
+  });
+
+  it('PS-305: every shared fact, per person, server-computed, at every stage (D-100 #1)', () => {
+    for (const rs of seed.rule_sets) {
+      const r = rule(rs, 'PS-305');
+      expect(r).toMatchObject({ scope: 'firm', origin: 'general_rules', severity: 'fatal' });
+      for (const stage of REVIEW_STAGES) expect(r.stages[stage].state).toBe('checked');
+    }
+  });
+
+  it('PS-306: translations, counted, checked at Physical Scan and only with evidence before (D-100 #6)', () => {
+    for (const rs of seed.rule_sets) {
+      const r = rule(rs, 'PS-306');
+      expect(r).toMatchObject({ scope: 'firm', origin: 'general_rules', severity: 'fatal' });
+      expect(r.stages.draft_review.state).toBe('if_evidence');
+      expect(r.stages.preflight.state).toBe('if_evidence');
+      expect(r.stages.physical_scan.state).toBe('checked');
+    }
   });
 
   it('carries no em dashes in any wording', () => {

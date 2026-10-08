@@ -109,6 +109,19 @@ CREATE TABLE IF NOT EXISTS public.proof_scan_people (
   phone                   text,
   email                   text,
 
+  -- D-100: the other facts the portal's form maps fill per person. All optional;
+  -- a card holds only what a document, form or scan actually carried.
+  uscis_account_number    text,
+  country_of_birth        text,
+  country_of_citizenship  text,
+  i94_number              text,
+  i94_expiration          date,
+  last_entry_date         date,
+  port_of_entry           text,
+  employer                text,
+  marriage_date           date,
+  marriage_place          text,
+
   -- SSN (D-13: may be pending; D-80: full SSN, encrypted, audited)
   ssn_encrypted           text        CHECK (ssn_encrypted IS NULL
                                              OR ssn_encrypted ~ '^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$'),
@@ -261,7 +274,10 @@ CREATE TABLE IF NOT EXISTS public.proof_scan_suggestions (
                               'street', 'apt_type', 'apt_number', 'city', 'state', 'zip',
                               'in_care_of', 'province', 'postal_code', 'country',
                               'date_of_birth', 'a_number', 'ead_expiration',
-                              'phone', 'email', 'ssn')),
+                              'phone', 'email', 'ssn',
+                              'uscis_account_number', 'country_of_birth', 'country_of_citizenship',
+                              'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry',
+                              'employer', 'marriage_date', 'marriage_place')),
   value            text,
   value_encrypted  text        CHECK (value_encrypted IS NULL
                                       OR value_encrypted ~ '^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$'),

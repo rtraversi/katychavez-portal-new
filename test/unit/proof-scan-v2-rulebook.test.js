@@ -92,7 +92,7 @@ describe('the rulebook (D-61)', () => {
   it('lists firm-wide and case-type rules apart, with scope, origin and stage settings', async () => {
     const daca = await rules('GET', undefined, { case_type: 'daca_renewal' });
     expect(daca.body.version).toBe(1);
-    expect(daca.body.firm.map((r) => r.rule_id)).toEqual(['PS-101', 'PS-102', 'PS-201', 'PS-103', 'PS-301', 'PS-302', 'PS-303', 'PS-304']);
+    expect(daca.body.firm.map((r) => r.rule_id)).toEqual(['PS-101', 'PS-102', 'PS-201', 'PS-103', 'PS-301', 'PS-302', 'PS-303', 'PS-304', 'PS-305', 'PS-306']);
     expect(daca.body.case_type_rules).toHaveLength(32);
     expect(daca.body.firm[0]).toMatchObject({ scope: 'firm', origin: 'general_rules', stages: { draft_review: 'checked', preflight: 'not_this_stage', physical_scan: 'checked' } });
     expect(daca.body.suppressions.map((s) => s.reasoning_key)).toEqual(['signature_date_order']);
@@ -113,7 +113,7 @@ describe('the rulebook (D-61)', () => {
       expect(added).toMatchObject({ scope: 'firm', origin: 'staff_added', retired: false });
       const settings = db.rows('proof_scan_rule_stage_settings').filter((s) => s.rule_pk === added.id);
       expect(Object.fromEntries(settings.map((s) => [s.stage, s.state]))).toEqual({ draft_review: 'later', preflight: 'checked', physical_scan: 'checked' });
-      expect(rulesIn(set.id)).toHaveLength(caseType === 'general' ? 9 : 41);
+      expect(rulesIn(set.id)).toHaveLength(caseType === 'general' ? 11 : 43);
     }
     // Version 1 rows are exactly as they were; only is_current moved.
     expect(JSON.stringify(db.rows('proof_scan_rules').filter((x) => x.rule_set_id.startsWith('rs-')))).toBe(before);
