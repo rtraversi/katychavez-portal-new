@@ -2,7 +2,9 @@
 // Streams a generated (or finalized) form PDF back from R2 so it opens
 // directly in the browser's native fillable PDF viewer — no frontend PDF
 // library needed. Pass final=1 once a form has been finalized to fetch the
-// flattened copy instead of the fillable draft.
+// flattened copy instead of the fillable draft, or signed=1 to fetch the
+// Package Builder signed copy (the draft/finalized PDF with the client's
+// scanned pages spliced in — see package-builder-apply.js).
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 
@@ -24,19 +26,24 @@ async function handleRequest(request, env) {
 
   const url    = new URL(request.url);
   const id     = url.searchParams.get('id');
-  const wantsFinal = url.searchParams.get('final') === '1';
+  const wantsFinal  = url.searchParams.get('final') === '1';
+  const wantsSigned = url.searchParams.get('signed') === '1';
   if (!id) return json(400, { error: 'id is required' });
 
   const admin = makeAdminClient(env);
   const { data: row, error } = await admin
     .from('generated_forms')
-    .select('r2_key, finalized_r2_key, file_name, status')
+    .select('r2_key, finalized_r2_key, signed_r2_key, file_name, status')
     .eq('id', id)
     .single();
   if (error || !row) return json(404, { error: 'Generated form not found' });
 
-  const key = wantsFinal ? row.finalized_r2_key : row.r2_key;
-  if (!key) return json(404, { error: wantsFinal ? 'This form has not been finalized yet.' : 'File not found.' });
+  const key = wantsSigned ? row.signed_r2_key : wantsFinal ? row.finalized_r2_key : row.r2_key;
+  if (!key) return json(404, {
+    error: wantsSigned ? 'No signed copy for this form yet.'
+      : wantsFinal ? 'This form has not been finalized yet.'
+      : 'File not found.',
+  });
 
   const obj = await env.R2.get(key);
   if (!obj) return json(404, { error: 'File missing in storage.' });

@@ -1,0 +1,415 @@
+{
+  "schema_version": 1,
+  "_note": "SAMPLE ONLY, NOT DECIDED (Q-44). Which checks are active, pending, or not applicable at each stage (D-57) has not been decided by Max. Every entry is decided:false. This is the ONE place the v2 Lab reads a stage mapping from. Physical Scan is not mapped: D-58 runs the full case-type rule set there. 2026-10-02: entries with decided_draft_review=true are Max's decisions; the rest of Draft Review and all of Pre-flight are still the sample.",
+  "case_type": "daca_renewal",
+  "states": [
+    "active",
+    "pending",
+    "not_applicable",
+    "if_filled",
+    "if_marked"
+  ],
+  "entries": [
+    {
+      "rule_id": "PS-101",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "PS-102",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "PS-201",
+      "draft_review": "pending",
+      "preflight": "active",
+      "decided": false,
+      "sample_reason": "Signatures are not expected on a draft (D-3 example).",
+      "decided_draft_review": true,
+      "decided_by": "Max via Codex 2026-09-25 (D-57 example: no signatures expected at Draft Review)",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "PS-103",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "PS-301",
+      "draft_review": "active",
+      "preflight": "active",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "PS-302",
+      "draft_review": "active",
+      "preflight": "active",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "PS-303",
+      "draft_review": "active",
+      "preflight": "active",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "DACA-G1145-001",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-G28-001",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-G28-002",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-G28-003",
+      "draft_review": "if_filled",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-G28-004",
+      "draft_review": "pending",
+      "preflight": "active",
+      "decided": false,
+      "sample_reason": "Signatures are not expected on a draft (D-3 example).",
+      "decided_draft_review": true,
+      "decided_by": "Max via Codex 2026-09-25 (D-57 example: no signatures expected at Draft Review)",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "DACA-821D-001",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-821D-002",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-821D-003",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-821D-004",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-821D-005",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-821D-006",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-821D-007",
+      "draft_review": "pending",
+      "preflight": "if_marked",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "DACA-821D-008",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-821D-009",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough. If marked NO: not an error, a gentle \"was this intended?\"",
+      "gentle_if_no": true,
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-821D-010",
+      "draft_review": "pending",
+      "preflight": "active",
+      "decided": false,
+      "sample_reason": "Signatures are not expected on a draft (D-3 example).",
+      "decided_draft_review": true,
+      "decided_by": "Max via Codex 2026-09-25 (D-57 example: no signatures expected at Draft Review)",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "DACA-765-001",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-765-002",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-765-003",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-765-004",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-765-005",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-765-006",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-765-007",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-765-008",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough. If marked NO: not an error, a gentle \"was this intended?\"",
+      "gentle_if_no": true,
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-765-009",
+      "draft_review": "pending",
+      "preflight": "active",
+      "decided": false,
+      "sample_reason": "Signatures are not expected on a draft (D-3 example).",
+      "decided_draft_review": true,
+      "decided_by": "Max via Codex 2026-09-25 (D-57 example: no signatures expected at Draft Review)",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "DACA-765WS-001",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02: at Draft Review only the firm template explanation is checked",
+      "stage_text": {
+        "draft_review": {
+          "title": "The employment explanation reads \"I have to work to pay for my living expenses.\"",
+          "pass_text": "I-765WS explanation matches the firm template.",
+          "expected": "\"I have to work to pay for my living expenses.\" exactly, or a close version with no typos."
+        }
+      },
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-ASM-001",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02: page order within a form only, e.g. not 1, 3, 2, 4 (D-58)",
+      "stage_text": {
+        "draft_review": {
+          "title": "Pages within each form are in order.",
+          "pass_text": "Pages in order within each form."
+        }
+      },
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-G1450-001",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-G1450-002",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-G1450-003",
+      "draft_review": "active",
+      "preflight": "not_applicable",
+      "decided": false,
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02, DACA checklist walkthrough",
+      "decided_preflight": false,
+      "preflight_reason": "Checked at Draft Review, again at Physical Scan."
+    },
+    {
+      "rule_id": "DACA-G1450-004",
+      "draft_review": "pending",
+      "preflight": "active",
+      "decided": false,
+      "sample_reason": "Payment details may not exist yet at drafting (D-3 example).",
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02: \"wait, they get that back to us on pre flight\"",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "DACA-G1450-005",
+      "draft_review": "pending",
+      "preflight": "active",
+      "decided": false,
+      "sample_reason": "Payment details may not exist yet at drafting (D-3 example).",
+      "decided_draft_review": true,
+      "decided_by": "Max 2026-10-02: \"wait, they get that back to us on pre flight\"",
+      "decided_preflight": true
+    },
+    {
+      "rule_id": "DACA-G1450-006",
+      "draft_review": "pending",
+      "preflight": "active",
+      "decided": false,
+      "sample_reason": "Signatures are not expected on a draft (D-3 example).",
+      "decided_draft_review": true,
+      "decided_by": "Max via Codex 2026-09-25 (D-57 example: no signatures expected at Draft Review)",
+      "decided_preflight": true
+    }
+  ]
+}

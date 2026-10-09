@@ -4,12 +4,13 @@
 // Gracefully no-ops when RESEND_API_KEY is absent (dev / pre-domain setup).
 
 import { makeAdminClient } from './_helpers.js';
+import { buildProofScanEmail, buildProofScanStageEmail } from './_proof-scan-email.js';
 
 async function sendEmail(env, to, subject, html, type = 'other') {
   const apiKey = env.RESEND_API_KEY;
   if (!apiKey) {
     console.log(`[notify] RESEND_API_KEY not set — skipping: "${subject}" → ${to}`);
-    return;
+    return false;
   }
   const firmName  = env.PORTAL_FIRM_NAME  || 'Your Law Firm';
   const fromEmail = env.PORTAL_FROM_EMAIL || 'noreply@example.com';
@@ -38,6 +39,7 @@ async function sendEmail(env, to, subject, html, type = 'other') {
   } catch (logErr) {
     console.error('[notify] email_log insert failed:', logErr.message);
   }
+  return status === 'sent';
 }
 
 function layout(env, body) {
@@ -292,34 +294,6 @@ export async function notifySignatureDeclined(env, { toEmail, clientName, docume
   );
 }
 
-export async function notifyProofScanComplete(env, { toEmail, filename, status, resultHtml }) {
-  const label    = status === 'needs_correction' ? 'NEEDS CORRECTION' : 'PASS';
-  const subject  = `Proof Scan — ${label} — ${filename}`;
-  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
-  const color    = status === 'needs_correction' ? '#b91c1c' : '#15803d';
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
-<div style="max-width:860px;margin:40px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)">
-  <div style="background:#1a3a5c;padding:22px 32px;display:flex;align-items:center;justify-content:space-between">
-    <p style="margin:0;color:#fff;font-size:17px;font-weight:600">${firmName}</p>
-    <p style="margin:0;color:#fff;font-size:13px;opacity:.8">Proof Scan Result</p>
-  </div>
-  <div style="padding:24px 32px 8px">
-    <p style="margin:0 0 4px;font-size:18px;font-weight:700;color:${color}">${label}</p>
-    <p style="margin:0 0 20px;font-size:13px;color:#6b7280">${filename}</p>
-  </div>
-  <div style="padding:0 32px 32px;font-size:13px;line-height:1.6;color:#111">
-    ${resultHtml}
-  </div>
-  <div style="padding:14px 32px;background:#f9fafb;font-size:11px;color:#9ca3af;text-align:center">
-    Secure notification from your client portal — do not reply to this email.
-  </div>
-</div>
-</body></html>`;
-  await sendEmail(env, toEmail, subject, html, 'proof_scan');
-}
-
 export async function notifyPasswordReset(env, { toEmail, resetLink }) {
   const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
   await sendEmail(env, toEmail, `Reset your ${firmName} portal password`,
@@ -418,4 +392,73 @@ export async function notifyBookingReminder(env, { toEmail, prospectName, consul
       <p style="margin:20px 0 0;color:#374151">If you need to reschedule or cancel, please contact our office as soon as possible.</p>
     `), 'booking_reminder'
   );
+}
+
+// Weekly edition-check digest to staff. `forms` is the list of forms that newly
+// went stale/error this run: { form_number, ours, upstream, status, detail }.
+export async function notifyFormEditionStale(env, { toEmail, forms }) {
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
+  const list = (forms || []).map(f => {
+    const isStale = f.status === 'stale';
+    const badge = isStale ? '#b45309' : '#6b7280';
+    const line  = isStale
+      ? `USCIS now shows <strong>${esc(f.upstream)}</strong>; the portal has <strong>${esc(f.ours)}</strong>.`
+      : `Could not verify automatically — check it by hand.${f.detail ? ` (${esc(f.detail)})` : ''}`;
+    return `<tr>
+      <td style="padding:8px 12px 8px 0;font-size:13px;font-weight:700;color:#111;vertical-align:top;white-space:nowrap">${esc(f.form_number)}
+        <span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:${badge};color:#fff;font-size:10px;font-weight:700;text-transform:uppercase">${isStale ? 'Stale' : 'Unverified'}</span>
+      </td>
+      <td style="padding:8px 0;font-size:13px;color:#374151">${line}</td>
+    </tr>`;
+  }).join('');
+
+  await sendEmail(env, toEmail, `Form editions need review — ${forms.length} form${forms.length === 1 ? '' : 's'}`,
+    layout(env, `
+      <p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#111">Form editions need review</p>
+      <p style="margin:0 0 16px;color:#374151">The weekly edition check flagged the following. USCIS rejects filings made on a superseded edition, so please confirm each against uscis.gov and update the template if it has changed.</p>
+      <table style="border-collapse:collapse;width:100%">${list}</table>
+      ${btn(`${portalUrl}/portal#draft-forms`, 'Open USCIS Forms')}
+    `), 'form_edition_stale'
+  );
+}
+
+// ── Structured Proof Scan (Batch 4) ──────────────────────────────────────────
+//
+// The only Proof Scan notification a structured scan can produce. Its content is
+// built entirely from the validated, server-composed result by
+// _proof-scan-email.js, which escapes every observed value and re-validates the
+// result before it will return anything at all.
+//
+// Returns true only when Resend accepted the message with a successful response.
+// A result that does not validate returns false and sends nothing — there is no
+// partial email, no fallback body, and no path here that accepts HTML from a caller.
+export async function notifyStructuredProofScan(env, { toEmail, result }) {
+  if (!toEmail) return false;
+
+  const message = buildProofScanEmail(result, {
+    firmName:  env.PORTAL_FIRM_NAME || 'Your Law Firm',
+    portalUrl: env.PORTAL_URL || 'https://your-portal.workers.dev',
+  });
+  if (!message) {
+    console.error('[notify] proof scan result did not validate — no notification sent');
+    return false;
+  }
+
+  return sendEmail(env, toEmail, message.subject, message.html, 'proof_scan');
+}
+
+// ── Proof Scan v2 stage result (D-61) ────────────────────────────────────────
+// Optional, staff choose it per run. Only the stage and its official result,
+// with a link. Possible issues never generate email (D-36).
+export async function notifyProofScanStage(env, { toEmail, result }) {
+  if (!toEmail) return false;
+  const message = buildProofScanStageEmail(result, {
+    firmName:  env.PORTAL_FIRM_NAME || 'Your Law Firm',
+    portalUrl: env.PORTAL_URL || 'https://your-portal.workers.dev',
+  });
+  if (!message) {
+    console.error('[notify] proof scan stage result did not validate; no notification sent');
+    return false;
+  }
+  return sendEmail(env, toEmail, message.subject, message.html, 'proof_scan');
 }

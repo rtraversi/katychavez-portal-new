@@ -16,29 +16,37 @@
     <span class="dk-sec-rule"></span>
   </div>
 
-  <div id="ps-drop-zone"
-    style="border:2px dashed var(--line-strong);border-radius:var(--radius);padding:var(--space-8) var(--space-4);
-           text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:var(--space-4);
-           background:var(--surface)"
-    tabindex="0" role="button" aria-label="Drop a PDF here to scan">
+  <!-- Scan type is chosen explicitly by staff. It is never inferred from the
+       filename, the forms inside the package, or the model. Until one is picked,
+       the PDF chooser stays unavailable. -->
+  <div class="ps-scantype">
+    <label for="ps-scan-type">Choose scan type</label>
+    <select id="ps-scan-type" class="ps-select" required aria-describedby="ps-scantype-hint">
+      <option value="" selected>Select a scan type…</option>
+      <option value="daca_renewal">DACA renewal</option>
+    </select>
+    <p id="ps-scantype-hint">Choose the filing this package is for. The checks run against that filing only.</p>
+  </div>
+
+  <div id="ps-drop-zone" class="ps-drop is-locked"
+    tabindex="-1" role="button" aria-disabled="true" aria-label="Choose a scan type before adding a PDF">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-      style="width:40px;height:40px;margin:0 auto var(--space-3);color:var(--ink-faint)" aria-hidden="true">
+      class="ps-drop-icon" aria-hidden="true">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
       <polyline points="14 2 14 8 20 8"/>
       <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
     </svg>
-    <p style="font-family:var(--font-serif);font-weight:600;font-size:15.5px;margin-bottom:var(--space-1);color:var(--ink)">Drop a PDF here</p>
-    <p style="font-size:var(--text-sm);color:var(--ink-soft);margin-bottom:var(--space-3)">
-      PDF files only
-    </p>
-    <button type="button" class="btn btn--secondary" id="ps-choose-file-btn">Choose PDF</button>
-    <input id="ps-file-input" type="file" accept=".pdf,application/pdf" style="display:none">
+    <p id="ps-drop-title" class="ps-drop-title">Choose a scan type first</p>
+    <p id="ps-drop-meta" class="ps-drop-meta">PDF packages only, up to 12&nbsp;MB</p>
+    <button type="button" class="btn btn--secondary" id="ps-choose-file-btn" disabled>Choose PDF</button>
+    <input id="ps-file-input" type="file" accept=".pdf,application/pdf" hidden>
   </div>
 
   <div class="dk-toolbar" style="margin:0">
-    <button id="ps-run-btn" class="btn btn--primary" disabled>Run Proof Scan</button>
-    <span id="ps-filename" style="font-size:var(--text-sm);color:var(--ink-soft)"></span>
+    <button id="ps-run-btn" class="btn btn--primary ps-scan-btn" disabled>Run Proof Scan</button>
+    <span id="ps-filename" class="ps-runmeta"></span>
   </div>
+  <p id="ps-scan-status" class="ps-sr-only" role="status" aria-live="polite"></p>
 </div>
 
 <!-- Customizable rules section (collapsible) -->
@@ -88,15 +96,16 @@
   </div>
 </div>
 
-<!-- Results area (hidden until scan runs) -->
+<!-- Results area (hidden until a scan returns a validated structured result) -->
 <div id="ps-results-wrap" class="hidden dk-sec">
   <div class="dk-sec-head">
     <h2>Scan Results</h2>
     <span class="dk-sec-rule"></span>
     <button id="ps-clear-results" class="dk-sec-add" type="button">Clear</button>
   </div>
-  <div id="ps-results-content" class="card"
-    style="font-size:var(--text-sm);line-height:1.6;overflow-x:auto"></div>
+  <div id="ps-storage-warning" class="ps-storage-warning hidden" role="status"></div>
+  <!-- report.js builds this subtree from validated data with text nodes only. -->
+  <div id="ps-results-content" class="card ps-report"></div>
 </div>
 
 <!-- History section -->
@@ -115,8 +124,9 @@
   <div class="modal" style="max-width:900px;width:100%;max-height:90vh;display:flex;flex-direction:column">
     <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-4);border-bottom:1px solid var(--line)">
       <h3 id="ps-modal-title" style="font-family:var(--font-serif);font-size:18px;font-weight:600;margin:0;color:var(--ink)">Scan Result</h3>
-      <button id="ps-modal-close" class="btn btn--ghost" style="padding:var(--space-1) var(--space-2)">&#x2715;</button>
+      <button id="ps-modal-close" type="button" class="btn btn--ghost" aria-label="Close saved scan" style="padding:var(--space-1) var(--space-2)">&#x2715;</button>
     </div>
-    <div id="ps-modal-body" style="padding:var(--space-4);overflow-y:auto;flex:1;font-size:var(--text-sm);line-height:1.6"></div>
+    <!-- report.js and legacy-html.js build this subtree from DOM nodes only. -->
+    <div id="ps-modal-body" class="ps-report" style="padding:var(--space-4);overflow-y:auto;flex:1;font-size:var(--text-sm);line-height:1.6"></div>
   </div>
 </div>

@@ -77,6 +77,17 @@ import { onRequest as listSignatures }              from './functions/api/list-s
 import { onRequest as proofScan }                   from './functions/api/proof-scan.js';
 import { onRequest as proofScanHistory }            from './functions/api/proof-scan-history.js';
 import { onRequest as proofScanConfig }             from './functions/api/proof-scan-config.js';
+import { onRequest as proofScanV2Case }             from './functions/api/proof-scan-v2-case.js';
+import { onRequest as proofScanV2Cases }            from './functions/api/proof-scan-v2-cases.js';
+import { onRequest as proofScanV2Person }           from './functions/api/proof-scan-v2-person.js';
+import { onRequest as proofScanV2Suggestion }       from './functions/api/proof-scan-v2-suggestion.js';
+import { onRequest as proofScanV2Ssn }              from './functions/api/proof-scan-v2-ssn.js';
+import { onRequest as proofScanV2Evidence }         from './functions/api/proof-scan-v2-evidence.js';
+import { onRequest as proofScanV2Run }              from './functions/api/proof-scan-v2-run.js';
+import { onRequest as proofScanV2Signoff }          from './functions/api/proof-scan-v2-signoff.js';
+import { onRequest as proofScanV2Rules }            from './functions/api/proof-scan-v2-rules.js';
+import { onRequest as proofScanV2Suppressions }     from './functions/api/proof-scan-v2-suppressions.js';
+import { onRequest as proofScanV2PossibleIssue }    from './functions/api/proof-scan-v2-possible-issue.js';
 import { onRequest as translationStart, runTranslationTmpCleanup } from './functions/api/translation-start.js';
 import { onRequest as translationProcess }          from './functions/api/translation-process.js';
 import { onRequest as translationPoll }             from './functions/api/translation-poll.js';
@@ -115,6 +126,8 @@ import { onRequest as formFillerReset }            from './functions/api/form-fi
 import { onRequest as formFillerTemplateDefaults } from './functions/api/form-filler-template-defaults.js';
 import { onRequest as formFillerFields }           from './functions/api/form-filler-fields.js';
 import { onRequest as formFillerMatterForms }      from './functions/api/form-filler-matter-forms.js';
+import { onRequest as packageBuilderAnalyze }      from './functions/api/package-builder-analyze.js';
+import { onRequest as packageBuilderApply }        from './functions/api/package-builder-apply.js';
 import { onRequest as caseBuilderPackages }        from './functions/api/case-builder-packages.js';
 import { onRequest as caseBuilderCaseType }        from './functions/api/case-builder-case-type.js';
 import { onRequest as caseBuilderPackage }         from './functions/api/case-builder-package.js';
@@ -128,6 +141,8 @@ import { onRequest as storageSyncImportClient }    from './functions/api/storage
 import { onRequest as bookingPublic }              from './functions/api/booking-public.js';
 import { onRequest as bookingStaff }               from './functions/api/booking-staff.js';
 import { runBookingReminders }                     from './functions/api/_booking-reminders.js';
+import { run as runFormEditionCheck }              from './functions/api/process-form-edition-check.js';
+import { onRequest as formEditionsVerify }         from './functions/api/form-editions-verify.js';
 
 export const routes = {
   '/api/confirm-upload':    confirmUpload,
@@ -144,6 +159,9 @@ export const routes = {
   '/api/form-filler/template-defaults': formFillerTemplateDefaults,
   '/api/form-filler/fields':   formFillerFields,
   '/api/form-filler/matter-forms': formFillerMatterForms,
+  '/api/package-builder/analyze':  packageBuilderAnalyze,
+  '/api/package-builder/apply':    packageBuilderApply,
+  '/api/form-editions/verify':          formEditionsVerify,
   '/api/case-builder/packages':      caseBuilderPackages,
   '/api/case-builder/case-type':     caseBuilderCaseType,
   '/api/case-builder/package':       caseBuilderPackage,
@@ -220,6 +238,17 @@ export const routes = {
   '/api/proof-scan':                     proofScan,
   '/api/proof-scan-history':             proofScanHistory,
   '/api/proof-scan-config':              proofScanConfig,
+  '/api/proof-scan-v2-case':             proofScanV2Case,
+  '/api/proof-scan-v2-cases':            proofScanV2Cases,
+  '/api/proof-scan-v2-person':           proofScanV2Person,
+  '/api/proof-scan-v2-suggestion':       proofScanV2Suggestion,
+  '/api/proof-scan-v2-ssn':              proofScanV2Ssn,
+  '/api/proof-scan-v2-evidence':         proofScanV2Evidence,
+  '/api/proof-scan-v2-run':              proofScanV2Run,
+  '/api/proof-scan-v2-signoff':          proofScanV2Signoff,
+  '/api/proof-scan-v2-rules':            proofScanV2Rules,
+  '/api/proof-scan-v2-suppressions':     proofScanV2Suppressions,
+  '/api/proof-scan-v2-possible-issue':   proofScanV2PossibleIssue,
   '/api/translation-start':             translationStart,
   '/api/translation-process':           translationProcess,
   '/api/translation-poll':              translationPoll,
@@ -388,6 +417,11 @@ export default {
       // Every 5 min — consult reminder emails (no-ops unless the scheduling
       // premium module is enabled AND reminders are on in booking_settings)
       ctx.waitUntil(runBookingReminders(env));
+    } else if (event.cron === '0 15 * * 1') {
+      // Weekly, Monday 10am CST — check every USCIS form's edition against
+      // uscis.gov and flag any that have gone stale (or that could not be
+      // verified). Emails staff a digest only when a form newly goes bad.
+      ctx.waitUntil(runFormEditionCheck(env));
     }
   },
 

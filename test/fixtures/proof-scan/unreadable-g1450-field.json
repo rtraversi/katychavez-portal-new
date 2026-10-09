@@ -1,0 +1,29 @@
+{
+  "fixture_schema_version": 1,
+  "fixture_id": "unreadable-g1450-field",
+  "description": "Both fictional G-1450 forms are present, but one shared field-level check cannot be evaluated because its content is unreadable.",
+  "base_response_fixture": "completed-no-issues-found.json",
+  "mutation": {
+    "operation": "replace_rule_result",
+    "rule_id": "DACA-G1450-004",
+    "value": {
+      "rule_id": "DACA-G1450-004",
+      "status": "not_checked",
+      "summary": null,
+      "locations": [
+        "G-1450, page 1"
+      ],
+      "evidence": null,
+      "reason": "The card-detail field could not be read at the supplied resolution.",
+      "not_checked_item_ids": [
+        "DACA-COMP-G1450-FILING-FEE"
+      ]
+    }
+  },
+  "expected": {
+    "valid": true,
+    "report_state": "review_incomplete",
+    "attention_count": 0,
+    "unsuppressed_not_checked_count": 1
+  }
+}

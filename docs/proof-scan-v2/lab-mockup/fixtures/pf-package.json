@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "label": "Prepared package, EAD copy not added",
+  "_note": "SYNTHETIC. The currently prepared package after signatures and client corrections, as separate files (D-57: do not assume a merged PDF). The EAD copy is not in it yet, which in Pre-flight is a light notification only.",
+  "files": [
+    { "filename": "sample-g1450-filing-signed.pdf", "pages": 1 },
+    { "filename": "sample-g1450-biometrics-signed.pdf", "pages": 1 },
+    { "filename": "sample-g1145.pdf", "pages": 1 },
+    { "filename": "sample-g28-signed.pdf", "pages": 4 },
+    { "filename": "sample-i821d-signed.pdf", "pages": 7 },
+    { "filename": "sample-i765-signed.pdf", "pages": 7 },
+    { "filename": "sample-i765ws.pdf", "pages": 1 }
+  ],
+  "forms_identified": [
+    { "key": "G-1450 $520", "file": "sample-g1450-filing-signed.pdf", "pages": "1" },
+    { "key": "G-1450 $85",  "file": "sample-g1450-biometrics-signed.pdf", "pages": "1" },
+    { "key": "G-1145",      "file": "sample-g1145.pdf", "pages": "1" },
+    { "key": "G-28",        "file": "sample-g28-signed.pdf", "pages": "1-4" },
+    { "key": "I-821D",      "file": "sample-i821d-signed.pdf", "pages": "1-7" },
+    { "key": "I-765",       "file": "sample-i765-signed.pdf", "pages": "1-7" },
+    { "key": "I-765WS",     "file": "sample-i765ws.pdf", "pages": "1" }
+  ],
+  "evidence_identified": [],
+  "forms": {
+    "G-1450 $520": { "first_name": { "value": "ANA" }, "last_name": { "value": "RIVERA" }, "phone": { "value": "(602) 555-0147", "where": "p.1" }, "email": { "value": "ana.rivera@example.test", "where": "p.1" } },
+    "G-1450 $85":  { "first_name": { "value": "ANA" }, "last_name": { "value": "RIVERA" }, "phone": { "value": "(602) 555-0147", "where": "p.1" }, "email": { "value": "ana.rivera@example.test", "where": "p.1" } },
+    "G-1145":      { "first_name": { "value": "ANA" }, "last_name": { "value": "RIVERA" }, "phone": { "value": "(602) 555-0147", "where": "p.1" }, "email": { "value": "ana.rivera@example.test", "where": "p.1" } },
+    "G-28":        { "first_name": { "value": "ANA" }, "last_name": { "value": "RIVERA" }, "a_number": { "value": "A-123456789", "where": "p.2" } },
+    "I-821D":      { "first_name": { "value": "ANA" }, "last_name": { "value": "RIVERA" }, "a_number": { "value": "A-123456789", "where": "p.1" }, "date_of_birth": { "value": "1994-06-18", "where": "p.2 item 9" }, "street": { "value": "456 Sample St", "where": "p.1" }, "city": { "value": "Phoenix", "where": "p.1" } },
+    "I-765":       { "first_name": { "value": "ANA" }, "last_name": { "value": "RIVERA" }, "a_number": { "value": "A-123456789", "where": "p.1" }, "date_of_birth": { "value": "1994-06-18", "where": "p.3 item 20" }, "ssn": { "value": "000-12-4821", "where": "p.2" }, "street": { "value": "1842 W Encanto Blvd", "where": "p.2 item 5" } },
+    "I-765WS":     { "first_name": { "value": "ANA" }, "last_name": { "value": "RIVERA" }, "a_number": { "value": "A-123456789", "where": "p.1" } }
+  },
+  "results": {
+    "DACA-G28-004": {
+      "status": "needs_attention",
+      "summary": "The attorney signature on the G-28 is undated."
+    }
+  }
+}

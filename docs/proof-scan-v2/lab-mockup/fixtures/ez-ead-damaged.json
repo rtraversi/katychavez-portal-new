@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "_note": "SYNTHETIC. A torn, low-resolution EAD scan. Extraction is unreliable, so nothing is compared and nothing is proposed; the workspace asks for review of the source instead (D-54).",
+  "sample_label": "Sample damaged EAD",
+  "filename": "sample-ead-phone-photo.jpg",
+  "doc_type": "ead",
+  "type_label": "EAD card",
+  "read_quality": "unreliable",
+  "summary_fields": ["name", "date_of_birth", "a_number", "ead_expiration"],
+  "facts": {
+    "first_name": "ANA",
+    "last_name": "RIVFRA",
+    "a_number": "A-12345678?"
+  },
+  "unreadable": ["date_of_birth", "ead_expiration"]
+}

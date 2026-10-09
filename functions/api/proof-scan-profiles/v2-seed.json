@@ -1,0 +1,1371 @@
+{
+  "schema_version": 1,
+  "_note": "Seed for the Proof Scan v2 rule tables (migration 2002). Generated once from the v1.2 DACA profile (daca-renewal.v1.json, checks and package items unchanged) and the v2 Lab stage map (stage-map.sample.json, Max decisions D-69 to D-73). Physical Scan runs every check (D-58). General carries the firm-wide checks only (the 7 base checks plus PS-304, D-98), no package items (D-90 to D-95). Turned into SQL by scripts/proof-scan-v2-seed.mjs; edit this file, then rerun the script.",
+  "stages": [
+    "draft_review",
+    "preflight",
+    "physical_scan"
+  ],
+  "stage_states": [
+    "checked",
+    "if_filled",
+    "if_marked",
+    "if_evidence",
+    "later",
+    "not_this_stage"
+  ],
+  "rule_sets": [
+    {
+      "case_type": "daca_renewal",
+      "version": 1,
+      "label": "DACA renewal",
+      "source_note": "v1.2 profile daca_renewal v1 (39 checks, 8 package items) with Draft Review and Pre-flight settings from D-69 to D-73, plus the firm-wide evidence check PS-304 (D-98).",
+      "package_items": [
+        {
+          "item_id": "DACA-COMP-G1450-FILING-FEE",
+          "form": "G-1450",
+          "instance": "$520",
+          "label": "Credit card authorization",
+          "pages": 1,
+          "kind": "form"
+        },
+        {
+          "item_id": "DACA-COMP-G1450-BIOMETRICS-FEE",
+          "form": "G-1450",
+          "instance": "$85",
+          "label": "Credit card authorization",
+          "pages": 1,
+          "kind": "form"
+        },
+        {
+          "item_id": "DACA-COMP-G1145",
+          "form": "G-1145",
+          "label": "E-notification",
+          "pages": 1,
+          "kind": "form"
+        },
+        {
+          "item_id": "DACA-COMP-G28",
+          "form": "G-28",
+          "label": "Notice of entry of appearance",
+          "pages": 4,
+          "kind": "form"
+        },
+        {
+          "item_id": "DACA-COMP-I821D",
+          "form": "I-821D",
+          "label": "Consideration of DACA",
+          "pages": 7,
+          "kind": "form"
+        },
+        {
+          "item_id": "DACA-COMP-I765",
+          "form": "I-765",
+          "label": "Application for employment authorization",
+          "pages": 7,
+          "kind": "form"
+        },
+        {
+          "item_id": "DACA-COMP-I765WS",
+          "form": "I-765WS",
+          "label": "Worksheet",
+          "pages": 1,
+          "kind": "form"
+        },
+        {
+          "item_id": "DACA-COMP-EAD-CARD",
+          "form": "EAD card",
+          "label": "Copy, front and back, enlarged colour",
+          "pages": 1,
+          "kind": "evidence"
+        }
+      ],
+      "rules": [
+        {
+          "rule_id": "PS-101",
+          "title": "Edition date is current on every page.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Edition dates current.",
+          "note": "Also flags a page from an older edition mixed into a current package.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-102",
+          "title": "Page count matches the current edition.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Page count correct.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-201",
+          "title": "Required signatures are present.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Signed where required.",
+          "note": "I-765WS requires no signature.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "later"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-103",
+          "title": "No blank or duplicate pages.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "No blank or duplicate pages.",
+          "note": "Multiple G-1450/G-1650 are normal, one per filing fee, and are not duplicates.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-301",
+          "title": "Beneficiary name is consistent across the package.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Beneficiary name consistent.",
+          "note": "Petitioner/sponsor documents in another name are expected and are not a mismatch.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-302",
+          "title": "A-Number is consistent across the package.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "A-Number consistent.",
+          "note": "A-XXXXXXXXX and XXX-XXX-XXX are the same number. Format alone is never a finding (N-016).",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-303",
+          "title": "Mailing address is consistent across the package.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Mailing address consistent.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-304",
+          "title": "Evidence matches the forms.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Evidence matches the forms.",
+          "note": "Every fact a piece of evidence carries (names, dates of birth, marriage date, A-Number) is compared with the forms about the same person. Each difference is its own item. Decided by Max 2026-10-07 (D-98).",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-305",
+          "title": "Every fact shared by more than one form matches, per person.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Shared facts match across the forms.",
+          "note": "Every fact on the case card list (date of birth, SSN, phone, email, USCIS account number, countries of birth and citizenship, I-94, last entry and port of entry, employer, marriage date and place) that appears on more than one form for the same person must match. Name, A-Number and address are PS-301 to PS-303. Each difference is its own item. Decided by Max 2026-10-08 (D-100).",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-306",
+          "title": "Foreign-language evidence has an English translation.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Every foreign-language document has an English translation.",
+          "note": "A document not in English needs a certified English translation in the package. Checked at Physical Scan; at Draft Review and Pre-flight only when evidence is part of the files. Decided by Max 2026-10-08 (D-100).",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "if_evidence"
+            },
+            "preflight": {
+              "state": "if_evidence"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G1145-001",
+          "title": "Name, Email and Phone",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-1145",
+          "page": "1",
+          "pass_text": "G-1145 contact details complete.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G1145"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G28-001",
+          "title": "Forms I-821d, I-765",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-28",
+          "page": "2",
+          "item": "1.b",
+          "expected": "I-821D and I-765 ONLY",
+          "pass_text": "G-28 discloses I-821D and I-765 only.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G28"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G28-002",
+          "title": "Applicant Checkbox",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-28",
+          "page": "2",
+          "item": "5",
+          "pass_text": "G-28 applicant checkbox marked.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G28"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G28-003",
+          "title": "Verify if EAD home or office",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-28",
+          "page": "3",
+          "pass_text": "G-28 EAD address verified.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G28"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "if_filled"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G28-004",
+          "title": "Applicant & attorney signatures, dated",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-28",
+          "page": "3",
+          "pass_text": "G-28 signed and dated.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G28"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "later"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-001",
+          "title": "Renewal checkbox, Exp. Date",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "1",
+          "item": "2",
+          "pass_text": "I-821D renewal checkbox and expiry set.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-002",
+          "title": "Name",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "1",
+          "pass_text": "I-821D name present.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-003",
+          "title": "Mailing address",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "1",
+          "pass_text": "I-821D mailing address present.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-004",
+          "title": "Removal proceedings (NO)",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "1",
+          "item": "5",
+          "expected": "NO",
+          "pass_text": "I-821D removal proceedings answered NO.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-005",
+          "title": "Continuously residing in US (YES)",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "2",
+          "item": "1",
+          "expected": "YES",
+          "pass_text": "I-821D continuous residence answered YES.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-006",
+          "title": "Date of Birth",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "2",
+          "item": "9",
+          "pass_text": "I-821D date of birth present.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-007",
+          "title": "Departures (Only if applicable)",
+          "severity": "warning",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "3",
+          "item": "6.c",
+          "pass_text": "I-821D departures section consistent.",
+          "note": "Conditional. Only applies when the applicant has departures to report.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "later"
+            },
+            "preflight": {
+              "state": "if_marked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-008",
+          "title": "Criminal checkboxes, ALL NO",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "4",
+          "item": "1-7",
+          "expected": "ALL NO",
+          "pass_text": "I-821D criminal questions all answered NO.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-009",
+          "title": "Read/Understand English (YES)",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "5",
+          "expected": "YES",
+          "pass_text": "I-821D English question answered YES.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked",
+              "gentle_if_no": true
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-821D-010",
+          "title": "Applicant & attorney signatures, dated",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-821D",
+          "page": "5,6",
+          "pass_text": "I-821D signed and dated.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I821D"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "later"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765-001",
+          "title": "Renewal checkbox",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765",
+          "page": "1",
+          "item": "1.c",
+          "pass_text": "I-765 renewal checkbox marked.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765-002",
+          "title": "Name",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765",
+          "page": "1",
+          "pass_text": "I-765 name present.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765-003",
+          "title": "Physical address, same (YES)",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765",
+          "page": "2",
+          "item": "6",
+          "expected": "YES",
+          "pass_text": "I-765 physical address answered YES.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765-004",
+          "title": "Questions 12,13,14",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765",
+          "page": "2",
+          "item": "12-14",
+          "pass_text": "I-765 questions 12 to 14 answered.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765-005",
+          "title": "Date of Birth",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765",
+          "page": "3",
+          "item": "20",
+          "pass_text": "I-765 date of birth present.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765-006",
+          "title": "“DACA”",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765",
+          "page": "3",
+          "item": "25",
+          "expected": "DACA",
+          "pass_text": "I-765 item 25 reads DACA.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765-007",
+          "title": "Eligibility category C 33 (Zoom in)",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765",
+          "page": "3",
+          "item": "27",
+          "expected": "C33",
+          "pass_text": "I-765 eligibility category is C33.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765-008",
+          "title": "Read/Understand English (YES)",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765",
+          "page": "4",
+          "item": "1.a",
+          "expected": "YES",
+          "pass_text": "I-765 English question answered YES.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked",
+              "gentle_if_no": true
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765-009",
+          "title": "Applicant & attorney signatures, dates",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765",
+          "page": "4,6",
+          "pass_text": "I-765 signed and dated.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "later"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-765WS-001",
+          "title": "Applicant name & numbers, “living expenses”",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "I-765WS",
+          "page": "1",
+          "pass_text": "I-765WS complete.",
+          "applies_to_item_ids": [
+            "DACA-COMP-I765WS"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked",
+              "stage_title": "The employment explanation reads \"I have to work to pay for my living expenses.\"",
+              "stage_pass_text": "I-765WS explanation matches the firm template.",
+              "stage_expected": "\"I have to work to pay for my living expenses.\" exactly, or a close version with no typos."
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-ASM-001",
+          "title": "All pages in order",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "All pages in order.",
+          "applies_to_item_ids": [],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked",
+              "stage_title": "Pages within each form are in order.",
+              "stage_pass_text": "Pages in order within each form."
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G1450-001",
+          "title": "Name, Email and Phone #",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-1450",
+          "page": "1",
+          "pass_text": "Contact details complete.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G1450-FILING-FEE",
+            "DACA-COMP-G1450-BIOMETRICS-FEE"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G1450-002",
+          "title": "One G-1450 authorises $520.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-1450",
+          "page": "1",
+          "expected": "$520",
+          "pass_text": "$520 filing fee authorised.",
+          "source_note": "AuthorizedPaymentAmt on the filing-fee form.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G1450-FILING-FEE"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G1450-003",
+          "title": "One G-1450 authorises $85.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-1450",
+          "page": "1",
+          "expected": "$85",
+          "pass_text": "$85 biometrics fee authorised.",
+          "source_note": "AuthorizedPaymentAmt on the biometrics form.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G1450-BIOMETRICS-FEE"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G1450-004",
+          "title": "Card number, card type and expiration date are complete.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-1450",
+          "page": "1",
+          "pass_text": "Card details complete.",
+          "source_note": "Fields CreditCardNumber_1 to _4, CreditCardTypeChBx, ExpirationDate. Verified against the repo's 1600-g1450.sql field map.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G1450-FILING-FEE",
+            "DACA-COMP-G1450-BIOMETRICS-FEE"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "later"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G1450-005",
+          "title": "Cardholder name and billing address are complete.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-1450",
+          "page": "1",
+          "pass_text": "Cardholder details complete.",
+          "source_note": "CCHolderGivenName/FamilyName and the CCHolder address block.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G1450-FILING-FEE",
+            "DACA-COMP-G1450-BIOMETRICS-FEE"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "later"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "DACA-G1450-006",
+          "title": "Signed by the applicant.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "form": "G-1450",
+          "page": "1",
+          "pass_text": "Signed.",
+          "source_note": "SignatureOfApplicant. Added by Max 2026-08-31; not on the original checklist.",
+          "applies_to_item_ids": [
+            "DACA-COMP-G1450-FILING-FEE",
+            "DACA-COMP-G1450-BIOMETRICS-FEE"
+          ],
+          "scope": "case_type",
+          "origin": "firm_checklist",
+          "stages": {
+            "draft_review": {
+              "state": "later"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "case_type": "general",
+      "version": 1,
+      "label": "General",
+      "source_note": "The 8 firm-wide checks (the 7 base checks and PS-304, D-98) with the stage settings DACA uses for them (D-93). No package items, no evidence gate (D-95).",
+      "package_items": [],
+      "rules": [
+        {
+          "rule_id": "PS-101",
+          "title": "Edition date is current on every page.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Edition dates current.",
+          "note": "Also flags a page from an older edition mixed into a current package.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-102",
+          "title": "Page count matches the current edition.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Page count correct.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-201",
+          "title": "Required signatures are present.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Signed where required.",
+          "note": "I-765WS requires no signature.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "later"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-103",
+          "title": "No blank or duplicate pages.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "No blank or duplicate pages.",
+          "note": "Multiple G-1450/G-1650 are normal, one per filing fee, and are not duplicates.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "not_this_stage"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-301",
+          "title": "Beneficiary name is consistent across the package.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Beneficiary name consistent.",
+          "note": "Petitioner/sponsor documents in another name are expected and are not a mismatch.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-302",
+          "title": "A-Number is consistent across the package.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "A-Number consistent.",
+          "note": "A-XXXXXXXXX and XXX-XXX-XXX are the same number. Format alone is never a finding (N-016).",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-303",
+          "title": "Mailing address is consistent across the package.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Mailing address consistent.",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-304",
+          "title": "Evidence matches the forms.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Evidence matches the forms.",
+          "note": "Every fact a piece of evidence carries (names, dates of birth, marriage date, A-Number) is compared with the forms about the same person. Each difference is its own item. Decided by Max 2026-10-07 (D-98).",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-305",
+          "title": "Every fact shared by more than one form matches, per person.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Shared facts match across the forms.",
+          "note": "Every fact on the case card list (date of birth, SSN, phone, email, USCIS account number, countries of birth and citizenship, I-94, last entry and port of entry, employer, marriage date and place) that appears on more than one form for the same person must match. Name, A-Number and address are PS-301 to PS-303. Each difference is its own item. Decided by Max 2026-10-08 (D-100).",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "checked"
+            },
+            "preflight": {
+              "state": "checked"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        },
+        {
+          "rule_id": "PS-306",
+          "title": "Foreign-language evidence has an English translation.",
+          "severity": "fatal",
+          "check_kind": "pdf",
+          "pass_text": "Every foreign-language document has an English translation.",
+          "note": "A document not in English needs a certified English translation in the package. Checked at Physical Scan; at Draft Review and Pre-flight only when evidence is part of the files. Decided by Max 2026-10-08 (D-100).",
+          "applies_to_item_ids": [],
+          "scope": "firm",
+          "origin": "general_rules",
+          "stages": {
+            "draft_review": {
+              "state": "if_evidence"
+            },
+            "preflight": {
+              "state": "if_evidence"
+            },
+            "physical_scan": {
+              "state": "checked"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

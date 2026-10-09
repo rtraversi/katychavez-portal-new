@@ -1,0 +1,12 @@
+{
+  "fixture_schema_version": 1,
+  "fixture_id": "malformed-model-output",
+  "description": "Literal malformed JSON returned by the model; it is intentionally text, so this fixture file remains valid JSON.",
+  "expected": {
+    "valid": false,
+    "report_state": "scan_could_not_be_completed",
+    "primary_report_language": "Scan could not be completed",
+    "violation": "invalid_json"
+  },
+  "raw_model_output": "{\"schema_version\": 1, \"scan_profile\": \"daca_renewal\","
+}

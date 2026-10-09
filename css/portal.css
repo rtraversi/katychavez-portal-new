@@ -2194,6 +2194,32 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 /* A register whose first child is a group head shouldn't double-rule at the top */
 .dk-register .dk-reg-group:first-child { border-top: 0; }
 
+/* USCIS Template Defaults — search bar + collapsible category groups.
+   Each category is a native <details>, so collapse needs no JS state; the
+   summary reuses the .dk-reg-group divider language. */
+.dk-formbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.dk-search { flex: 1; min-width: 220px; padding: 9px 13px; border: 1px solid var(--line);
+  border-radius: 9px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; }
+.dk-search:focus { outline: none; border-color: var(--ink-faint); }
+.dk-formchips { display: flex; gap: 8px; flex-wrap: wrap; }
+.dk-chipbtn { padding: 7px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  color: var(--ink-soft); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.dk-chipbtn:hover { border-color: var(--ink-faint); color: var(--ink); }
+.dk-chipbtn.is-on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.dk-reg-fold > summary {
+  padding: 11px 20px; background: var(--paper-deep); border-bottom: 1px solid var(--line);
+  cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px;
+  font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint);
+}
+.dk-reg-fold > summary::-webkit-details-marker { display: none; }
+.dk-reg-fold > summary::before { content: '▸'; font-size: 11px; transition: transform .15s; color: var(--ink-faint); }
+.dk-reg-fold[open] > summary::before { transform: rotate(90deg); }
+.dk-reg-fold > summary:hover { color: var(--ink-soft); }
+.dk-reg-fold .n { color: var(--ink-soft); font-weight: 600; }
+.dk-reg-fold-warn { margin-left: auto; text-transform: none; letter-spacing: 0; font-size: 11px; font-weight: 700;
+  color: var(--color-warn); background: color-mix(in srgb, var(--color-warn) 14%, var(--surface)); padding: 2px 9px; border-radius: 999px; }
+.dk-reg-hint { font-size: 12.5px; color: var(--ink-soft); padding: 10px 20px 2px; }
+
 /* ── Help drawer — shared slide-over that renders window.HELP_GUIDES ───────────
    Opened from the Trust/Billing masthead "Help" buttons and the avatar-menu
    "Help & Guides" item. Layered above the floating help-chat (z 9000). Fully
@@ -2302,3 +2328,1294 @@ body.help-drawer-lock { overflow: hidden; }
 .help-table th { text-align: left; background: var(--paper-deep); color: var(--ink-faint); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 9px 12px; border-bottom: 1px solid var(--line); }
 .help-table td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .help-table tr:last-child td { border-bottom: 0; }
+
+/* ═══ Proof Scan (pages/proof-scan) ══════════════════════════════════════════
+   Ported from the approved UI Lab. Portal tokens only — nothing here invents a
+   colour, a font, or a scale. The lab's own shell (.ps-lab-*), fixture picker,
+   theme toggle and diagnostic styling deliberately did not come across.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ps-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ── Scan type: the explicit choice that unlocks everything below it ───────── */
+.ps-scantype { margin: 0 0 var(--space-4); max-width: 430px; }
+.ps-scantype label { display: block; font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); }
+.ps-scantype p { color: var(--ink-soft); font-size: var(--text-sm); margin: var(--space-2) 0 0; }
+.ps-select {
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  color: var(--ink); font: inherit; padding: var(--space-2) var(--space-3); width: 100%;
+}
+.ps-select:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+/* ── The drop zone. A package lands like a document placed on a review desk:
+      one clear response to the user's action. ─────────────────────────────── */
+.ps-drop {
+  position: relative; text-align: center; cursor: pointer;
+  background: var(--surface); border: 2px dashed var(--line-strong);
+  border-radius: var(--radius-md); padding: var(--space-8) var(--space-4);
+  margin-bottom: var(--space-4);
+  transition: border-color .16s ease, background-color .16s ease, transform .16s cubic-bezier(.2,.8,.2,1);
+}
+.ps-drop-icon { width: 40px; height: 40px; margin: 0 auto var(--space-3); color: var(--ink-faint); display: block; }
+.ps-drop-title { font-family: var(--font-serif); font-weight: 600; font-size: 15.5px; margin: 0 0 var(--space-1); color: var(--ink); }
+.ps-drop-meta { font-size: var(--text-sm); color: var(--ink-soft); margin: 0 0 var(--space-3); overflow-wrap: anywhere; }
+
+.ps-drop:not(.is-locked):hover,
+.ps-drop.is-dragover { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 5%, var(--surface)); }
+.ps-drop.is-dragover { transform: scale(1.006); }
+.ps-drop:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+
+/* Locked until a scan type is chosen — visibly unavailable, not merely inert. */
+.ps-drop.is-locked { cursor: not-allowed; opacity: .55; border-style: dashed; }
+.ps-drop.is-locked .btn:disabled { cursor: not-allowed; }
+
+.ps-drop.is-ready {
+  border-color: var(--color-success); border-style: solid;
+  animation: ps-file-land .34s cubic-bezier(.34,1.56,.64,1) both;
+}
+.ps-drop.is-ready .ps-drop-icon { color: var(--color-success); }
+.ps-drop.is-ready::after {
+  content: '✓'; position: absolute; top: var(--space-3); right: var(--space-3);
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--color-success); color: #fff; border: 3px solid var(--surface);
+  font-size: 12px; font-weight: 700;
+}
+@keyframes ps-file-land {
+  0% { transform: scale(.992); } 65% { transform: scale(1.003); } 100% { transform: scale(1); }
+}
+
+/* ── The scan moment. A short sweep reads as a deliberate review rather than an
+      indefinite spinner; the completed state stays put so the click concludes. */
+.ps-scan-btn {
+  position: relative; isolation: isolate; overflow: hidden; transform: translateY(0);
+  transition: transform .12s ease, box-shadow .12s ease, background-color .18s ease;
+}
+.ps-scan-btn:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 25%, transparent);
+}
+.ps-scan-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.ps-scan-btn::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: color-mix(in srgb, white 24%, transparent); transform: translateX(-105%);
+}
+/* Loops for as long as the real request runs — no fixed timer. */
+.ps-scan-btn.is-scanning::before { animation: ps-scan-sweep 1.1s cubic-bezier(.4,0,.6,1) infinite; }
+.ps-scan-btn.is-complete { background: var(--color-success); }
+.ps-scan-btn.is-complete::after { content: '✓'; margin-left: var(--space-2); }
+@keyframes ps-scan-sweep { from { transform: translateX(-105%); } to { transform: translateX(105%); } }
+
+.ps-runmeta { font-size: var(--text-sm); color: var(--ink-soft); }
+
+/* ── The report opens like a reviewed page being unsealed. ─────────────────── */
+.ps-results-reveal #ps-results-content { animation: ps-report-unseal .42s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes ps-report-unseal {
+  from { clip-path: inset(0 0 100% 0); opacity: .65; } to { clip-path: inset(0); opacity: 1; }
+}
+
+/* Stored-but-unsaved: prominent, never destructive. The report below it is real. */
+.ps-storage-warning {
+  display: flex; gap: var(--space-2); align-items: flex-start;
+  margin-bottom: var(--space-3); padding: var(--space-3);
+  border-radius: var(--radius-md); font-size: var(--text-sm); line-height: 1.5;
+  background: var(--color-warning-bg); color: var(--color-warning);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 32%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-drop, .ps-scan-btn { transition: none; }
+  .ps-drop.is-ready { animation: none; }
+  .ps-scan-btn.is-scanning::before { animation: none; }
+  .ps-results-reveal #ps-results-content { animation: none; }
+}
+
+/* ── Structured report renderer (pages/proof-scan/report.js) ──────────────── */
+
+.psr-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4);
+  padding-bottom: var(--space-3); margin-bottom: var(--space-4); border-bottom: 1px solid var(--line);
+}
+.psr-file     { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.psr-casetype { font-size: var(--text-sm); color: var(--ink-soft); margin-top: 2px; }
+.psr-head-right { text-align: right; flex: 0 0 auto; }
+.psr-scanned  { font-size: var(--text-sm); color: var(--ink-faint); }
+.psr-verdict  { font-weight: 600; margin-top: 2px; }
+.psr-verdict--attention  { color: var(--color-warning); }
+.psr-verdict--incomplete { color: var(--ink-soft); }
+.psr-verdict--clear      { color: var(--color-success); }
+
+.psr-toggle-all {
+  background: none; border: none; padding: 2px 0; margin-top: 4px; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--color-primary);
+}
+.psr-toggle-all:hover { text-decoration: underline; }
+
+.psr-block { margin-bottom: var(--space-4); animation: psr-in .3s ease both; }
+.psr-block:nth-of-type(1) { animation-delay: .02s; }
+.psr-block:nth-of-type(2) { animation-delay: .07s; }
+.psr-block:nth-of-type(3) { animation-delay: .12s; }
+@keyframes psr-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.psr-block-head {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm); font-weight: 600; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--ink-soft); margin: 0 0 var(--space-2);
+}
+.psr-count {
+  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px;
+  background: var(--line); color: var(--ink-soft); text-transform: none; letter-spacing: 0;
+}
+
+.psr-sev {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: 1px 6px; border-radius: 99px;
+}
+.psr-sev--fatal    { background: var(--color-danger-bg);  color: var(--color-danger); }
+.psr-sev--warning  { background: var(--color-warning-bg); color: var(--color-warning); }
+.psr-sev--advisory { background: var(--line);             color: var(--ink-soft); }
+
+.psr-evidence {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  color: var(--ink-soft); background: var(--line); border-radius: 4px;
+  padding: 4px 8px; margin-top: 6px; display: inline-block; overflow-wrap: anywhere;
+}
+
+/* ── Client summary: identity first, contact facts as a quiet ledger ───────── */
+.psr-summary-strip {
+  display: grid; gap: var(--space-3); padding: var(--space-3) 0;
+  grid-template-columns: minmax(190px, 1.35fr) repeat(3, minmax(125px, 1fr));
+}
+.psr-fact-k { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.psr-fact-v { color: var(--ink); font-size: var(--text-sm); font-weight: 600; margin-top: 1px; overflow-wrap: anywhere; }
+.psr-client-details {
+  display: grid; gap: var(--space-3); grid-template-columns: repeat(12, minmax(0, 1fr));
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  padding: var(--space-3) 0; margin-bottom: var(--space-3);
+}
+.psr-detail--dob     { grid-column: span 3; }
+.psr-detail--ssn     { grid-column: span 2; }
+.psr-detail--uscis   { grid-column: span 4; }
+.psr-detail--phone   { grid-column: span 3; }
+.psr-detail--email   { grid-column: span 5; }
+.psr-detail--address { grid-column: span 7; }
+
+/* ── Included-in-the-scan table ───────────────────────────────────────────── */
+.psr-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.psr-table td { padding: 2px 0; vertical-align: baseline; font-size: 12px; }
+.psr-table td.psr-td-form  { font-weight: 500; color: var(--ink-soft); white-space: nowrap; padding-right: var(--space-5); }
+.psr-table td.psr-td-label { color: var(--ink-faint); width: 100%; }
+.psr-td-tick { color: var(--color-success); text-align: right; width: 1em; font-weight: 700; }
+.psr-tr--bad .psr-td-tick { color: var(--color-warning); }
+.psr-instance { font-weight: 400; font-size: 11px; color: var(--ink-faint); margin-left: 2px; }
+
+/* ── Form groups ──────────────────────────────────────────────────────────── */
+.psr-fold { border-top: 1px solid var(--line); }
+.psr-fold:last-child { border-bottom: 1px solid var(--line); }
+.psr-fold-head { display: flex; align-items: baseline; gap: var(--space-2); padding: 6px 0; cursor: pointer; list-style: none; }
+.psr-fold-head::-webkit-details-marker { display: none; }
+.psr-fold-head::before { content: '▸'; color: var(--ink-faint); font-size: 10px; }
+.psr-fold[open] > .psr-fold-head::before { content: '▾'; }
+.psr-fold-head:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+.psr-fold-form { font-weight: 600; color: var(--ink); font-size: var(--text-sm); }
+.psr-fold-meta { margin-left: auto; font-size: 12px; }
+.psr-fold-meta--ok    { color: var(--ink-faint); }
+.psr-fold-meta--bad   { color: var(--color-warning); font-weight: 600; }
+.psr-fold-meta--muted { margin-left: auto; font-size: 12px; color: var(--ink-faint); }
+.psr-fold-body { padding: 2px 0 8px var(--space-4); }
+.psr-fold-head:hover .psr-fold-form { color: var(--color-primary); }
+
+.psr-fold--clean > .psr-fold-head .psr-fold-form { color: var(--color-success); }
+.psr-fold--clean > .psr-fold-head .psr-fold-meta--ok { color: var(--color-success); }
+.psr-fold--clean > .psr-fold-head::before { color: var(--color-success); }
+.psr-fold--clean > .psr-fold-head {
+  background: linear-gradient(90deg, var(--color-success-bg), transparent 60%); border-radius: 5px;
+}
+.psr-fold--bad > .psr-fold-head .psr-fold-form { color: var(--color-warning); }
+.psr-fold--muted > .psr-fold-head .psr-fold-form { color: var(--ink-soft); font-weight: 500; }
+
+/* A thin cleared/total bar, so a column can be scanned without reading counts. */
+.psr-bar { height: 2px; background: var(--line); border-radius: 2px; margin: 0 0 6px var(--space-4); overflow: hidden; }
+.psr-bar-fill { display: block; height: 100%; transform-origin: left center; animation: psr-sweep .55s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes psr-sweep { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.psr-bar-fill--ok  { background: var(--color-success); }
+.psr-bar-fill--bad { background: var(--color-warning); }
+
+/* Closed, the fold names what is outstanding. Open, the rows below say it. */
+.psr-outstanding { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 8px var(--space-4); }
+.psr-fold[open] > .psr-outstanding { display: none; }
+.psr-out { display: inline-flex; align-items: baseline; gap: 5px; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.psr-out--needs_attention { background: color-mix(in srgb, var(--color-warning-bg) 60%, transparent); color: var(--color-warning); }
+.psr-out--not_checked     { background: var(--line); color: var(--ink-soft); }
+.psr-out-mark { font-weight: 700; }
+
+/* ── One row shape for every check ────────────────────────────────────────── */
+.psr-check {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  font-size: var(--text-sm); padding: 3px var(--space-2);
+  border-radius: 999px; color: var(--ink-soft); animation: psr-tick .22s ease both;
+}
+.psr-check-mark { width: 1em; flex: 0 0 auto; font-weight: 700; font-size: 11px; }
+.psr-check-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.psr-check-text strong { font-weight: 600; }
+.psr-rest { font-weight: 400; opacity: .9; }
+.psr-where { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
+.psr-check--clear .psr-check-mark { color: var(--color-success); animation: psr-pop .26s cubic-bezier(.34,1.56,.64,1) both; }
+.psr-check--needs_attention {
+  background: color-mix(in srgb, var(--color-warning-bg) 60%, transparent);
+  color: var(--color-warning); font-weight: 600;
+}
+.psr-check--needs_attention .psr-check-mark,
+.psr-check--needs_attention .psr-where { color: var(--color-warning); }
+.psr-check--not_checked { background: color-mix(in srgb, var(--ink-faint) 8%, transparent); color: var(--ink); }
+.psr-check--not_checked .psr-check-mark { color: var(--ink-faint); }
+.psr-check:nth-child(1) { animation-delay: 0s; }
+.psr-check:nth-child(2) { animation-delay: .03s; }
+.psr-check:nth-child(3) { animation-delay: .06s; }
+.psr-check:nth-child(4) { animation-delay: .09s; }
+.psr-check:nth-child(5) { animation-delay: .12s; }
+.psr-check:nth-child(6) { animation-delay: .15s; }
+.psr-check:nth-child(7) { animation-delay: .18s; }
+.psr-check:nth-child(8) { animation-delay: .21s; }
+.psr-check:nth-child(n+9) { animation-delay: .24s; }
+@keyframes psr-tick { from { opacity: 0; transform: translateX(-3px); } to { opacity: 1; transform: none; } }
+@keyframes psr-pop {
+  from { transform: scale(.4); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* ── A notice: one line, opens to the detail ──────────────────────────────── */
+.psr-notice { border-radius: 999px; margin-bottom: 4px; }
+.psr-notice[open] { border-radius: 16px; }
+.psr-notice--needs_attention { background: color-mix(in srgb, var(--color-warning-bg) 60%, transparent); }
+.psr-notice--not_checked     { background: color-mix(in srgb, var(--ink-faint) 8%, transparent); }
+.psr-notice-head {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  padding: 6px var(--space-3); cursor: pointer; list-style: none; border-radius: 999px;
+  font-size: var(--text-sm); font-weight: 400; color: var(--color-warning);
+}
+.psr-notice--not_checked .psr-notice-head { color: var(--ink); }
+.psr-notice-head::-webkit-details-marker { display: none; }
+.psr-notice-head::after { content: '⌄'; margin-left: auto; opacity: .5; transition: transform .18s; }
+.psr-notice[open] > .psr-notice-head::after { transform: rotate(180deg); }
+.psr-notice-head:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.psr-notice-body { padding: 0 var(--space-3) 10px calc(var(--space-3) + 1em + var(--space-2)); }
+.psr-nf { display: flex; gap: var(--space-2); font-size: 12px; padding: 1px 0; }
+.psr-nf-k { color: var(--ink-faint); min-width: 150px; flex: 0 0 auto; }
+.psr-nf-v { color: var(--ink); overflow-wrap: anywhere; }
+
+/* Checks a missing form blocked. Quiet, and only inside that form's own entry. */
+.psr-blocked-head { font-size: 12px; color: var(--ink-faint); margin-top: 6px; }
+.psr-blocked { margin: 2px 0 0; padding-left: var(--space-4); font-size: 12px; color: var(--ink-soft); }
+.psr-blocked li { padding: 1px 0; }
+
+/* Disclosure bodies animate open. Heights are set inline by report.js. */
+.psr-notice-body, .psr-fold-body {
+  overflow: hidden; transition: height .22s cubic-bezier(.2,.8,.2,1), opacity .18s ease;
+}
+
+/* The standing reminder. Present on every report, in every state, never loud. */
+.psr-standing-note {
+  margin: var(--space-5) 0 0; padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm); color: var(--ink-faint);
+}
+
+@media (max-width: 800px) {
+  .psr-summary-strip  { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .psr-client-details { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .psr-client-details > .psr-fact { grid-column: span 3; }
+  .psr-detail--email, .psr-detail--address { grid-column: span 6; }
+  .psr-head { flex-direction: column; gap: var(--space-2); }
+  .psr-head-right { text-align: left; }
+  .psr-nf { flex-direction: column; gap: 0; }
+  .psr-nf-k { min-width: 0; }
+}
+@media (max-width: 520px) {
+  .psr-summary-strip, .psr-client-details { grid-template-columns: 1fr; }
+  .psr-client-details > .psr-fact { grid-column: 1; }
+  .psr-where { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .psr-block, .psr-check, .psr-bar-fill, .psr-check--clear .psr-check-mark { animation: none; }
+  .psr-notice-body, .psr-fold-body { transition: none; }
+  .psr-notice-head::after { transition: none; }
+}
+
+/* ── Proof Scan history rows (Batch 4) ───────────────────────────────────────
+   A row wears the deterministic phrase the server composed. There is no "pass"
+   tone here: the calm neutral is "no issues found", which is not an approval. */
+
+.ps-history-item { align-items: center; gap: var(--space-3); }
+.ps-history-item:focus-visible { outline: 2px solid var(--daily); outline-offset: -2px; }
+.ps-history-name {
+  font-size: 14.5px; display: block;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.ps-history-tag {
+  display: inline-flex; align-items: center; flex: 0 0 auto;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+}
+.ps-history-tag--attention   { background: var(--color-warning-bg); color: var(--color-warning); }
+.ps-history-tag--incomplete  { background: var(--paper-deep); color: var(--ink-soft); border: 1px solid var(--line); }
+.ps-history-tag--clear       { background: var(--color-success-bg); color: var(--color-success); }
+.ps-history-tag--legacy      { background: var(--paper-deep); color: var(--ink-faint); border: 1px solid var(--line); }
+.ps-history-tag--unavailable { background: var(--color-danger-bg); color: var(--color-danger); }
+
+/* ── Legacy scan view ────────────────────────────────────────────────────────
+   Pre-structured result_html, displayed as inert, wrapped source text by
+   legacy-html.js. No stored markup is parsed or applied to the page. */
+
+.psr-verdict--legacy { color: var(--ink-faint); }
+
+.psr-legacy-note {
+  margin: 0 0 var(--space-4); padding: var(--space-3);
+  border-radius: var(--radius-md); border: 1px solid var(--line);
+  background: var(--paper-deep);
+  font-size: var(--text-sm); line-height: 1.5; color: var(--ink-soft);
+}
+
+.psr-legacy {
+  font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.6;
+  color: var(--ink); overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+/* ── Unavailable stored result ───────────────────────────────────────────────
+   Deliberately reads as a problem, never as a quiet clean scan. */
+
+.psr-unavailable {
+  padding: var(--space-4); border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 32%, transparent);
+}
+.psr-unavailable-head {
+  font-family: var(--font-serif); font-weight: 600; font-size: 15px;
+  color: var(--color-danger); margin-bottom: var(--space-1);
+}
+.psr-unavailable-body { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--ink); }
+
+/* ── Possible issues (pages/proof-scan/exploration.js) ───────────────────────
+   Ported from the approved UI Lab preview. It keeps the lab's muted-blue
+   treatment — the one signal that this block is exploratory rather than part of
+   the checklist — while every other value comes from the production tokens, so
+   it is the same kit as the report above it rather than a parallel system.
+
+   The blue is a single local token. Nothing else in the portal reads it, and it
+   flips with the portal's own dark mode. */
+
+.ps-explore {
+  --explore-blue: #406b94;
+  margin-top: var(--space-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 35%, transparent);
+  color: var(--ink);
+  scroll-margin-top: var(--space-4);
+}
+:root[data-mode="dark"] .ps-explore { --explore-blue: #91b8dc; }
+
+/* Header: muted blue, count badge, custom chevron. */
+.ps-explore > .ps-explore-head {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm); font-weight: 600;
+  list-style: none;
+  background: color-mix(in srgb, var(--explore-blue) 12%, transparent);
+}
+.ps-explore > .ps-explore-head::-webkit-details-marker { display: none; }
+.ps-explore > .ps-explore-head::after {
+  content: ''; width: 6px; height: 6px; margin-left: auto; margin-right: 3px;
+  border-right: 1.5px solid var(--ink-soft); border-bottom: 1.5px solid var(--ink-soft);
+  transform: rotate(-45deg); transition: transform .18s ease;
+}
+.ps-explore[open] > .ps-explore-head::after { transform: rotate(45deg); }
+.ps-explore[open] > .ps-explore-head { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.ps-explore > .ps-explore-head:hover {
+  background: color-mix(in srgb, var(--explore-blue) 17%, transparent);
+}
+
+.ps-explore-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 22px; padding: 0 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--explore-blue) 22%, transparent);
+  color: var(--explore-blue);
+  font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+
+.ps-explore > .ps-explore-note {
+  margin: 0; padding: var(--space-3) var(--space-4);
+  color: var(--ink-soft); font-size: 12px; line-height: 1.5;
+}
+
+/* One suggestion: compact, same rhythm as a report row. */
+.ps-explore-item {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+  transition: background-color .16s ease;
+}
+.ps-explore-item:hover { background: color-mix(in srgb, var(--ink) 2%, transparent); }
+.ps-explore-item.is-reviewed { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.ps-explore-item.is-pending { opacity: .75; }
+
+.ps-explore-row-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+}
+.ps-explore-title {
+  margin: 0; font-family: inherit; font-size: var(--text-sm); font-weight: 600; line-height: 1.4;
+}
+.ps-explore-desc {
+  max-width: 76ch; margin: 4px 0 6px;
+  color: var(--ink-soft); font-size: 12px; line-height: 1.5;
+}
+
+.ps-explore-actions {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex-shrink: 0;
+}
+
+/* Compact controls. Accept carries the blue; the rest stay quiet. */
+.ps-explore-control {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 30px; padding: 4px 11px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: transparent; color: var(--ink-soft);
+  font: inherit; font-size: 11px; cursor: pointer;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+.ps-explore-control:hover:not(:disabled) {
+  background: var(--surface); color: var(--ink); border-color: var(--line-strong);
+}
+.ps-explore-control:disabled { opacity: .6; cursor: default; }
+
+.ps-explore-accept {
+  color: var(--explore-blue); font-weight: 600;
+  background: color-mix(in srgb, var(--explore-blue) 8%, transparent);
+  border-color: color-mix(in srgb, var(--explore-blue) 30%, transparent);
+}
+.ps-explore-accept::before { content: '✓'; margin-right: 5px; font-weight: 400; }
+.ps-explore-accept:hover:not(:disabled) {
+  color: var(--explore-blue);
+  background: color-mix(in srgb, var(--explore-blue) 16%, transparent);
+  border-color: color-mix(in srgb, var(--explore-blue) 45%, transparent);
+}
+
+/* Evidence link: underlined blue, expands the excerpt below it. */
+.ps-explore-source {
+  display: block; max-width: 100%; padding: 3px 0;
+  border: 0; background: none; text-align: left;
+  color: var(--explore-blue); font: inherit; font-size: 11px; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--explore-blue) 35%, transparent);
+}
+.ps-explore-source:hover,
+.ps-explore-source[aria-expanded='true'] { text-decoration-color: currentColor; }
+
+.ps-explore-evidence {
+  margin: 10px 0 2px; padding: var(--space-3);
+  border: 1px solid var(--line); border-left: 2px solid var(--explore-blue);
+  border-radius: 0 6px 6px 0;
+  background: var(--surface);
+  font: inherit; font-size: 12px; line-height: 1.7;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* Dismiss: choices exist only while the disclosure is open. */
+.ps-explore-dismiss { position: relative; }
+.ps-explore-dismiss > .ps-explore-dismiss-toggle { list-style: none; }
+.ps-explore-dismiss > .ps-explore-dismiss-toggle::-webkit-details-marker { display: none; }
+.ps-explore-dismiss > .ps-explore-dismiss-toggle::after { content: '⌄'; margin-left: 6px; }
+.ps-explore-choices {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 5;
+  width: 246px; max-width: 75vw; padding: 4px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: 0 4px 16px #0002;
+}
+.ps-explore-choices .ps-explore-control {
+  display: block; width: 100%; padding: 8px;
+  border: 0; text-align: left; white-space: normal;
+}
+
+.ps-explore-status { margin: 8px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
+.ps-explore-status:empty { display: none; }
+.ps-explore-item.is-unresolved .ps-explore-status { color: var(--color-danger); }
+
+.ps-explore :focus-visible { outline: 2px solid var(--explore-blue); outline-offset: 3px; }
+.ps-explore [hidden] { display: none !important; }
+
+@media (max-width: 520px) {
+  .ps-explore-row-head { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .ps-explore-actions { width: 100%; }
+  /* On a phone the toggle sits near the left edge, so a floating panel anchored
+     to it runs off the side of the card. Drop out of the overlay entirely and let
+     the reasons take the full row width instead — same disclosure, no overflow. */
+  .ps-explore-dismiss { position: static; }
+  /* Closed, it sits beside Accept. Opened, it claims the row so the reasons can
+     use the full width beneath both controls. */
+  .ps-explore-dismiss[open] { width: 100%; }
+  .ps-explore-dismiss > .ps-explore-dismiss-toggle { width: fit-content; }
+  .ps-explore-choices {
+    position: static; width: 100%; max-width: 100%;
+    margin-top: 6px; box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-explore *, .ps-explore *::after { transition: none !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PROOF SCAN v2 (pages/proof-scan-v2/). The approved v2 Lab stylesheet
+   (Anobe/proof-scan-lab/ui-lab-v2/v2-lab.css), scoped to .ps2 so the old
+   checker is untouched, with its fixed colours mapped to portal tokens so
+   light, dark and every theme work: document types use --color-info (EAD) and
+   --intake (intake); people and Possible issues use --horizon (violet).
+   ══════════════════════════════════════════════════════════════════════════ */
+.ps2 [hidden] { display: none !important; }
+.ps2 .v2-hint { color: var(--ink-soft); font-size: var(--text-sm); line-height: 1.55; margin: 0 0 var(--space-3); max-width: 70ch; }
+.ps2 .v2-stage-intro { margin-bottom: var(--space-4); }
+.ps2 .v2-link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--color-primary);
+}
+.ps2 .v2-link:hover { text-decoration: underline; }
+.ps2 .v2-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+/* ── Entry: case type, then stage ─────────────────────────────────────────── */
+.ps2 .v2-stage-pick { border: 0; margin: 0; padding: 0; min-width: 0; }
+.ps2 .v2-stage-pick legend { font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); padding: 0; }
+.ps2 .v2-stage-pick[disabled] { opacity: .55; }
+.ps2 .v2-stage-pick[disabled] .v2-stage-option { cursor: not-allowed; }
+.ps2 .v2-stage-options {
+  display: grid; gap: var(--space-2);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: var(--space-2);
+}
+.ps2 .v2-stage-option { cursor: pointer; display: block; position: relative; }
+.ps2 .v2-stage-option input { position: absolute; opacity: 0; pointer-events: none; }
+.ps2 .v2-stage-option-body {
+  display: flex; gap: var(--space-2); align-items: flex-start; height: 100%;
+  padding: var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface);
+  transition: border-color .14s ease, background-color .14s ease;
+}
+.ps2 .v2-stage-option:hover .v2-stage-option-body { border-color: var(--color-primary); }
+.ps2 .v2-stage-option input:focus-visible + .v2-stage-option-body { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-stage-option input:checked + .v2-stage-option-body {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--surface));
+}
+.ps2 .v2-stage-num {
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; background: var(--line); color: var(--ink-soft);
+}
+.ps2 .v2-stage-option input:checked + .v2-stage-option-body .v2-stage-num { background: var(--color-primary); color: var(--paper); }
+.ps2 .v2-stage-name { display: block; font-weight: 600; font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-stage-desc { display: block; font-size: 12px; color: var(--ink-soft); line-height: 1.4; margin-top: 2px; }
+@media (max-width: 900px) {
+.ps2 .v2-stage-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+.ps2 .v2-stage-options { grid-template-columns: 1fr; }
+}
+.ps2 .v2-stage-in { animation: psr-in .3s ease both; }
+@media (prefers-reduced-motion: reduce) {
+.ps2 .v2-stage-in { animation: none; }
+}
+/* ── Open-question placeholders: visible, labelled, never a guess ─────────── */
+.ps2 .v2-open {
+  display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6px;
+  font-size: 12px; color: var(--ink-soft);
+  border: 1px dashed var(--line-strong); border-radius: 999px;
+  padding: 2px 10px;
+}
+.ps2 .v2-open-q {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+  font-weight: 600; color: var(--ink);
+}
+.ps2 .v2-banner {
+  border: 1px dashed var(--line-strong); border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3); margin-bottom: var(--space-4);
+  font-size: var(--text-sm); font-weight: 600; color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+/* ── Sample pickers (stand-ins for uploads) ───────────────────────────────── */
+.ps2 .v2-add {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--line-strong); border-radius: var(--radius);
+}
+.ps2 .v2-add-label { font-size: var(--text-sm); color: var(--ink-soft); margin-right: var(--space-1); }
+.ps2 .v2-add-note { font-size: 12px; color: var(--ink-faint); margin-left: auto; }
+.ps2 .v2-add .btn[aria-pressed='true'] { border-color: var(--color-primary); color: var(--color-primary); }
+.ps2 .v2-inline-select { width: auto; min-width: 150px; }
+.ps2 .v2-quiet-note { font-size: var(--text-sm); color: var(--ink-soft); margin: 0 0 var(--space-3); }
+/* ── Evidence Zero documents ──────────────────────────────────────────────── */
+.ps2 .v2-doc-list { display: grid; gap: var(--space-3); }
+.ps2 .v2-doc {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4); background: var(--surface);
+}
+.ps2 .v2-doc--review { border-style: dashed; border-color: var(--line-strong); }
+.ps2 .v2-doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
+.ps2 .v2-doc-type { font-weight: 600; color: var(--ink); font-size: var(--text-sm); }
+.ps2 .v2-doc-file { font-size: 12px; color: var(--ink-faint); overflow-wrap: anywhere; }
+.ps2 .v2-doc-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.ps2 .v2-tag {
+  font-size: 11px; padding: 1px 8px; border-radius: 999px; white-space: nowrap;
+  background: var(--line); color: var(--ink-soft);
+}
+.ps2 .v2-tag--review { background: transparent; border: 1px dashed var(--line-strong); color: var(--ink); }
+.ps2 .v2-tag--future { background: transparent; border: 1px solid var(--line-strong); }
+.ps2 .v2-doc-facts {
+  display: grid; gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  padding: var(--space-3) 0; margin-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+.ps2 .v2-fact-uncertain { color: var(--ink-soft); font-weight: 400; font-style: italic; }
+.ps2 .v2-doc-review-note { font-size: var(--text-sm); color: var(--ink); margin: 0 0 var(--space-3); max-width: 70ch; line-height: 1.5; }
+.ps2 .v2-doc-foot { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+/* ── Reference record ─────────────────────────────────────────────────────── */
+.ps2 .v2-ref-status { margin-left: var(--space-3); font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.ps2 .v2-ref-group { border: 0; margin: 0 0 var(--space-4); padding: 0; min-width: 0; }
+.ps2 .v2-ref-group legend {
+  font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-faint); padding: 0; margin-bottom: var(--space-2);
+}
+.ps2 .v2-ref-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.ps2 .v2-ref-group--address .v2-ref-field--street { grid-column: span 2; }
+.ps2 .v2-ref-field { min-width: 0; }
+.ps2 .v2-ref-label { display: block; font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.ps2 .v2-ref-label-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 4px; }
+.ps2 .v2-ref-label-row .v2-ref-label { margin: 0; }
+.ps2 .v2-input {
+  width: 100%; box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink); font: inherit; font-size: var(--text-sm);
+}
+.ps2 .v2-input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.ps2 .v2-input:disabled { opacity: .55; }
+.ps2 .v2-textarea { resize: vertical; line-height: 1.5; }
+.ps2 .v2-ref-source { font-size: 11px; color: var(--ink-faint); margin-top: 3px; }
+.ps2 .v2-ssn-line { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ps2 .v2-ssn-mask { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-soft); }
+.ps2 .v2-input--ssn { width: 100%; }
+.ps2 .v2-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--ink); cursor: pointer; }
+.ps2 .v2-proposal {
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.ps2 .v2-proposal-text { font-size: 12px; color: var(--ink); margin-bottom: var(--space-2); }
+.ps2 .v2-proposal-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.ps2 .v2-proposal-actions .btn { font-size: 12px; padding: 4px 10px; }
+.ps2 .v2-ref-bar { margin-top: var(--space-2); }
+.ps2 .v2-expected-state { text-align: right; white-space: nowrap; color: var(--ink-soft); font-size: 12px; }
+/* ── Review scope ─────────────────────────────────────────────────────────── */
+.ps2 .v2-scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); max-width: 720px; }
+.ps2 .v2-scope-btn {
+  text-align: left; cursor: pointer; font: inherit;
+  padding: var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink);
+}
+.ps2 .v2-scope-btn:hover { border-color: var(--color-primary); }
+.ps2 .v2-scope-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-scope-btn[aria-pressed='true'] { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 7%, var(--surface)); }
+.ps2 .v2-scope-name { display: block; font-weight: 600; font-size: var(--text-sm); }
+.ps2 .v2-scope-desc { display: block; font-size: 12px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+@media (max-width: 520px) {
+.ps2 .v2-scope { grid-template-columns: 1fr; }
+}
+.ps2 .v2-ready { margin-bottom: var(--space-3); padding: var(--space-2) 0; }
+.ps2 .v2-ready-title { font-size: var(--text-sm); font-weight: 600; color: var(--ink); margin-bottom: var(--space-2); }
+/* ── Review result additions ──────────────────────────────────────────────── */
+.ps2 .psr-verdict--incomplete { color: var(--ink); }
+.ps2 .v2-reminder { font-size: 12px; color: var(--ink-soft); margin: calc(var(--space-3) * -1) 0 var(--space-4); }
+.ps2 .dk-sec > .v2-reminder { margin: var(--space-2) 0 var(--space-3); }
+.ps2 .v2-block-note { font-size: 12px; color: var(--ink-faint); margin: 0 0 var(--space-2); max-width: 76ch; }
+.ps2 .v2-block-empty { font-size: var(--text-sm); color: var(--ink-faint); margin: 0; }
+.ps2 .v2-result .psr-notice-body .v2-link { margin-top: 6px; }
+/* Needs info and awareness rows: quiet on purpose (D-47). No warning colour. */
+.ps2 .v2-info-row {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  font-size: var(--text-sm); color: var(--ink-soft);
+  padding: 3px var(--space-2); border-radius: 999px;
+}
+.ps2 .v2-info-row strong { font-weight: 600; color: var(--ink); }
+.ps2 .v2-info-mark { width: 1em; flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--ink-faint); text-align: center; }
+.ps2 .v2-needs-info > .v2-link,
+.ps2 .v2-notifications > .v2-link { margin: 4px 0 0 var(--space-2); }
+.ps2 .v2-check--pending,
+.ps2 .v2-check--na,
+.ps2 .v2-check--unmapped { color: var(--ink-soft); }
+.ps2 .v2-check--pending .psr-check-mark,
+.ps2 .v2-check--na .psr-check-mark,
+.ps2 .v2-check--unmapped .psr-check-mark { color: var(--ink-faint); }
+.ps2 .psr-fold-body > .v2-open { margin: 2px 0 6px; }
+/* ── Suggest as a future rule ─────────────────────────────────────────────── */
+.ps2 .v2-suggest {
+  margin-top: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface);
+  display: grid; gap: var(--space-2);
+}
+.ps2 .v2-suggest-scope { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.ps2 .v2-suggest-scope legend { width: 100%; }
+.ps2 .v2-suggest-scope .v2-hint { width: 100%; margin: 0; font-size: 12px; }
+.ps2 .v2-suggest .v2-hint { margin: 0; font-size: 12px; }
+/* ── Email preview ────────────────────────────────────────────────────────── */
+.ps2 .v2-email { margin-top: var(--space-3); }
+.ps2 .v2-email .v2-hint { margin: 4px 0 var(--space-2); font-size: 12px; }
+.ps2 .v2-email-preview {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4); background: var(--surface); max-width: 640px;
+}
+.ps2 .v2-email-flag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: var(--space-2); }
+.ps2 .v2-email-body { border-top: 1px solid var(--line); margin-top: var(--space-2); padding-top: var(--space-2); font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-email-body p { margin: 0 0 6px; }
+.ps2 .v2-email-link { color: var(--color-primary); overflow-wrap: anywhere; }
+/* ── Rulebook ─────────────────────────────────────────────────────────────── */
+.ps2 .v2-rule {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4);
+  padding: var(--space-2) 0; border-top: 1px solid var(--line);
+}
+.ps2 .v2-rule:last-child { border-bottom: 1px solid var(--line); }
+.ps2 .v2-rule-main { min-width: 0; }
+.ps2 .v2-rule-title { font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-rule-where { font-size: 12px; color: var(--ink-faint); margin-top: 1px; }
+.ps2 .v2-rule-meta { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; max-width: 50%; }
+.ps2 .v2-rule-origin { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.ps2 .dk-sec-head .psr-count { margin-left: var(--space-2); }
+@media (max-width: 620px) {
+.ps2 .v2-rule { flex-direction: column; gap: 4px; }
+.ps2 .v2-rule-meta { justify-content: flex-start; max-width: none; }
+}
+/* A-Number: the A- is fixed format, not editable text. */
+.ps2 .v2-affix {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface);
+}
+.ps2 .v2-affix:focus-within { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.ps2 .v2-affix-prefix {
+  display: flex; align-items: center; padding: 0 0 0 var(--space-3);
+  color: var(--ink-soft); font-size: var(--text-sm); user-select: none;
+}
+.ps2 .v2-affix .v2-input { border: 0; padding-left: 2px; }
+.ps2 .v2-affix .v2-input:focus-visible { outline: 0; }
+/* ── Rulebook: add a rule (Max 2026-10-02) ────────────────────────────────── */
+.ps2 .v2-addrule-form { display: grid; gap: var(--space-3); max-width: 760px; }
+.ps2 .v2-addrule-field { display: block; min-width: 0; }
+.ps2 .v2-addrule-grid { display: grid; gap: var(--space-3); grid-template-columns: 2fr 1fr 1fr 2fr; }
+@media (max-width: 700px) {
+.ps2 .v2-addrule-grid { grid-template-columns: 1fr 1fr; }
+}
+/* ── Pre-flight: client corrections (Max 2026-10-02) ──────────────────────── */
+.ps2 .v2-corr-add { margin-top: var(--space-3); }
+.ps2 .v2-corr-files { font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-corr { display: flex; align-items: baseline; gap: var(--space-2); padding: 6px 0; border-top: 1px solid var(--line); }
+.ps2 .v2-corr:first-of-type { border-top: 0; }
+.ps2 .v2-corr-mark { width: 1.2em; flex: 0 0 auto; text-align: center; font-weight: 700; }
+.ps2 .v2-corr .psr-check-text { flex: 1 1 auto; }
+.ps2 .v2-corr-tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.ps2 .v2-corr--fixed .v2-corr-mark,
+.ps2 .v2-corr--fixed .v2-corr-tag { color: var(--color-success); }
+.ps2 .v2-corr--fixed .v2-corr-tag { background: var(--color-success-bg); }
+.ps2 .v2-corr--not_fixed .v2-corr-mark,
+.ps2 .v2-corr--differs .v2-corr-mark,
+.ps2 .v2-corr--not_fixed .v2-corr-tag,
+.ps2 .v2-corr--differs .v2-corr-tag { color: var(--color-warning); }
+.ps2 .v2-corr--not_fixed .v2-corr-tag,
+.ps2 .v2-corr--differs .v2-corr-tag { background: var(--color-warning-bg); }
+.ps2 .v2-corr--unclear .v2-corr-mark { color: var(--ink-faint); }
+.ps2 .v2-corr--unclear .v2-corr-tag { color: var(--ink-soft); border: 1px dashed var(--line-strong); }
+.ps2 .v2-corr-sent { margin-top: var(--space-2); }
+.ps2 .v2-corr--not_carried .v2-corr-mark,
+.ps2 .v2-corr--not_carried .v2-corr-tag { color: var(--color-warning); }
+.ps2 .v2-corr--not_carried .v2-corr-tag { background: var(--color-warning-bg); }
+.ps2 .v2-corr--omitted_ok .v2-corr-mark { color: var(--ink-faint); }
+.ps2 .v2-corr--omitted_ok .v2-corr-tag { color: var(--ink-soft); background: transparent; border: 1px solid var(--line); }
+.ps2 .v2-doc-typefix { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--ink-soft); }
+.ps2 .v2-doc-typefix .v2-input { width: auto; padding: 2px var(--space-2); }
+.ps2 .v2-corr--no_page .v2-corr-mark,
+.ps2 .v2-corr--no_page .v2-corr-tag { color: var(--color-warning); }
+.ps2 .v2-corr--no_page .v2-corr-tag { background: var(--color-warning-bg); }
+.ps2 .v2-gate-note { font-size: 12px; color: var(--color-warning); font-weight: 600; }
+.ps2 .v2-noead { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+.ps2 .v2-noead-warn { font-size: 12px; color: var(--ink-soft); }
+/* ── Start: case type, then Start (Max 2026-10-02) ────────────────────────── */
+.ps2 .v2-start-label { display: block; font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); }
+.ps2 .v2-start-row { display: flex; gap: var(--space-2); align-items: stretch; max-width: 520px; }
+.ps2 .v2-start-row .ps-select { flex: 1 1 auto; min-width: 0; }
+.ps2 .v2-start .v2-hint { margin-top: var(--space-2); }
+.ps2 .v2-reset { margin-right: var(--space-3); font-size: 12px; }
+/* ── Case header: case type, tracker, summary, in one card ────────────────── */
+.ps2 .v2-case {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4) var(--space-5) var(--space-3);
+  margin: 0 0 var(--space-5);
+}
+.ps2 .v2-case-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.ps2 .v2-case-type { display: flex; align-items: baseline; gap: var(--space-2); }
+.ps2 .v2-case-type-k { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.ps2 .v2-case-type-v { font-size: var(--text-base); font-weight: 600; color: var(--ink); }
+.ps2 .v2-case-tags { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.ps2 .v2-pill { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.ps2 .v2-pill--ok { color: var(--color-success); background: var(--color-success-bg); }
+.ps2 .v2-pill--muted { color: var(--ink-soft); background: color-mix(in srgb, var(--ink-faint) 14%, transparent); }
+.ps2 .v2-pill--warn { color: var(--color-warning); background: var(--color-warning-bg); }
+.ps2 .v2-stages-locked { margin: 0 0 var(--space-3); text-align: center; font-size: 12px; color: var(--ink-soft); }
+.ps2 .v2-summary { border-top: 1px solid var(--line); padding-top: var(--space-2); }
+.ps2 .v2-summary .psr-summary-strip { padding-bottom: var(--space-2); }
+.ps2 .v2-summary .psr-client-details { border-bottom: 0; margin-bottom: 0; padding-bottom: var(--space-1); }
+.ps2 .v2-summary-empty { margin: var(--space-3) 0; font-size: var(--text-sm); color: var(--ink-faint); }
+/* ── Tracker: dots in a row, joined by a line through their centres; labels
+      sit underneath so the line never crosses text. ─────────────────────── */
+.ps2 .v2-tracker { margin: var(--space-4) 0 var(--space-3); }
+.ps2 .v2-track { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ps2 .v2-step { position: relative; display: flex; justify-content: center; }
+.ps2 .v2-step:not(:last-child)::after {
+  content: ''; position: absolute; z-index: 0;
+  top: 17px; left: calc(50% + 24px); right: calc(-50% + 24px);
+  height: 2px; border-radius: 2px; background: var(--line-strong);
+  transition: background-color .3s ease;
+}
+.ps2 .v2-step--done:not(:last-child)::after { background: var(--color-success); }
+.ps2 .v2-step-btn {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 0 var(--space-2) 2px; max-width: 100%;
+  background: none; border: 0; border-radius: var(--radius-md);
+  font: inherit; color: inherit; cursor: pointer; text-align: center;
+}
+.ps2 .v2-step-btn:disabled { cursor: default; }
+.ps2 .v2-step-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.ps2 .v2-step-btn:hover:not(:disabled) .v2-step-name { color: var(--color-primary); }
+.ps2 .v2-step-dot {
+  width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 700; line-height: 1;
+  background: var(--surface); color: var(--ink-soft);
+  border: 2px solid var(--line-strong);
+  transition: background-color .25s ease, border-color .25s ease, color .25s ease, box-shadow .25s ease;
+}
+.ps2 .v2-step-dot svg { width: 16px; height: 16px; display: block; }
+.ps2 .v2-step-name { font-size: var(--text-sm); font-weight: 600; color: var(--ink); white-space: nowrap; transition: color .15s ease; }
+.ps2 .v2-step-status { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
+.ps2 .v2-step--done .v2-step-dot { background: var(--color-success); border-color: var(--color-success); color: var(--on-acc); }
+.ps2 .v2-step--done .v2-step-status { color: var(--color-success); }
+.ps2 .v2-step--attention .v2-step-dot { background: var(--color-warning-bg); border-color: var(--color-warning); color: var(--color-warning); }
+.ps2 .v2-step--attention .v2-step-status { color: var(--color-warning); }
+.ps2 .v2-step--locked .v2-step-dot { color: var(--ink-faint); border-color: var(--line); background: transparent; }
+.ps2 .v2-step--locked .v2-step-name { color: var(--ink-faint); font-weight: 500; }
+.ps2 .v2-step--optional .v2-step-dot { border-style: dashed; }
+.ps2 .v2-step--current .v2-step-dot {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+.ps2 .v2-step--current.v2-step--todo .v2-step-dot { background: var(--color-primary); color: var(--color-primary-text); border-style: solid; }
+.ps2 .v2-step--current .v2-step-status { color: var(--color-primary); font-weight: 600; }
+/* ── Stage choice cards ───────────────────────────────────────────────────── */
+.ps2 .v2-stage-cards { display: grid; gap: var(--space-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ps2 .v2-stage-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left;
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+  font: inherit; color: inherit; cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.ps2 .v2-stage-card:hover { border-color: var(--color-primary); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.ps2 .v2-stage-card:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-stage-card-top { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 4px; }
+.ps2 .v2-stage-card .v2-step-dot { width: 28px; height: 28px; font-size: 12px; }
+.ps2 .v2-stage-card .v2-step-dot svg { width: 14px; height: 14px; }
+.ps2 .v2-stage-card-status { font-size: 11px; color: var(--ink-faint); }
+.ps2 .v2-stage-card--done .v2-step-dot { background: var(--color-success); border-color: var(--color-success); color: var(--on-acc); }
+.ps2 .v2-stage-card--done .v2-stage-card-status { color: var(--color-success); }
+.ps2 .v2-stage-card--attention .v2-step-dot { background: var(--color-warning-bg); border-color: var(--color-warning); color: var(--color-warning); }
+.ps2 .v2-stage-card--attention .v2-stage-card-status { color: var(--color-warning); }
+.ps2 .v2-stage-card .v2-stage-name { font-size: var(--text-base); }
+@media (max-width: 820px) {
+.ps2 .v2-case { padding: var(--space-3); }
+.ps2 .v2-step-status { display: none; }
+.ps2 .v2-step-name { font-size: 12px; white-space: normal; }
+.ps2 .v2-stage-cards { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+.ps2 .v2-step-dot,
+.ps2 .v2-step:not(:last-child)::after,
+.ps2 .v2-stage-card { transition: none; }
+}
+/* Max 2026-10-02: the portal's primary button put white text on a light blue in dark
+   mode. Use the portal's own on-accent text colour so the label reads. */
+.ps2 .btn--primary { color: var(--color-primary-text); }
+/* ── 1.2 interaction pieces in v2 (Max 2026-10-02) ────────────────────────────
+   .ps-drop, .ps-scan-btn and the ps-file-land / ps-report-unseal keyframes come
+   from the portal's own portal.css. These rules only fit them to v2. */
+.ps2 .v2-drop { margin-bottom: var(--space-3); padding: var(--space-6) var(--space-4); }
+.ps2 .v2-drop .ps-drop-icon { transition: color .2s ease, transform .3s cubic-bezier(.34,1.56,.64,1); }
+.ps2 .v2-drop:hover .ps-drop-icon { transform: translateY(-2px); }
+.ps2 .v2-drop-choices { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
+.ps2 .v2-drop-choices .btn[aria-pressed="true"] { border-color: var(--color-success); color: var(--color-success); }
+.ps2 .v2-drop-note { margin: var(--space-3) 0 0; font-size: 11px; color: var(--ink-faint); }
+.ps2 .v2-drop--secondary { padding: var(--space-4); }
+.ps2 .v2-drop--secondary .ps-drop-icon { width: 28px; height: 28px; margin-bottom: var(--space-2); }
+.ps2 .v2-drop--secondary .v2-link { margin-top: var(--space-2); }
+/* Evidence Zero: the zone lands green for a moment, then settles back. */
+.ps2 .v2-drop.is-landed {
+  border-color: var(--color-success); border-style: solid;
+  animation: ps-file-land .34s cubic-bezier(.34,1.56,.64,1) both;
+}
+.ps2 .v2-drop.is-landed .ps-drop-icon { color: var(--color-success); }
+.ps2 .v2-drop.is-landed::after {
+  content: '✓'; position: absolute; top: var(--space-3); right: var(--space-3);
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--color-success); color: var(--on-acc); border: 3px solid var(--surface);
+  font-size: 12px; font-weight: 700;
+}
+.ps2 .v2-form-pick { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.ps2 details.v2-ready { margin: 0 0 var(--space-3); }
+.ps2 details.v2-ready > summary { cursor: pointer; font-size: 12px; color: var(--ink-soft); list-style: none; }
+.ps2 details.v2-ready > summary::before { content: '▸ '; color: var(--ink-faint); }
+.ps2 details.v2-ready[open] > summary::before { content: '▾ '; }
+/* A new document card arrives; the fields it filled glow once. */
+.ps2 .v2-doc--new { animation: ps2-v2-doc-in .45s cubic-bezier(.34,1.56,.64,1) both; }
+@keyframes ps2-v2-doc-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+.ps2 .v2-ref-field--filled .v2-input,
+.ps2 .v2-ref-field--filled .v2-affix { animation: ps2-v2-filled 1.6s ease both; }
+@keyframes ps2-v2-filled {
+  0%   { border-color: var(--color-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 30%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+/* The report unseals, as in 1.2. */
+.ps2 .v2-reveal { animation: ps-report-unseal .42s cubic-bezier(.2,.8,.2,1) both; }
+/* ── Stage sign-off ───────────────────────────────────────────────────────── */
+.ps2 .v2-signoff {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
+  margin: var(--space-4) 0; padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg); border: 1px solid var(--line); background: var(--surface);
+  transition: background-color .25s ease, border-color .25s ease;
+}
+.ps2 .v2-signoff.is-on { border-color: color-mix(in srgb, var(--color-success) 45%, transparent); background: color-mix(in srgb, var(--color-success) 8%, var(--surface)); }
+.ps2 .v2-signoff-label { display: flex; align-items: center; gap: var(--space-3); cursor: pointer; }
+.ps2 .v2-signoff-input { position: absolute; opacity: 0; pointer-events: none; }
+.ps2 .v2-signoff-box {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 7px;
+  display: grid; place-items: center;
+  border: 2px solid var(--line-strong); color: transparent; background: var(--surface);
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+.ps2 .v2-signoff-box svg { width: 15px; height: 15px; }
+.ps2 .v2-signoff-input:focus-visible + .v2-signoff-box { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-signoff.is-on .v2-signoff-box { background: var(--color-success); border-color: var(--color-success); color: var(--on-acc); transform: scale(1.06); }
+.ps2 .v2-signoff-words { display: flex; flex-direction: column; }
+.ps2 .v2-signoff-title { font-size: var(--text-sm); font-weight: 600; color: var(--ink); }
+.ps2 .v2-signoff.is-on .v2-signoff-title { color: var(--color-success); }
+.ps2 .v2-signoff-sub { font-size: 12px; color: var(--ink-faint); }
+.ps2 .v2-signoff-next { display: flex; gap: var(--space-2); }
+/* Rulebook: one heading per form, rows carry only what differs. */
+.ps2 .v2-rule-group {
+  margin: var(--space-4) 0 var(--space-1); font-size: 11px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint);
+}
+.ps2 .v2-rule-tag { flex: 0 0 auto; align-self: center; }
+@media (prefers-reduced-motion: reduce) {
+.ps2 .v2-drop.is-landed,
+.ps2 .v2-doc--new,
+.ps2 .v2-reveal,
+.ps2 .v2-ref-field--filled .v2-input,
+.ps2 .v2-ref-field--filled .v2-affix { animation: none; }
+.ps2 .v2-signoff,
+.ps2 .v2-signoff-box,
+.ps2 .v2-drop .ps-drop-icon { transition: none; }
+}
+/* ── Uploaded files, inside the drop zone (Max 2026-10-02) ────────────────── */
+.ps2 .v2-drop.has-files { text-align: left; padding: var(--space-4); }
+.ps2 .v2-drop.has-files > .ps-drop-icon { display: none; }
+.ps2 .v2-drop.has-files > .ps-drop-title { margin-bottom: 0; }
+.ps2 .v2-drop.has-files > .ps-drop-meta { margin-bottom: var(--space-3); }
+.ps2 .v2-files { list-style: none; margin: 0 0 var(--space-2); padding: 0; display: grid; gap: 6px; }
+.ps2 .v2-file {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 8px var(--space-3); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-success) 6%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--color-success) 22%, var(--line));
+  animation: ps2-v2-file-in .32s cubic-bezier(.2,.8,.2,1) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+@keyframes ps2-v2-file-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.ps2 .v2-file-icon { width: 18px; height: 18px; flex: 0 0 auto; color: var(--color-success); }
+.ps2 .v2-file-main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.ps2 .v2-file-name { font-size: var(--text-sm); font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps2 .v2-file-meta { font-size: 11px; color: var(--ink-faint); }
+.ps2 .v2-file-tags { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 60%; }
+.ps2 .v2-file-tag {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+.ps2 .v2-drop.has-files .v2-drop-choices { justify-content: flex-start; }
+.ps2 .v2-btn-sm { padding: 3px 10px; font-size: 12px; min-height: 0; }
+/* Scope toggle: the chosen one is unmistakable. */
+.ps2 .v2-scope-btn[aria-pressed="true"] {
+  border-color: var(--color-primary) !important;
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--surface)) !important;
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+.ps2 .v2-scope-btn[aria-pressed="true"] .v2-scope-name { color: var(--color-primary); }
+/* ── Possible issues: its own violet, never red/amber/green (D-39) ────────── */
+.ps2 .ps-explore {
+  --pi: var(--horizon); --pi-2: color-mix(in srgb, var(--horizon) 65%, var(--color-info)); --pi-ink: color-mix(in srgb, var(--horizon) 82%, var(--ink));
+  border-color: color-mix(in srgb, var(--pi) 30%, var(--line));
+  background: color-mix(in srgb, var(--pi) 3%, var(--surface));
+  border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm);
+}
+.ps2 .ps-explore > summary,
+.ps2 .ps-explore > summary:hover {
+  background: linear-gradient(100deg, color-mix(in srgb, var(--pi) 20%, transparent), color-mix(in srgb, var(--pi-2) 10%, transparent));
+}
+.ps2 .ps-explore > summary::before {
+  content: ''; width: 18px; height: 18px; flex: 0 0 auto; background: var(--pi-ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6z'/%3E%3Cpath d='M19 14l.9 2.6L22 17.5l-2.1.9L19 21l-.9-2.6L16 17.5l2.1-.9z'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6z'/%3E%3Cpath d='M19 14l.9 2.6L22 17.5l-2.1.9L19 21l-.9-2.6L16 17.5l2.1-.9z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.ps2 .ps-explore-count { color: var(--on-acc) !important; background: linear-gradient(135deg, var(--pi), var(--pi-2)) !important; border-radius: 999px; }
+.ps2 .ps-explore article { position: relative; padding-left: 24px; }
+.ps2 .ps-explore article::before {
+  content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0;
+  background: linear-gradient(var(--pi), var(--pi-2));
+}
+.ps2 .ps-explore article:hover { background: color-mix(in srgb, var(--pi) 5%, transparent); }
+.ps2 .ps-explore .ps-explore-accept { color: var(--on-acc); background: var(--pi); border-color: var(--pi); }
+.ps2 .ps-explore .ps-explore-accept:hover:not(:disabled) { background: var(--pi-ink); border-color: var(--pi-ink); color: var(--on-acc); }
+.ps2 .ps-explore-source { color: var(--pi-ink) !important; }
+.ps2 .ps-explore pre { border-left-color: var(--pi) !important; background: color-mix(in srgb, var(--pi) 7%, transparent); }
+.ps2 .ps-explore-item.is-reviewed { background: color-mix(in srgb, var(--pi) 6%, transparent); }
+.ps2 .ps-explore-item.is-reviewed::before { opacity: .45; }
+.ps2 .ps-explore .ps-explore-note[role='status'] { color: var(--pi-ink); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+.ps2 .v2-file { animation: none; }
+}
+.ps2 .v2-ref-field--email { grid-column: span 2; }
+/* Rulebook: edit in place. */
+.ps2 .v2-rule-edit { flex: 0 0 auto; align-self: center; opacity: .55; transition: opacity .15s ease; }
+.ps2 .v2-rule:hover .v2-rule-edit,
+.ps2 .v2-rule-edit:focus-visible { opacity: 1; }
+.ps2 .v2-rule--editing { display: block; padding: var(--space-3); margin: 4px 0; border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--surface)); border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--line)); }
+.ps2 .v2-addrule-grid--3 { grid-template-columns: 2fr 1fr 1fr; }
+/* ── Visual pass 2 (Max 2026-10-02): colour that carries meaning ──────────── */
+/* Document types: EAD blue, intake teal, anything else slate. */
+.ps2 .v2-doc { --doc: var(--ink-faint); position: relative; overflow: hidden; }
+.ps2 .v2-doc[data-type="ead"] { --doc: var(--color-info); }
+.ps2 .v2-doc[data-type="intake"] { --doc: var(--intake); }
+.ps2 .v2-doc::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--doc); }
+.ps2 .v2-doc--review::before { background: repeating-linear-gradient(var(--doc) 0 6px, transparent 6px 10px); }
+.ps2 .v2-doc-head { align-items: center; }
+.ps2 .v2-doc-tile {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+  color: var(--doc); background: color-mix(in srgb, var(--doc) 13%, transparent);
+}
+.ps2 .v2-doc-tile svg { width: 22px; height: 22px; }
+.ps2 .v2-doc-titles { flex: 1 1 auto; min-width: 0; }
+.ps2 .v2-doc-type { color: var(--ink); }
+.ps2 .v2-doc-tags .v2-tag--review { color: var(--color-warning); background: var(--color-warning-bg); border: 0; }
+/* Where each value came from: a small coloured dot before the source line. */
+.ps2 .v2-ref-source::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 6px; vertical-align: 1px; background: var(--line-strong);
+}
+.ps2 .v2-src--ead::before { background: var(--color-info); }
+.ps2 .v2-src--intake::before { background: var(--intake); }
+.ps2 .v2-src--doc::before { background: var(--ink-faint); }
+.ps2 .v2-src--staff::before { background: var(--color-primary); box-shadow: inset 0 0 0 2px var(--surface); border: 1px solid var(--color-primary); }
+.ps2 .v2-src--none::before { background: transparent; border: 1px dashed var(--ink-faint); }
+/* Selects line up with the inputs beside them. */
+.ps2 select.v2-input { height: 42.5px; padding-top: 0; padding-bottom: 0; }
+.ps2 .v2-ref-grid .v2-input,
+.ps2 .v2-affix { min-height: 42.5px; }
+/* A suggested change reads as "old → new". */
+.ps2 .v2-proposal {
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--line)) !important;
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--surface)) !important;
+  border-radius: var(--radius-md);
+}
+.ps2 .v2-proposal-from { font-size: 11px; font-weight: 600; color: var(--color-primary); margin-bottom: 4px; }
+.ps2 .v2-proposal-swap { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-bottom: var(--space-2); font-size: var(--text-sm); }
+.ps2 .v2-proposal-old { color: var(--ink-faint); text-decoration: line-through; }
+.ps2 .v2-proposal-arrow { color: var(--color-primary); font-weight: 700; }
+.ps2 .v2-proposal-new { color: var(--ink); font-weight: 600; }
+/* Needs info, please confirm, for awareness: each its own soft colour. */
+.ps2 .v2-needs-info,
+.ps2 .v2-confirm,
+.ps2 .v2-notifications {
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-3) var(--space-2);
+  margin-top: var(--space-3);
+}
+.ps2 .v2-needs-info { background: color-mix(in srgb, var(--ink-faint) 9%, transparent); }
+.ps2 .v2-confirm { background: color-mix(in srgb, var(--color-info) 9%, transparent); }
+.ps2 .v2-notifications { background: color-mix(in srgb, var(--color-info) 6%, transparent); }
+.ps2 .v2-info-mark {
+  width: 18px !important; height: 18px; border-radius: 50%; display: inline-grid !important; place-items: center;
+  font-size: 11px !important; flex: 0 0 auto;
+}
+.ps2 .v2-needs-info .v2-info-mark { background: color-mix(in srgb, var(--ink-faint) 22%, transparent); color: var(--ink-soft); }
+.ps2 .v2-confirm .v2-info-mark,
+.ps2 .v2-notifications .v2-info-mark { background: color-mix(in srgb, var(--color-info) 18%, transparent); color: var(--color-info); }
+/* The email preview looks like an email. */
+.ps2 .v2-email-preview { border-radius: var(--radius-lg) !important; overflow: hidden; padding: 0 !important; box-shadow: var(--shadow-sm); }
+.ps2 .v2-email-bar {
+  display: flex; align-items: center; gap: var(--space-2); padding: 8px var(--space-3);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--surface)); color: var(--color-primary);
+}
+.ps2 .v2-email-bar svg { width: 18px; height: 18px; }
+.ps2 .v2-email-bar .v2-email-flag { margin: 0; color: var(--color-primary); }
+.ps2 .v2-email-preview > .psr-nf { padding: 4px var(--space-3); }
+.ps2 .v2-email-body { margin: var(--space-2) var(--space-3) var(--space-3) !important; }
+.ps2 .v2-doc-typefix select.v2-input { height: 28px; min-height: 0; font-size: 12px; }
+/* SSN: hidden by default, one eye toggle (Max 2026-10-06). */
+.ps2 .v2-ssn { display: inline-flex; align-items: center; gap: 6px; }
+.ps2 .v2-ssn-text { font-variant-numeric: tabular-nums; }
+.ps2 .v2-ssn-eye {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: var(--ink-faint); cursor: pointer;
+}
+.ps2 .v2-ssn-eye:hover { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+.ps2 .v2-ssn-eye:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.ps2 .v2-ssn-eye svg { width: 16px; height: 16px; }
+.ps2 .v2-ssn-input { position: relative; flex: 1 1 auto; }
+.ps2 .v2-ssn-input .v2-input { padding-right: 36px; }
+.ps2 .v2-ssn-input .v2-input[readonly] { color: var(--ink-soft); cursor: default; }
+.ps2 .v2-ssn-eye--field { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+/* ── People on a case (D-94) and General (D-90 to D-95) ───────────────────── */
+.ps2 .v2-case-folder { display: inline-grid; place-items: center; width: 22px; height: 22px; color: var(--color-primary); }
+.ps2 .v2-case-folder svg { width: 18px; height: 18px; }
+.ps2 .v2-case-type { align-items: center; }
+.ps2 .v2-pill--type { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent); }
+.ps2 .v2-pill--role { color: var(--horizon); background: color-mix(in srgb, var(--horizon) 14%, transparent); }
+.ps2 .v2-pill--new { color: var(--color-success); background: var(--color-success-bg); }
+.ps2 .v2-main-role { font-size: 11px; font-weight: 600; color: var(--ink-soft); margin-top: var(--space-2); }
+.ps2 .v2-people { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); padding: var(--space-3) 0 var(--space-2); border-top: 1px solid var(--line); }
+.ps2 .v2-person { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: color-mix(in srgb, var(--horizon) 5%, var(--surface)); border: 1px solid var(--line); }
+.ps2 .v2-person-name { font-weight: 600; font-size: var(--text-sm); color: var(--ink); margin-top: 4px; }
+.ps2 .v2-person-meta,
+.ps2 .v2-person-src { font-size: 11px; color: var(--ink-faint); }
+.ps2 .v2-src--scan::before { background: var(--horizon); }
+.ps2 .v2-role-pick { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.ps2 .v2-role-pick .v2-ref-label { margin: 0; }
+.ps2 .v2-people-edit { display: grid; gap: var(--space-3); }
+.ps2 .v2-person-edit { padding: var(--space-3); border-radius: var(--radius-lg); border: 1px solid var(--line); background: var(--surface); position: relative; overflow: hidden; }
+.ps2 .v2-person-edit::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--horizon); }
+.ps2 .v2-person-edit-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); }
+.ps2 .v2-person-edit-head select.v2-input { height: 32px; width: auto; }
+.ps2 .v2-person-add { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-3); }
+.ps2 .v2-person-add select.v2-input { height: 38px; width: auto; }
+.ps2 .v2-owners { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ps2 .v2-owners-k { font-size: 12px; color: var(--ink-soft); }
+.ps2 .v2-owner-chip {
+  font: inherit; font-size: 12px; padding: 2px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: transparent; color: var(--ink-soft);
+}
+.ps2 .v2-owner-chip.is-on { border-color: var(--horizon); background: color-mix(in srgb, var(--horizon) 14%, transparent); color: var(--ink); font-weight: 600; }
+.ps2 .v2-doc[data-type="birth_certificate"],
+.ps2 .v2-doc[data-type="marriage_certificate"] { --doc: var(--horizon); }
+.ps2 .v2-ps-people-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.ps2 .v2-ps-person { padding: var(--space-3); border-radius: var(--radius-lg); border: 1px solid var(--line); background: color-mix(in srgb, var(--horizon) 4%, var(--surface)); }
+.ps2 .v2-ps-person-top { display: flex; gap: 6px; flex-wrap: wrap; }
+.ps2 .v2-ps-k { margin-top: var(--space-2); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.ps2 .v2-ps-tags { justify-content: flex-start; max-width: none; margin-top: 4px; }
+.ps2 .v2-ps-ev { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: var(--text-sm); }
+.ps2 .v2-ps-ev:last-child { border-bottom: 0; }
+.ps2 .v2-ps-ev-name { flex: 1 1 auto; color: var(--ink); }
+/* ── General: one full case card per person (D-99) ────────────────────────── */
+.ps2 .v2-people-cards { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); padding: var(--space-3) 0 var(--space-2); }
+.ps2 .v2-person-card {
+  position: relative; overflow: hidden; padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg); border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--horizon) 4%, var(--surface));
+}
+.ps2 .v2-person-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--horizon); }
+.ps2 .v2-person-top { display: flex; gap: 6px; flex-wrap: wrap; }
+.ps2 .v2-person-card .v2-person-name { font-size: var(--text-base); margin: 6px 0 var(--space-2); }
+.ps2 .v2-person-facts { display: grid; gap: var(--space-2) var(--space-3); grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.ps2 .v2-person-card .v2-person-src { margin-top: var(--space-2); }
+.ps2 .v2-src--forms::before { background: transparent; border: 1px dashed var(--color-warning); }
+/* ── Evidence matches the forms (D-98) ─────────────────────────────────────── */
+.ps2 .v2-match { border-radius: var(--radius-md); }
+.ps2 .v2-match-row { display: flex; gap: var(--space-2); align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--line); }
+.ps2 .v2-match-row:first-of-type { border-top: 0; }
+.ps2 .v2-match-mark { width: 20px; height: 20px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.ps2 .v2-match-row--ok .v2-match-mark { color: var(--on-acc); background: var(--color-success); }
+.ps2 .v2-match-row--bad .v2-match-mark { color: var(--color-warning); background: var(--color-warning-bg); }
+.ps2 .v2-match-text { font-size: var(--text-sm); color: var(--ink); display: flex; flex-direction: column; }
+.ps2 .v2-match-detail { color: var(--ink-soft); font-size: 12px; }
+.ps2 .v2-match-row--bad .v2-match-detail { color: var(--color-warning); }
+/* ── Portal additions: what the real page has that the Lab did not ───────── */
+.ps2 .v2-tabs { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+.ps2 .v2-tab {
+  font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--ink-soft);
+}
+.ps2 .v2-tab:hover { border-color: var(--color-primary); color: var(--ink); }
+.ps2 .v2-tab.is-on { border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 10%, var(--surface)); }
+.ps2 .v2-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-error {
+  margin: var(--space-2) 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md);
+  font-size: var(--text-sm); color: var(--color-danger); background: var(--color-danger-bg);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+}
+.ps2 .v2-case-back { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+.ps2 .v2-start-name { flex: 1 1 auto; min-width: 0; }
+.ps2 .v2-start-row + .v2-hint { margin-top: var(--space-2); }
+.ps2 .v2-start-label + .v2-start-row { margin-bottom: 0; }
+.ps2 .v2-start .v2-start-label:not(:first-child) { margin-top: var(--space-4); }
+.ps2 .v2-case-list { margin-top: var(--space-3); }
+.ps2 .v2-case-row { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.ps2 .v2-case-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ps2 .v2-file-remove { flex: 0 0 auto; }
+.ps2 .v2-drop.is-busy { opacity: .75; cursor: progress; }
+.ps2 .v2-drop.is-busy .ps-drop-icon { animation: ps2-busy 1.2s ease-in-out infinite; }
+@keyframes ps2-busy { 50% { transform: translateY(-3px); color: var(--color-primary); } }
+.ps2 .v2-corrected { display: inline-flex; }
+.ps2 .v2-run-bar { align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.ps2 .v2-email-hint { font-size: 12px; margin-top: calc(var(--space-2) * -1); }
+.ps2 .v2-ref-error { color: var(--color-danger); }
+.ps2 .v2-person-section .dk-sec-head h2 { text-transform: none; }
+.ps2 .v2-person-edit-head { gap: var(--space-3); flex-wrap: wrap; }
+.ps2 .v2-person-actions { display: flex; align-items: center; gap: var(--space-3); }
+.ps2 .v2-gate {
+  margin-top: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md);
+  border: 1px dashed var(--line-strong); background: color-mix(in srgb, var(--color-warning) 5%, var(--surface));
+}
+.ps2 .v2-gate.is-ready { border-style: solid; border-color: color-mix(in srgb, var(--color-success) 40%, var(--line)); background: color-mix(in srgb, var(--color-success) 6%, var(--surface)); }
+.ps2 .v2-gate-head { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 4px; }
+.ps2 .v2-gate-line { margin: 2px 0; font-size: var(--text-sm); color: var(--ink); }
+.ps2 .v2-gate-missing::before { content: '\2022'; color: var(--color-warning); margin-right: 6px; }
+.ps2 .v2-gate.is-ready .v2-gate-line { color: var(--color-success); }
+.ps2 .psr-check--needs_info .psr-check-mark, .ps2 .psr-check--please_confirm .psr-check-mark { color: var(--color-info); }
+.ps2 .psr-out--needs_info, .ps2 .psr-out--please_confirm { color: var(--ink-soft); }
+.ps2 .v2-pi-facts { margin: 4px 0 var(--space-2); }
+.ps2 .v2-rule-retire { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ps2 .v2-rulebook-type { max-width: 420px; }
+.ps2 .v2-rulebook-version { font-size: 12px; color: var(--ink-faint); }
+.ps2 .v2-not-this-stage { margin-top: var(--space-2); }
+.ps2 .v2-ps-extra { margin-top: var(--space-2); }
+.ps2 .v2-ps-extra .psr-block:first-child { margin-top: var(--space-3); }
+.ps2 .v2-stage-card { width: 100%; }
+.ps2 .v2-corr--check .v2-corr-mark, .ps2 .v2-corr--check .v2-corr-tag { color: var(--color-warning); }
+.ps2 .v2-corr--check .v2-corr-tag { background: var(--color-warning-bg); }
+.ps2 .v2-corr--unreadable .v2-corr-mark { color: var(--ink-faint); }
+.ps2 .v2-corr--unreadable .v2-corr-tag { color: var(--ink-soft); border: 1px dashed var(--line-strong); }
+.ps2 .v2-doc-facts .psr-fact-v { overflow-wrap: anywhere; }
+.ps2 .v2-rule .v2-rule-main { flex: 1 1 auto; }

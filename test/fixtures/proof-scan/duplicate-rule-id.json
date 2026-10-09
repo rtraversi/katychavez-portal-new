@@ -1,0 +1,23 @@
+{
+  "fixture_schema_version": 1,
+  "fixture_id": "duplicate-rule-id",
+  "description": "A complete valid response plus a second result for an expected rule.",
+  "base_response_fixture": "completed-no-issues-found.json",
+  "mutation": {
+    "operation": "append_rule_result",
+    "value": {
+      "rule_id": "DACA-G28-001",
+      "status": "clear",
+      "summary": null,
+      "locations": [],
+      "evidence": null,
+      "reason": null
+    }
+  },
+  "expected": {
+    "valid": false,
+    "report_state": "scan_could_not_be_completed",
+    "primary_report_language": "Scan could not be completed",
+    "violation": "duplicate_rule_id"
+  }
+}
