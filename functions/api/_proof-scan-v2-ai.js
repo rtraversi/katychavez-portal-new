@@ -59,16 +59,82 @@ export function modelRequest(env, { system, content, schema, maxTokens }) {
   return { model, headers, body };
 }
 
+// ── Wire format ──────────────────────────────────────────────────────────────
+// Structured outputs reject a schema with more than 16 union-typed parameters
+// (`anyOf [x, null]` counts as one each), and the schemas below carry 31-52.
+// They stay the source of truth: the validators and the engine read them.
+// Only the copy sent to the API is rewritten, and the answer is decoded back
+// before anything validates it:
+//  - an object whose fields are ALL nullable strings becomes a list of
+//    { field, value } entries. A field left out decodes to null; "" stays "",
+//    because on a form null (no such field) and "" (blank field) differ (D-11).
+//  - any other nullable string or enum becomes a plain string; "" decodes to null.
+const nonNull = (s) => s?.anyOf?.length === 2 && s.anyOf.some((b) => b.type === 'null')
+  ? s.anyOf.find((b) => b.type !== 'null') : null;
+const isFieldMap = (s) => s?.type === 'object' && s.properties
+  && Object.values(s.properties).every((p) => nonNull(p)?.type === 'string' && !nonNull(p).enum);
+const withNote = (description, note) => (description ? `${description} ${note}` : note);
+
+export function toWireSchema(s) {
+  if (!s || typeof s !== 'object') return s;
+  const inner = nonNull(s);
+  if (inner) {
+    const out = { ...toWireSchema(inner), description: withNote(s.description, 'Use "" for none.') };
+    if (out.enum) out.enum = [...out.enum, ''];
+    return out;
+  }
+  if (isFieldMap(s)) {
+    const fields = Object.keys(s.properties);
+    const notes = fields.map((f) => `- ${f}: ${s.properties[f].description || f.replace(/_/g, ' ')}`).join('\n');
+    return {
+      type: 'array',
+      description: withNote(s.description, `One entry per field that has a value; leave a field out for null. Fields:\n${notes}`),
+      items: {
+        type: 'object', additionalProperties: false, required: ['field', 'value'],
+        properties: { field: { type: 'string', enum: fields }, value: { type: 'string' } },
+      },
+    };
+  }
+  if (s.type === 'object' && s.properties) {
+    return { ...s, properties: Object.fromEntries(Object.entries(s.properties).map(([k, v]) => [k, toWireSchema(v)])) };
+  }
+  if (s.type === 'array' && s.items) return { ...s, items: toWireSchema(s.items) };
+  return s;
+}
+
+// Decodes an answer in the wire shape back to the shape `s` describes. Values
+// already in that shape pass through, so it is safe on either.
+export function fromWire(s, v) {
+  if (!s || typeof s !== 'object') return v;
+  const inner = nonNull(s);
+  if (inner) return v === '' || v == null ? null : fromWire(inner, v);
+  if (isFieldMap(s)) {
+    if (!Array.isArray(v)) return v;
+    const out = Object.fromEntries(Object.keys(s.properties).map((f) => [f, null]));
+    for (const e of v) {
+      if (e && Object.hasOwn(out, e.field) && out[e.field] === null && typeof e.value === 'string') out[e.field] = e.value;
+    }
+    return out;
+  }
+  if (s.type === 'object' && s.properties && v && typeof v === 'object' && !Array.isArray(v)) {
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, s.properties[k] ? fromWire(s.properties[k], x) : x]));
+  }
+  if (s.type === 'array' && s.items && Array.isArray(v)) return v.map((x) => fromWire(s.items, x));
+  return v;
+}
+
 // Returns { ok: true, json, meta } or { ok: false, status, error, code }.
 // `code` is logged; nothing from the document is.
 export async function callModel(env, { system, content, schema, maxTokens = 16000 }) {
-  const { model, headers, body } = modelRequest(env, { system, content, schema, maxTokens });
+  const { model, headers, body } = modelRequest(env, { system, content, schema: toWireSchema(schema), maxTokens });
   let acc;
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), MODEL_TIMEOUT_MS);
   try {
     const res = await fetch(API_URL, { method: 'POST', signal: abort.signal, headers, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(`Claude API ${res.status}`);
+    // The error body is the API's own message (it never echoes the document)
+    // and is the only way to tell a bad request from an outage in the logs.
+    if (!res.ok) throw new Error(`Claude API ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
     acc = await readSseStream(res);
   } catch (err) {
     console.error('[proof-scan-v2] model call failed:', err.name === 'AbortError' ? 'timed out' : err.message);
@@ -88,7 +154,7 @@ export async function callModel(env, { system, content, schema, maxTokens = 1600
   const text = acc.text();
   if (!text) return failed('model_response_missing_text');
   try {
-    return { ok: true, json: JSON.parse(text), meta };
+    return { ok: true, json: fromWire(schema, JSON.parse(text)), meta };
   } catch {
     return failed('model_response_not_json');
   }

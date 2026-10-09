@@ -12,7 +12,9 @@ vi.mock('../../functions/api/_helpers.js', async (importOriginal) => ({
 import { onRequest as caseRoute } from '../../functions/api/proof-scan-v2-case.js';
 import { onRequest as personRoute } from '../../functions/api/proof-scan-v2-person.js';
 import { onRequest as evidenceRoute } from '../../functions/api/proof-scan-v2-evidence.js';
-import { FACT_FIELDS, evidenceZeroSchema } from '../../functions/api/_proof-scan-v2-ai.js';
+import {
+  FACT_FIELDS, evidenceZeroSchema, stageRunSchema, toWireSchema, fromWire,
+} from '../../functions/api/_proof-scan-v2-ai.js';
 import { storedFacts } from '../../functions/api/_proof-scan-v2-evidence.js';
 import { ssnDecrypt } from '../../functions/api/_helpers.js';
 import {
@@ -87,7 +89,37 @@ describe('access and input', () => {
     expect(calls[0].url).toBe('https://api.anthropic.com/v1/messages');
     expect(calls[0].body.model).toBe('claude-sonnet-5-5');
     expect(calls[0].body.stream).toBe(true);
-    expect(calls[0].body.output_config.format).toEqual({ type: 'json_schema', schema: evidenceZeroSchema() });
+    expect(calls[0].body.output_config.format).toEqual({ type: 'json_schema', schema: toWireSchema(evidenceZeroSchema()) });
+  });
+});
+
+// The API rejects a schema with more than 16 union-typed parameters with a 400,
+// which every v2 call hit in production until the wire format existed.
+describe('wire format for structured outputs', () => {
+  const unions = (s) => (JSON.stringify(s).match(/"anyOf"|"type":\[/g) || []).length;
+
+  it('sends no union-typed parameters for any schema', () => {
+    expect(unions(toWireSchema(evidenceZeroSchema()))).toBe(0);
+    for (const withMarkups of [false, true]) {
+      expect(unions(toWireSchema(stageRunSchema({ ruleIds: ['R1'], itemIds: ['I1'], withMarkups })))).toBe(0);
+    }
+  });
+
+  it('decodes a field list: left out is null, "" stays blank (D-11)', () => {
+    const schema = stageRunSchema({ ruleIds: [], itemIds: [], withMarkups: false });
+    const [f] = fromWire(schema, { forms_found: [{
+      form: 'I-765', file: 'p.pdf', pages: '1', person_role: '',
+      values: [{ field: 'first_name', value: 'ANA' }, { field: 'middle_name', value: '' }, { field: 'first_name', value: 'X' }],
+    }], evidence_found: [], possible_issues: [] }).forms_found;
+    expect(f.person_role).toBeNull();
+    expect(f.values).toMatchObject({ first_name: 'ANA', middle_name: '', last_name: null, ssn: null });
+  });
+
+  it('decodes a plain nullable string "" to null and passes the internal shape through', () => {
+    const schema = evidenceZeroSchema();
+    expect(fromWire(schema, { issued_date: '' }).issued_date).toBeNull();
+    const internal = read({ facts: { middle_name: '' } });
+    expect(fromWire(schema, internal).facts).toEqual(internal.facts);
   });
 });
 
