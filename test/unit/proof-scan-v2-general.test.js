@@ -296,7 +296,7 @@ describe('folder name (D-101)', () => {
 
 // ── 8. "Not on the case card yet" (D-102) ────────────────────────────────────
 
-describe('never-added note (D-102)', () => {
+describe('never-added note (D-102, removed entirely by D-105)', () => {
   it('General never shows it', async () => {
     const kase = await generalCase();
     await person({ action: 'edit', person_id: kase.people[0].id, fields: { first_name: 'LUCIA', last_name: 'REYES' } });
@@ -305,7 +305,7 @@ describe('never-added note (D-102)', () => {
     expect(r.body.result.notes.filter((n) => n.kind === 'never_added')).toEqual([]);
   });
 
-  it('DACA lists only fields the forms in this package use', async () => {
+  it('DACA never shows it either (D-105)', async () => {
     const kase = (await create({ case_type: 'daca_renewal' })).body;
     const pid = kase.people[0].id;
     await person({ action: 'edit', person_id: pid, fields: { first_name: 'ANA', last_name: 'RIVERA', street: '1 A ST', city: 'X', state: 'AZ', zip: '85000' } });
@@ -313,7 +313,6 @@ describe('never-added note (D-102)', () => {
     await person({ action: 'approve', person_id: pid });
     mockModel(vi, [observations({ forms: [form('G-1145', { first_name: 'ANA', last_name: 'RIVERA', phone: '602', email: '' }, 'applicant')] })]);
     const r = await run({ case_id: kase.case.id, stage: 'physical_scan' });
-    const note = r.body.result.notes.find((n) => n.kind === 'never_added');
-    expect(note.fields).toEqual(['phone', 'email']);
+    expect(r.body.result.notes.filter((n) => n.kind === 'never_added' || n.kind === 'no_reference')).toEqual([]);
   });
 });

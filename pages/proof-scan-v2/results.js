@@ -206,16 +206,9 @@ export function renderReviewResult(result, mount, ctx = {}) {
     mount.appendChild(ni);
   }
 
-  // Please confirm (D-70): gentle, never counted.
-  if (m.confirm.length) {
-    const cb = block(t('review.confirm'), m.confirm.length, 'v2-confirm');
-    cb.appendChild(el('p', 'v2-block-note', t('review.confirm.note')));
-    m.confirm.forEach((c) => cb.appendChild(infoRow('i', t('review.confirm_row', { title: String(c.title || '').replace(/\.$/, '') }))));
-    mount.appendChild(cb);
-  }
-
+  renderConfirm(mount, m.confirm);
   renderAwareness(mount, m.awareness);
-  renderFormsFound(mount, m.forms_found);
+  // D-106 (v2.0.1): no forms-found list.
   renderLaterAndNotChecked(mount, m);
 }
 
@@ -235,6 +228,19 @@ export function renderFormsFound(mount, forms) {
   }
   b.appendChild(table);
   mount.appendChild(b);
+}
+
+// Please confirm (D-70, D-107, D-110): gentle, never counted.
+function renderConfirm(mount, confirm) {
+  if (!confirm.length) return;
+  const cb = block(t('review.confirm'), confirm.length, 'v2-confirm');
+  cb.appendChild(el('p', 'v2-block-note', t('review.confirm.note')));
+  // A confirm that already asks its own question is shown as it is.
+  confirm.forEach((c) => {
+    const title = String(c.title || '');
+    cb.appendChild(infoRow('i', /\?\s*$/.test(title) ? title : t('review.confirm_row', { title: title.replace(/\.$/, '') })));
+  });
+  mount.appendChild(cb);
 }
 
 function renderAwareness(mount, notes) {
@@ -278,9 +284,9 @@ export function renderPhysicalScanResult(result, mount, ctx = {}) {
   const extra = el('div', 'v2-ps-extra');
   const m = reviewModel(result);
   renderMatchBlock(extra, m.matches);
+  renderConfirm(extra, m.confirm);
   if (result.case_type === 'general') renderPeopleBlock(extra, result);
   renderAwareness(extra, m.awareness);
-  renderFormsFound(extra, m.forms_found);
   if (m.later.length || m.not_this_stage_count) renderLaterAndNotChecked(extra, { ...m, not_checked: [] });
   if (ctx.afterReport) ctx.afterReport(extra);
   if (standing) mount.insertBefore(extra, standing);

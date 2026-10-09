@@ -10,7 +10,7 @@ vi.mock('../../functions/api/_helpers.js', async (importOriginal) => ({
   makeAdminClient: helpersMock.makeAdminClient,
 }));
 
-import { onRequest as runRoute } from '../../functions/api/proof-scan-v2-run.js';
+import { onRequest as runRoute, liveEdition } from '../../functions/api/proof-scan-v2-run.js';
 import { ssnEncrypt } from '../../functions/api/_helpers.js';
 import {
   seededDb, call, ENV, STAFF, CLIENT, NO_TOKEN, pdfFile, oversizePdf, mockModel,
@@ -123,6 +123,21 @@ describe('access and input', () => {
     expect(r.status).toBe(409);
     expect(r.body.evidence_requirement.missing).toEqual(['ead_doc', 'ead_facts', 'address', 'approve']);
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('lets a DACA Physical Scan run before the evidence requirement is met (D-103)', async () => {
+    const caseId = addCase('daca_renewal');
+    addPerson(caseId, 'applicant', {}, { is_main: true, approved_at: null });
+    mockModel(vi, [observations()]);
+    expect((await run({ case_id: caseId, stage: 'physical_scan' })).status).toBe(200);
+    expect((await run({ case_id: caseId, stage: 'preflight', scope: 'whole' })).status).toBe(409);
+  });
+
+  it('a change after approval does not ask for approval again (D-103)', async () => {
+    const { caseId, personId } = readyDaca();
+    db.rows('proof_scan_people').find((p) => p.id === personId).changed_since_approval = true;
+    mockModel(vi, [observations({ forms: dacaForms() })]);
+    expect((await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' })).status).toBe(200);
   });
 
   it('lets General go straight to Physical Scan with no gate (D-95)', async () => {
@@ -299,12 +314,59 @@ describe('stage states', () => {
     expect(r.body.result.not_this_stage_count).toBeGreaterThan(20);
   });
 
-  it('"checked only if filled in": blank is needs info, not attention (D-70)', async () => {
+  // D-107 (v2.0.1) supersedes D-70 for this check: blank delivery boxes mean home.
+  it('G-28 EAD delivery left blank means home: clear, at every stage (D-107)', async () => {
     const { caseId } = readyDaca();
-    mockModel(vi, [observations({ forms: dacaForms(), rules: { 'DACA-G28-003': 'blank' } })]);
-    const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(check(r, 'DACA-G28-003').status).toBe('needs_info');
-    expect(r.body.result.report_state).toBe('no_issues_found');
+    mockModel(vi, [
+      observations({ forms: dacaForms(), rules: { 'DACA-G28-003': 'blank' } }),
+      observations({ forms: dacaForms(), rules: { 'DACA-G28-003': 'blank' } }),
+    ]);
+    const draft = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
+    expect(check(draft, 'DACA-G28-003').status).toBe('clear');
+    const scan = await run({ case_id: caseId, stage: 'physical_scan' });
+    expect(check(scan, 'DACA-G28-003').status).toBe('clear');
+    expect(scan.body.result.report_state).toBe('no_issues_found');
+  });
+
+  it('G-28 EAD delivery to the office is a gentle confirm, never counted (D-107)', async () => {
+    const { caseId } = readyDaca();
+    mockModel(vi, [observations({ forms: dacaForms(), rules: { 'DACA-G28-003': 'needs_attention' } })]);
+    const r = await run({ case_id: caseId, stage: 'physical_scan' });
+    expect(check(r, 'DACA-G28-003')).toMatchObject({ status: 'please_confirm', title: 'The EAD will be delivered to the office, not home.' });
+    expect(r.body.result.attention_count).toBe(0);
+  });
+
+  it('a problem leads with the finding, never the rule\'s own wording (D-109)', async () => {
+    const { caseId } = readyDaca();
+    mockModel(vi, [observations({ forms: dacaForms(), rules: { 'PS-201': { status: 'needs_attention', summary: 'The I-765 signature page (page 6) is missing.' } } })]);
+    const r = await run({ case_id: caseId, stage: 'physical_scan' });
+    expect(check(r, 'PS-201')).toMatchObject({ status: 'needs_attention', title: 'The I-765 signature page (page 6) is missing.', summary: null });
+    expect(r.body.result.attention.find((a) => a.rule_id === 'PS-201').title).toBe('The I-765 signature page (page 6) is missing.');
+  });
+
+  it('the EAD without the full middle name is a gentle confirm, never counted (v2.0.1)', async () => {
+    const { caseId } = readyDaca();
+    mockModel(vi, [observations({ forms: dacaForms() })]);
+    const r = await run({ case_id: caseId, stage: 'physical_scan' });
+    expect(check(r, 'confirm:middle_name')).toMatchObject({
+      status: 'please_confirm',
+      title: "The EAD does not show the full middle name (MARIA). Was it confirmed with the client or the client's record?",
+    });
+    expect(r.body.result.attention_count).toBe(0);
+  });
+
+  it('no middle-name confirm when other evidence shows it, or the EAD shows it in full', async () => {
+    const backed = readyDaca();
+    mockModel(vi, [observations({ forms: dacaForms(), evidence: [{
+      doc_type: 'birth_certificate', file: 'package.pdf', pages: '30', owner_roles: ['applicant'], read_quality: 'clear',
+      facts: evidenceFacts({ first_name: 'ANA', middle_name: 'MARIA', last_name: 'RIVERA', date_of_birth: '03/22/1998' }),
+    }] })]);
+    expect(check(await run({ case_id: backed.caseId, stage: 'physical_scan' }), 'confirm:middle_name')).toBeUndefined();
+
+    const full = readyDaca();
+    db.rows('proof_scan_documents').find((d) => d.case_id === full.caseId).facts.middle_name = 'MARIA';
+    mockModel(vi, [observations({ forms: dacaForms() })]);
+    expect(check(await run({ case_id: full.caseId, stage: 'physical_scan' }), 'confirm:middle_name')).toBeUndefined();
   });
 
   it('a blank field on an ordinary check is attention', async () => {
@@ -438,7 +500,7 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
     expect((await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' })).body.result.attention).toEqual([]);
   });
 
-  it('a value with no reference is needs info at Draft Review (D-47) and a light note at Pre-flight (Q-46)', async () => {
+  it('a value with no reference is needs info at Draft Review (D-47) and nothing at Pre-flight (D-105)', async () => {
     const { caseId } = readyDaca({ ...CARD, phone: null });
     mockModel(vi, [
       observations({ forms: dacaForms({ 'G-1450': { phone: '' } }) }),
@@ -448,7 +510,8 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
     expect(draft.body.result.notes).toEqual([expect.objectContaining({ kind: 'needs_info', field: 'phone' })]);
     expect(draft.body.result.attention).toEqual([]);
     const pre = await run({ case_id: caseId, stage: 'preflight', scope: 'whole' });
-    expect(pre.body.result.notes.map((n) => n.kind)).toContain('no_reference');
+    // D-105 (v2.0.1): no "no reference" light note any more.
+    expect(pre.body.result.notes.map((n) => n.kind)).not.toContain('no_reference');
     expect(pre.body.result.attention).toEqual([]);
   });
 
@@ -558,11 +621,11 @@ describe('Physical Scan', () => {
     expect(JSON.stringify(db.rows('proof_scans'))).not.toMatch(/555-?12-?0000|555-?12-?3456/);
   });
 
-  it('a value never added to the card is a light note, not attention (Q-46)', async () => {
+  it('a value never added to the card raises nothing at all (D-105)', async () => {
     const { caseId } = readyDaca({ ...CARD, email: null });
     mockModel(vi, [observations({ forms: dacaForms() })]);
     const r = await run({ case_id: caseId, stage: 'physical_scan' });
-    expect(r.body.result.notes).toEqual([expect.objectContaining({ kind: 'never_added', fields: ['email'] })]);
+    expect(r.body.result.notes.filter((n) => n.kind === 'never_added')).toEqual([]);
     expect(r.body.result.report_state).toBe('no_issues_found');
   });
 
@@ -686,5 +749,22 @@ describe('Possible issues', () => {
     mockModel(vi, [observations({ forms: dacaForms(), possible: [issue({ evidence: 'SSN 123-45-6789 on page 2' })] })]);
     await run({ case_id: caseId, stage: 'physical_scan' });
     expect(db.rows('proof_scan_possible_issues')[0].evidence).toBe('SSN ***-**-6789 on page 2');
+  });
+});
+
+// ── Form editions (D-108) ────────────────────────────────────────────────────
+
+describe('form editions', () => {
+  it('uses the edition USCIS publishes now when the weekly check found one', () => {
+    const row = { form_number: 'I-765', pages: 7, edition_date: '01/20/25', upstream_edition: '04/01/26', check_status: 'stale' };
+    expect(liveEdition(row)).toBe('04/01/26');
+    expect(liveEdition({ ...row, check_status: 'current', upstream_edition: '01/20/25' })).toBe('01/20/25');
+  });
+
+  it('falls back to the stored edition when the check failed or never ran', () => {
+    const row = { form_number: 'I-765', pages: 7, edition_date: '01/20/25', upstream_edition: '04/01/26', check_status: 'error' };
+    expect(liveEdition(row)).toBe('01/20/25');
+    expect(liveEdition({ ...row, check_status: null, upstream_edition: null })).toBe('01/20/25');
+    expect(liveEdition({ ...row, check_status: 'stale', upstream_edition: '  ' })).toBe('01/20/25');
   });
 });

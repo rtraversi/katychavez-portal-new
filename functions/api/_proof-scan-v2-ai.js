@@ -278,7 +278,7 @@ export function stageRunSchema({ ruleIds, itemIds, withMarkups }) {
         properties: {
           rule_id: { type: 'string', enum: ruleIds },
           status: { type: 'string', enum: CHECK_STATUSES, description: 'clear = read it and it holds; needs_attention = read it and it does not hold; blank = the field the check looks at is empty; not_checked = could not read it or the form is not in these files.' },
-          summary: nullableString('One short sentence on what was observed, or null.'),
+          summary: nullableString('When the check does not hold: one short sentence that states what is wrong as a plain fact, e.g. "The I-765 signature page (page 6) is missing." Never restate the check\'s own wording. Null when it holds.'),
           locations: stringArray('Where, e.g. "I-765 page 3". Empty when not applicable.'),
           evidence: nullableString('Short quoted text supporting the status, or null.'),
           reason: nullableString('Why the check is not clear, or null when it is.'),
@@ -441,9 +441,16 @@ export function stageRunValidator({ ruleIds, itemIds, withMarkups }) {
   };
 }
 
+// v2.0.1: the firm's meaning for checks whose wording alone misleads the model.
+// D-107: on the G-28, an EAD delivery choice left blank means home, which is fine.
+export const RULE_GUIDANCE = {
+  'DACA-G28-003': 'All delivery boxes left empty means the EAD goes to the applicant\'s home: that is clear. Home ticked is clear. Report needs_attention only when the office box is ticked.',
+};
+
 function describeRule(r, stage) {
   const s = r.stages?.[stage] || {};
   const parts = [`- ${r.rule_id}: ${s.stage_title || r.title}`];
+  if (RULE_GUIDANCE[r.rule_id]) parts.push(`firm meaning: ${RULE_GUIDANCE[r.rule_id]}`);
   if (r.form) parts.push(`form: ${r.form}`);
   if (r.page) parts.push(`page: ${r.page}`);
   if (r.item) parts.push(`item: ${r.item}`);
@@ -511,7 +518,7 @@ ${suppressions.length ? suppressions.map((s) => `- ${s.reasoning_key}: ${s.label
 CASE CARDS (who is on this case; use them to tell whose form is whose, not as the truth to check against)
 ${describeCards(people)}
 
-USCIS FORM REFERENCE (current editions)
+USCIS FORM REFERENCE (the edition USCIS currently publishes for each form; a footer that matches it is current)
 ${formEditions}
 ${caseType === 'daca_renewal' ? `\n${DACA_NOTES}` : ''}`;
 }

@@ -192,7 +192,9 @@ describe('the evidence requirement (D-74, D-91, D-95)', () => {
     expect(evidenceRequirement('daca_renewal', [ready], []).missing).toEqual(['ead_doc']);
     expect(evidenceRequirement('daca_renewal', [{ ...ready, a_number: null }], ead).missing).toEqual(['ead_facts']);
     expect(evidenceRequirement('daca_renewal', [{ ...ready, zip: null }], ead).missing).toEqual(['address']);
-    expect(evidenceRequirement('daca_renewal', [{ ...ready, changed_since_approval: true }], ead).missing).toEqual(['approve']);
+    expect(evidenceRequirement('daca_renewal', [{ ...ready, approved_at: null }], ead).missing).toEqual(['approve']);
+    // D-103 (v2.0.1): approved once is enough; editing afterwards never blocks a re-run.
+    expect(evidenceRequirement('daca_renewal', [{ ...ready, changed_since_approval: true }], ead).ready).toBe(true);
     expect(evidenceRequirement('daca_renewal', [ready], [{ status: 'replaced', doc_type: 'ead' }]).missing).toEqual(['ead_doc']);
   });
 

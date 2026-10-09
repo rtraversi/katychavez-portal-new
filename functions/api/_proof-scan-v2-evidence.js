@@ -50,13 +50,16 @@ const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x))
 export function planEvidenceZero({ caseType, people, documents, read, filename, cardSsn = new Map() }) {
   const label = DOC_TYPE_LABELS[read.doc_type];
   const clear = read.read_quality === 'clear';
+  // D-104: "partial" still counts as the document on file and fills the empty
+  // fields it read clearly; only "unreadable" is held for source review (D-54).
+  const usable = clear || read.read_quality === 'partial';
   const document = {
     doc_type: read.doc_type,
     read_quality: read.read_quality,
     unreadable_fields: [...read.unreadable_fields],
     filename,
     facts: storedFacts(read.facts),
-    status: clear ? 'current' : 'source_review',
+    status: usable ? 'current' : 'source_review',
   };
 
   // Owners. DACA is one person (D-94), whatever the model proposed.
@@ -75,10 +78,15 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
 
   const plan = { outcome: 'stored', document, newPeople, owners, replaces: null, fills: [], suggestions: [], note: null };
 
-  // D-54: nothing more for a source that cannot be read reliably.
-  if (!clear) {
+  // D-54: nothing more for a source that cannot be read at all.
+  if (!usable) {
     plan.note = `The ${label} could not be read reliably, so nothing was taken from it. Please look at the original.`;
     return plan;
+  }
+  if (!clear) {
+    plan.note = read.unreadable_fields.length
+      ? `Part of the ${label} could not be read clearly, so those fields were left for you. Everything it showed clearly was filled in.`
+      : `The ${label} was not perfectly clear, so only empty fields were filled in. Please check them against the original.`;
   }
 
   // D-55: replacement within the Proof Scan workspace.
@@ -87,6 +95,12 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
   const older = everyOwnerExists
     ? documents.find((d) => d.status === 'current' && d.doc_type === read.doc_type && sameSet(d.owner_ids || [], ownerIds))
     : null;
+  // A partly readable copy never replaces a clear one already on file: it is
+  // kept for review only, and the good card stays as it is.
+  if (older && !clear && older.read_quality === 'clear') {
+    document.status = 'source_review';
+    return { ...plan, note: `A clearer ${label} is already on file, so this copy was kept for review only.` };
+  }
   if (older) {
     const olderIssued = normalizeDate(older.facts?.issued_date);
     const thisIssued = normalizeDate(read.issued_date);
@@ -119,7 +133,8 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
     // the document outranks them (D-45, D-79).
     const current = truthValue(person, field);
     if (current == null) plan.fills.push({ owner, field, value: c.value, source });
-    else if (!sameValue(field, current, c.value)) plan.suggestions.push({ owner, field, value: c.value, label });
+    // A partly readable document never proposes changes to what is already there (D-54).
+    else if (clear && !sameValue(field, current, c.value)) plan.suggestions.push({ owner, field, value: c.value, label });
   }
 
   if (!unreadable.has('ssn')) {
@@ -129,7 +144,7 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
       // 'unknown' = on file but could not be decrypted: never replace or contradict it.
       if (have === 'unknown') { /* leave it */ }
       else if (!have) plan.fills.push({ owner, field: 'ssn', value: d, source });
-      else if (have !== d) plan.suggestions.push({ owner, field: 'ssn', value: d, label });
+      else if (clear && have !== d) plan.suggestions.push({ owner, field: 'ssn', value: d, label });
     }
   }
   return plan;

@@ -91,7 +91,9 @@ export function stepState(view, stage) {
     }
     return ready ? 'done' : 'todo';
   }
-  if (!ready) return 'locked';
+  // D-103: Physical Scan is always open; only Draft Review and Pre-flight wait
+  // on the evidence requirement.
+  if (!ready && stage !== 'physical_scan') return 'locked';
   if (isSignedOff(view, stage)) return 'done';
   const run = latestRuns(view.runs)[stage];
   if (!run) return 'todo';

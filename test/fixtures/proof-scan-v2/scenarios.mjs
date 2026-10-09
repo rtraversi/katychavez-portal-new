@@ -143,7 +143,7 @@ function stageAnswer({ caseType, stage, scope, form, files, ruleIds, itemIds, wi
     if (scope === 'individual' && !forms.length) forms = [dacaForm(form, first, '1-7', who)].filter((f) => f.values);
     items['DACA-COMP-I765WS'] = 'missing';
     rules['PS-302'] = { status: 'needs_attention', summary: 'The A-Number on the I-765 is A-123456798. Every other form has A-123456789.', reason: 'Two digits are swapped on the I-765.', locations: ['I-765 page 1'] };
-    rules['DACA-G28-003'] = { status: 'blank', reason: 'Part 3 does not say whether the EAD goes to the home or the office.' };
+    rules['DACA-G28-003'] = { status: 'needs_attention', summary: 'Part 3 has the office box ticked for EAD delivery.', locations: ['G-28 page 3'] };
     rules['DACA-821D-009'] = { status: 'needs_attention', summary: 'The I-821D English question is answered NO.', reason: 'Part 5 item 1.a is marked NO.', locations: ['I-821D page 6'] };
     rules['PS-103'] = { status: 'not_checked', reason: 'Page 11 of the I-821D is too faint to tell whether it is blank.' };
     possible.push({
