@@ -872,6 +872,12 @@ copy; Max rewrites it after launch.
 Max, verbatim: "v2 available to all staff. next to old checker. just while testing."
 Both checkers stay available to all staff on the live portal until Max signs v2 off;
 then the old checker is removed (plan Batch 6).
+**Clarified 2026-10-09.** "Old checker" means the checker live today (the HTML checker,
+verified identical to `main`'s `pages/proof-scan/proof-scan.js`), not v1.2. Max: "Didn't
+we agree that we would get the old checker next to the new one while I tested?" [Claude,
+error] The `proof-scan-v2` branch as pushed (`fc489c5`) has v1.2 at the existing route,
+because it was built on the v1.2 branch; Claude raised this as an open question instead of
+recognising that D-88 already answered it. To fix on the branch before Rob deploys.
 
 **D-89 — Client details appear once, on the case card; Physical Scan flags differences.**
 Date: 2026-10-07. Source: Max, verbatim: "we designed it to only include on our own case
@@ -943,6 +949,61 @@ upload shows its size limit and staff reduce the file if it is over.
 **D-96 — Blank fields stay one attention item per field, per form.** Date: 2026-10-07.
 Source: Max: "each item per field of attention. for each form ok." Answers plan 1.5
 (second half). No grouping.
+
+**D-103 — Physical Scan is always open; re-running never asks for approval again.** Date:
+2026-10-09. Source: Max, live test, verbatim: "even if i didnt have ead. i should just go
+ahead adn go to the last step if all i wanna do is check the final scan" and "it also made
+me go and aprove the reference record when i wanted to run another proof scan on the same
+page... thats dumb." Narrows D-74/D-91: the evidence requirement only gates Draft Review and
+Pre-flight, for every case type; Physical Scan never waits on it; editing the record never
+blocks a re-run.
+
+**D-104 — A partly readable EAD still fills what it read clearly.** Date: 2026-10-09.
+Source: Max: "it did not type in the record for me. it made the card, but did not fill in
+the record." [Claude, verified in code] The live engine fills nothing unless the AI calls the
+whole document "clear" (D-54), and the gate counts only a "clear" EAD, so a real scan read as
+"partial" blocked the case even after Max typed the values. Fix: a partial EAD counts as the
+EAD on file and fills empty fields it read clearly; fields it lists as unreadable are skipped,
+and it never creates suggestions (D-54's purpose kept).
+
+**D-105 — No "not on the case card yet" note at all.** Date: 2026-10-09. Source: Max:
+"this is also kinda stupid". Supersedes D-102's DACA half and Q-46's light note.
+
+**D-106 — No "forms found in this package" list.** Date: 2026-10-09. Source: Max: "perhaps
+find a way to make this info cleaner or jsut remove all together doesnt seem helpful if its
+not pretty, plus we already know its checking all the forms from prior." Supersedes D-100 #3.
+
+**D-107 — G-28 "EAD home or office": all boxes empty means home, and is fine.** Date:
+2026-10-09. Source: Max: "if all checkboxes are unchecked we mean it to go home. we almost
+always want it to go home. this is an awful false negative." Changes DACA-G28-003.
+Office box ticked: a gentle confirm, never counted. Max, verbatim: "gentle confirm please."
+
+**D-108 — Edition dates are checked against USCIS's live edition.** Date: 2026-10-09.
+Source: Max: "can we havea way of it actually checking USCIS's edition date record? the
+forms are current." [Claude, verified in code] The weekly USCIS check already stores the live
+edition (`form_editions.upstream_edition`) but only flags the reference as stale; the checker
+still compares against the stale reference, so a current G-1450 (02/06/26) was called FATAL
+against 06/03/25. Fix: a form matching USCIS's live edition passes; wording states what the
+form shows and what USCIS publishes.
+
+**D-109 — A problem's headline says what is wrong, never the rule's name.** Date:
+2026-10-09. Source: Max, verbatim: "the fact that it states the rule confuses staff. yes we
+know the rule is that required sigs are presentt. but in the way its present, it reads as IT
+telling us that they are present but with a fatal flag. lets change this please." Example:
+"Required signatures are present." shown as a FATAL headline over "The I-765 preparer/attorney
+signature page is not in the package". Fix: an item needing attention leads with the finding
+in the house pattern (N-023), e.g. "The I-765 signature page (page 6) is missing. Every
+required signature must be in the package." The rule's own wording ("... are present.") is
+only ever used for a cleared check.
+
+**D-110 — The EAD's middle name is a gentle confirm.** Date: 2026-10-09. Source: Max,
+verbatim: "ead doesnt show full middle name. so.. if the back is not provided. just a gentle
+confirm if the middle name was verified with client or client's record yeah?" Built in
+v2.0.1 (DACA only, never counted): when the forms carry a full middle name and the EAD on
+file shows only an initial or none, staff are asked whether it was confirmed with the client
+or the client's record. [Claude, interpretation, unverified with Max] "If the back is not
+provided" read as: no other evidence shows the full middle name. If any other document
+(birth certificate, passport and so on) shows it, the question is skipped.
 
 **D-97 — A different SSN from a newer document becomes an encrypted suggestion.** Date:
 2026-10-07. Source: Max, "2. ok" to Claude's proposal after terminal Batch 1 left it
@@ -1504,6 +1565,19 @@ In this lab:
 
 ## Changelog
 
+- **2026-10-08**: Shipped to Rob. Portal branch `proof-scan-v2` pushed to GitHub at
+  `fc489c5` (new branch only; `main` untouched at `556118c`), with the full handoff in
+  `docs/proof-scan-v2/` (start-here README, deploy checklist, build log, a copy of this
+  record, plan, specs, history, mockup). Not deployed, no migration applied, never run
+  against the real AI. That copy is a snapshot: later decisions logged here must be
+  copied there too.
+- **2026-10-09**: Rob merged `proof-scan-v2` into `module/forms-page-reorg` (`c566aac`) next
+  to the live checker (D-88 honoured), moved runs to queued jobs on Sonnet 5.5
+  (`c24302a`), applied 1303, 1304 and 2000 to 2004 to production, fixed the AI schemas
+  (`780c403`). Live. Max's first live review: D-103 to D-108.
+- **2026-10-09**: v2.0.1 built for D-103 to D-110 on portal branch `proof-scan-v2.0.1`
+  (from `module/forms-page-reorg` at `780c403`), pushed as a new branch only, with a PR for
+  Rob to merge and deploy. No migration. 914 tests passing [verified by Claude].
 - **2026-10-06**: Pre-build checks done: repo synced, security problem found in the
   Proof Scan tables (live today), API limits, rules and AI specs. See
   `PROOF-SCAN-V2-SPECS.md`.

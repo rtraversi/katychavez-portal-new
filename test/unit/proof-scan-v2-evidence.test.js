@@ -198,15 +198,29 @@ describe('an unreadable source (D-54)', () => {
   it('is held for source review and fills and proposes nothing', async () => {
     const kase = await newCase();
     await call(personRoute, '/api/proof-scan-v2-person', { method: 'POST', body: { action: 'edit', person_id: kase.people[0].id, fields: { last_name: 'RIVERO' } } });
-    for (const quality of ['partial', 'unreadable']) {
-      mockModel(vi, [read({ read_quality: quality })]);
-      const r = await upload(kase.case.id);
-      expect(r.status).toBe(201);
-      expect(r.body.documents.at(-1).status).toBe('source_review');
-      expect(r.body.people[0]).toMatchObject({ last_name: 'RIVERO', first_name: null, a_number: null });
-      expect(r.body.suggestions).toEqual([]);
-      expect(r.body.note).toContain('could not be read reliably');
-    }
+    mockModel(vi, [read({ read_quality: 'unreadable' })]);
+    const r = await upload(kase.case.id);
+    expect(r.status).toBe(201);
+    expect(r.body.documents.at(-1).status).toBe('source_review');
+    expect(r.body.people[0]).toMatchObject({ last_name: 'RIVERO', first_name: null, a_number: null });
+    expect(r.body.suggestions).toEqual([]);
+    expect(r.body.note).toContain('could not be read reliably');
+  });
+
+  // D-104 (v2.0.1): a partly readable EAD still counts and fills what it read clearly.
+  it('a partial read fills empty fields it read clearly, skips unreadable ones, and proposes nothing', async () => {
+    const kase = await newCase();
+    await call(personRoute, '/api/proof-scan-v2-person', { method: 'POST', body: { action: 'edit', person_id: kase.people[0].id, fields: { last_name: 'RIVERO' } } });
+    mockModel(vi, [read({ read_quality: 'partial', unreadable_fields: ['date_of_birth'] })]);
+    const r = await upload(kase.case.id);
+    expect(r.status).toBe(201);
+    expect(r.body.documents.at(-1).status).toBe('current');
+    expect(r.body.people[0].last_name).toBe('RIVERO');
+    expect(r.body.people[0].first_name).not.toBeNull();
+    expect(r.body.people[0].a_number).not.toBeNull();
+    expect(r.body.people[0].date_of_birth).toBeNull();
+    expect(r.body.suggestions).toEqual([]);
+    expect(r.body.note).toContain('could not be read clearly');
   });
 
   it('never replaces a good card', async () => {

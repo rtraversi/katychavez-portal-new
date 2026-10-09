@@ -70,10 +70,18 @@ const RunSchema = z.object({
 // Streaming makes a large budget safe, and the model's thinking counts against it.
 const MAX_TOKENS = 64000;
 
+export function liveEdition(row) {
+  const upstream = String(row.upstream_edition || '').trim();
+  return upstream && (row.check_status === 'current' || row.check_status === 'stale') ? upstream : row.edition_date;
+}
+
 async function formEditions(admin) {
   try {
-    const { data } = await admin.from('form_editions').select('form_number, pages, edition_date').order('form_number', { ascending: true });
-    if (data?.length) return data.map((r) => `${r.form_number}|${r.pages}p|${r.edition_date}`).join(', ');
+    // D-108: the weekly USCIS check stores the edition USCIS publishes right now
+    // (upstream_edition). When it has one, that is the reference, so a current
+    // form is never called out of date against a stale row.
+    const { data } = await admin.from('form_editions').select('form_number, pages, edition_date, upstream_edition, check_status').order('form_number', { ascending: true });
+    if (data?.length) return data.map((r) => `${r.form_number}|${r.pages}p|${liveEdition(r)}`).join(', ');
   } catch { /* fall back */ }
   return FALLBACK_EDITIONS;
 }
@@ -150,8 +158,10 @@ export async function prepareRun(admin, body) {
 
   const snapshot = await loadCase(admin, body.case_id);
   const caseType = snapshot.case.case_type;
+  // D-103: Physical Scan is always open; the evidence requirement only gates
+  // Draft Review and Pre-flight.
   const requirement = gateFor(snapshot);
-  if (!requirement.ready) {
+  if (body.stage !== 'physical_scan' && !requirement.ready) {
     return { response: json(409, { error: 'The evidence requirement is not met yet.', evidence_requirement: requirement }) };
   }
 

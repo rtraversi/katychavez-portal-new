@@ -296,7 +296,8 @@ export function evidenceRequirement(caseType, people, documents) {
     if (EAD_FACTS.some((k) => isBlank(main[k]))) missing.push('ead_facts');
   }
   if (GATE_ADDRESS.some((k) => isBlank(main[k]))) missing.push('address');
-  if (!main.approved_at || main.changed_since_approval) missing.push('approve');
+  // D-103: approved once is enough; later edits never block a re-run.
+  if (!main.approved_at) missing.push('approve');
   return { ready: missing.length === 0, missing };
 }
 

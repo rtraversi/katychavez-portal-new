@@ -195,9 +195,12 @@ describe('stored results drive every block', () => {
     const checklist = oneByClass(card, 'v2-checklist');
     expect(textOf(checklist)).toContain('The I-765WS is missing from the package.');
     expect(byClass(checklist, 'psr-fold-form').map((n) => n.textContent)).toEqual(expect.arrayContaining(['G-1450', 'G-28', 'I-821D', 'I-765']));
-    // Never counted: needs info and please confirm (D-47, D-70).
-    expect(textOf(oneByClass(card, 'v2-needs-info'))).toContain('Verify if EAD home or office');
-    expect(textOf(oneByClass(card, 'v2-confirm'))).toContain('Read/Understand English (YES)');
+    // Never counted: please confirm (D-47, D-70). D-107: office delivery is a gentle confirm.
+    const confirm = textOf(oneByClass(card, 'v2-confirm'));
+    expect(confirm).toContain('The I-821D English question is answered NO.'); // D-109: the finding, not the rule name
+    expect(confirm).not.toContain('Read/Understand English (YES)');
+    expect(confirm).toContain('The EAD will be delivered to the office, not home.');
+    expect(textOf(card)).not.toContain('Verify if EAD home or office');
     expect(textOf(oneByClass(card, 'v2-later'))).toContain('Required signatures are present.');
     expect(textOf(oneByClass(card, 'v2-not-checked'))).toContain('Page 11 of the I-821D is too faint');
     // Possible issues: violet section, its own count, not the attention count.
@@ -242,8 +245,8 @@ describe('stored results drive every block', () => {
     expect(byClass(card, 'psr-client-details')).toHaveLength(0);
     const first = byClass(card, 'psr-notice--needs_attention')[0];
     expect(flatText(first)).toContain('The package shows the phone as (602) 555-0199.');
-    expect(byClass(card, 'psr-table')).toHaveLength(2); // Included in the scan, and forms found (D-100 #3)
-    expect(byClass(card, 'v2-forms-found')).toHaveLength(1);
+    expect(byClass(card, 'psr-table')).toHaveLength(1); // Included in the scan only (D-106: no forms-found list)
+    expect(byClass(card, 'v2-forms-found')).toHaveLength(0);
     // The suppressed reasoning never comes back (D-59); the other suggestion does.
     const pi = oneByClass(card, 'ps-explore');
     expect(textOf(pi)).toContain('EAD copy may not be enlarged');
@@ -273,10 +276,8 @@ describe('stored results drive every block', () => {
     expect(oneByClass(result, 'psr-verdict').textContent).toBe('3 items need attention');
     // D-100 #5: the expired passport is a Possible issue, never counted.
     expect(textOf(oneByClass(result, 'ps-explore'))).toContain("The beneficiary's passport expired on 03/14/2024.");
-    // D-100 #3: forms found, information only.
-    const found = oneByClass(result, 'v2-forms-found');
-    expect(byTag(found, 'tr').map((r) => textOf(r).split('\n')[0])).toEqual(['I-130', 'I-130A', 'I-485', 'I-864', 'I-765']);
-    expect(byClass(found, 'psr-count')).toHaveLength(0);
+    // D-106: no forms-found list.
+    expect(byClass(result, 'v2-forms-found')).toHaveLength(0);
     // D-102: no "not on the case card yet" note in General.
     expect(textOf(result)).not.toContain('Not on the');
     // D-100: full cards for both people.
@@ -317,6 +318,26 @@ describe('stored results drive every block', () => {
     expect(oneByClass(mountNode, 'psr-verdict').className).toContain('psr-verdict--attention');
     expect(reviewModel(result).attention_count).toBe(7);
     expect(physicalScanReport({ ...result, stage: 'physical_scan' }).primary_report_language).toBe('SERVER WORDING 7');
+  });
+  it('Physical Scan shows the gentle confirms in their own block, never counted (D-107, D-110)', () => {
+    const result = {
+      case_type: 'daca_renewal', case_type_label: 'DACA renewal', stage: 'physical_scan', stage_label: 'Physical Scan',
+      report_state: 'no_issues_found', primary_report_language: 'No issues found', attention_count: 0, attention: [],
+      checks: [
+        { rule_id: 'DACA-G28-003', status: 'please_confirm', title: 'The EAD will be delivered to the office, not home.', form: 'G-28', locations: [] },
+        { rule_id: 'confirm:middle_name', status: 'please_confirm', title: "The EAD does not show the full middle name (MARIA). Was it confirmed with the client or the client's record?", form: null, locations: [] },
+      ],
+      package_items: [], later: [], notes: [], forms_found: [], evidence_matches: [], scan: { files: [{ filename: 'a.pdf' }] },
+    };
+    const node = document.createElement('div');
+    renderPhysicalScanResult(result, node);
+    const confirm = oneByClass(node, 'v2-confirm');
+    expect(oneByClass(confirm, 'psr-count').textContent).toBe('2');
+    const rows = byClass(confirm, 'v2-info-row').map((r) => flatText(r));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatch(/The EAD will be delivered to the office, not home\.\s*Was this intended\?$/);
+    expect(rows[1]).toMatch(/The EAD does not show the full middle name \(MARIA\)\. Was it confirmed with the client or the client's record\?$/);
+    expect(oneByClass(node, 'psr-verdict').textContent).toBe('No issues found');
   });
 });
 
@@ -472,13 +493,15 @@ describe('SSN', () => {
 // ── The evidence requirement (D-74, D-91) and General (D-95) ─────────────────
 
 describe('evidence requirement', () => {
-  it('DACA: stages stay locked with the server\'s reasons until the requirement is met', async () => {
+  it('DACA: Draft Review and Pre-flight stay locked until the requirement is met; Physical Scan is open (D-103)', async () => {
     const root = await mount();
     await startCase(root, 'daca_renewal');
-    for (const s of ['draft_review', 'preflight', 'physical_scan']) {
+    for (const s of ['draft_review', 'preflight']) {
       expect(stepOf(root, s).className).toContain('v2-step--locked');
       expect(stepButton(root, s).disabled).toBe(true);
     }
+    expect(stepOf(root, 'physical_scan').className).not.toContain('v2-step--locked');
+    expect(stepButton(root, 'physical_scan').disabled).toBe(false);
     expect(byClass(root, 'v2-choose')).toHaveLength(0);
     const gate = textOf(oneByClass(root, 'v2-gate'));
     expect(gate).toContain('Add the EAD in Evidence Zero');
@@ -527,6 +550,7 @@ describe('evidence requirement', () => {
     expect(stepState(view, 'preflight')).toBe('attention');
     expect(stepState(view, 'physical_scan')).toBe('done');
     expect(stepState({ ...view, evidence_requirement: { ready: false } }, 'preflight')).toBe('locked');
+    expect(stepState({ ...view, evidence_requirement: { ready: false } }, 'physical_scan')).not.toBe('locked'); // D-103
   });
 });
 

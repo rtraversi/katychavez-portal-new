@@ -111,6 +111,23 @@ function checkTitle(rule, setting, status) {
   return setting?.stage_title || rule.title;
 }
 
+// D-109: a problem leads with what is wrong, never with the rule's own wording
+// ("Required signatures are present." over a missing signature read as a pass).
+// The model's one-line finding is the headline; without one, say plainly that
+// the check was not met.
+function problemTitle(rule, setting, summary) {
+  const finding = String(summary || '').trim();
+  if (finding) return finding;
+  return `Not met: ${checkTitle(rule, setting, 'needs_attention')}`;
+}
+
+// v2.0.1, D-107: checks where a "no" is a gentle "was this intended?" at every
+// stage, and a blank answer means the firm's default, which is fine. The G-28's
+// EAD delivery boxes: blank means home.
+const CONFIRM_RULES = new Map([
+  ['DACA-G28-003', { blankIsClear: true, confirmTitle: 'The EAD will be delivered to the office, not home.' }],
+]);
+
 function whereOf(rule) {
   return [rule.page != null && rule.page !== '' ? `p.${rule.page}` : null, rule.item ? `item ${rule.item}` : null]
     .filter(Boolean).join(', ');
@@ -238,13 +255,21 @@ export function evaluateRun(input) {
     if (dependsOnMissing || (formMissing && o.status === 'not_checked')) { suppressed.push(rule.rule_id); continue; }
 
     let status = o.status;
+    const confirmRule = caseType === 'daca_renewal' ? CONFIRM_RULES.get(rule.rule_id) : null;
+    if (status === 'blank' && confirmRule?.blankIsClear) status = 'clear'; // D-107
     if (status === 'blank') status = setting.state === 'if_filled' ? 'needs_info' : 'needs_attention'; // D-70
+    if (status === 'needs_attention' && confirmRule) status = 'please_confirm'; // D-107
     if (status === 'needs_attention' && setting.gentle_if_no && stage === 'draft_review') status = 'please_confirm'; // D-70
+    const summary = redactSsn(o.summary);
+    let title = checkTitle(rule, setting, status);
+    if (status === 'needs_attention') title = problemTitle(rule, setting, summary);
+    if (status === 'please_confirm') title = confirmRule ? confirmRule.confirmTitle : problemTitle(rule, setting, summary);
     checks.push({
       rule_id: rule.rule_id, status, severity: rule.severity, form: rule.form || null, where: whereOf(rule),
-      title: checkTitle(rule, setting, status), expected: setting.stage_expected || rule.expected || null,
+      title, expected: setting.stage_expected || rule.expected || null,
       consistency: CONSISTENCY.has(rule.rule_id),
-      summary: redactSsn(o.summary), reason: redactSsn(o.reason), evidence: redactSsn(o.evidence),
+      // The finding is already the headline; it is not repeated underneath.
+      summary: title === summary ? null : summary, reason: redactSsn(o.reason), evidence: redactSsn(o.evidence),
       locations: o.locations.map(redactSsn),
     });
   }
@@ -352,15 +377,7 @@ export function evaluateRun(input) {
         }
       }
     }
-    // Q-46: a value never added to a card is a light note here, not attention.
-    // D-102: never in General (its cards are built from the package itself), and
-    // in DACA only the fields the forms in this package actually use.
-    for (const p of general ? [] : virtual.filter((x) => !x._new)) {
-      const used = (field) => forms.some((f) => personFor(f.person_role) === p && f.values[field] != null && formHasField(f.form, field));
-      const missing = REFERENCE_FIELDS.filter((field) => field !== 'apt_type' && field !== 'apt_number'
-        && truthValue(p, field) == null && used(field));
-      if (missing.length) notes.push({ kind: 'never_added', person_role: p.role, fields: missing, title: `Not on the ${roleText(p.role)}'s case card yet: ${missing.map((m) => FIELD_LABELS[m]).join(', ')}. The package was checked for consistency instead.` });
-    }
+    // D-105 (v2.0.1): no "not on the case card yet" note at all.
   }
 
   // ── Evidence matches the forms (D-98, PS-304) ──
@@ -518,6 +535,24 @@ export function evaluateRun(input) {
     }
   }
 
+  // ── v2.0.1: the EAD's middle name ──
+  // The EAD does not show the full middle name (Max, 2026-10-09). When the forms
+  // carry a full middle name and no other evidence shows it, staff confirm it was
+  // verified with the client or the client's record. A gentle question, never counted.
+  if (caseType === 'daca_renewal') {
+    const squash = (v) => String(v || '').replace(/[.\s]/g, '');
+    const ead = documents.find((d) => d.status === 'current' && d.doc_type === 'ead');
+    const formMiddle = forms.map((f) => String(f.values?.middle_name || '').trim()).find((m) => squash(m).length > 1);
+    const backedUp = evidence.some((e) => e.doc_type !== 'ead' && squash(e.facts?.middle_name).length > 1);
+    if (ead && formMiddle && !backedUp && squash(ead.facts?.middle_name).length <= 1) {
+      checks.push({
+        rule_id: 'confirm:middle_name', status: 'please_confirm', severity: null, form: null, where: '',
+        title: `The EAD does not show the full middle name (${redactSsn(formMiddle)}). Was it confirmed with the client or the client's record?`,
+        expected: null, consistency: false, summary: null, reason: null, evidence: null, locations: [],
+      });
+    }
+  }
+
   // ── Counting (D-23, D-36) ──
   const checkAttention = checks.filter((c) => c.status === 'needs_attention' && !c.counted_by_items);
   for (const c of checkAttention) attention.push({ kind: 'check', key: `rule:${c.rule_id}`, rule_id: c.rule_id, form: c.form, title: c.title });
@@ -526,7 +561,7 @@ export function evaluateRun(input) {
   const state = reportState(attention.length, notChecked);
 
   for (const [, v] of needsInfo) notes.push({ kind: 'needs_info', person_role: v.role, field: v.field, forms: v.forms, title: `Needs info: ${FIELD_LABELS[v.field]} (${v.forms.join(', ')}).` });
-  for (const [, v] of noReference) notes.push({ kind: 'no_reference', person_role: v.role, field: v.field, forms: v.forms, title: `No ${FIELD_LABELS[v.field]} on the ${roleText(v.role)}'s case card yet, so the forms were checked against each other only.` });
+  // D-105 (v2.0.1): the "no reference value" light note is gone too.
 
   // ── Possible issues: their own list, never counted, never emailed (D-36, D-86) ──
   const suppressedSet = new Set(suppressedKeys);
