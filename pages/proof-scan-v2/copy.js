@@ -480,10 +480,10 @@ export const PORTAL = {
   'case.back': 'All cases',
 
   // ── Uploads and size limits (D-95) ──
-  'limit.note': 'PDF, JPEG, PNG or WebP. Up to 12 MB per file and 22 MB per review. If it is larger, reduce it and add it again.',
+  'limit.note': 'PDF, JPEG, PNG or WebP. Up to 23 MB per review, all files together. If it is larger, reduce it and add it again.',
   'limit.note_one': 'PDF, JPEG, PNG or WebP, up to 12 MB. If it is larger, reduce it and add it again.',
-  'limit.file_too_big': '{name} is {mb} MB. The limit is 12 MB per file. Reduce it and add it again.',
-  'limit.total_too_big': 'These files add up to {mb} MB. The limit is 22 MB per review. Reduce them and try again.',
+  'limit.file_too_big': '{name} is {mb} MB. The limit is {limit} MB per file. Reduce it and add it again.',
+  'limit.total_too_big': 'These files add up to {mb} MB. The limit is {limit} MB per review. Reduce them and try again.',
   'limit.too_many': 'Add at most {n} files at a time.',
   'limit.wrong_type': '{name}: only PDF, JPEG, PNG or WebP files can be read.',
   'limit.empty': '{name} is empty.',
@@ -493,7 +493,7 @@ export const PORTAL = {
   'files.remove': 'Remove',
   'files.clear': 'Clear',
   'files.size': '{mb} MB',
-  'files.total': '{n} files, {mb} MB of 22 MB',
+  'files.total': '{n} files, {mb} MB of 23 MB',
   'ez.drop.meta': 'EAD, intake, or other evidence. One document at a time is read.',
   'ez.reading': 'Reading {name}…',
   'ez.drop.title': 'Add a document',

@@ -64,11 +64,18 @@ const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
   if (u.startsWith('https://api.anthropic.com/')) {
-    const answer = modelAnswer(JSON.parse(opts.body));
-    return new Response(JSON.stringify({
-      model: 'preview-canned-answers', stop_reason: 'end_turn',
-      content: [{ type: 'text', text: JSON.stringify(answer) }], usage: { input_tokens: 0, output_tokens: 0 },
-    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    // The real call streams (_proof-scan-v2-ai.js), so the canned answer does too.
+    const text = JSON.stringify(modelAnswer(JSON.parse(opts.body)));
+    const events = [
+      { type: 'message_start', message: { model: 'preview-canned-answers', usage: { input_tokens: 0 } } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 0 } },
+    ];
+    return new Response(events.map((e) => `event: ${e.type}
+data: ${JSON.stringify(e)}
+
+`).join(''),
+      { status: 200, headers: { 'content-type': 'text/event-stream' } });
   }
   if (u.startsWith('https://api.resend.com/')) return new Response('{"id":"preview"}', { status: 200 });
   return realFetch(url, opts);
@@ -78,12 +85,23 @@ const ENV = {
   ANTHROPIC_API_KEY: 'preview-not-a-key', RESEND_API_KEY: 'preview-not-a-key',
   SSN_ENCRYPTION_KEY: '0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0',
   PORTAL_URL: 'http://127.0.0.1', PORTAL_FIRM_NAME: 'Preview Firm', PORTAL_FROM_EMAIL: 'preview@example.test',
+  // Stage runs stage their files in R2 and run as a job; an in-memory bucket.
+  R2: (() => {
+    const objects = new Map();
+    return {
+      async put(key, body) { const b = new Uint8Array(await new Response(body).arrayBuffer()); objects.set(key, b); return { size: b.length }; },
+      async get(key) { const b = objects.get(key); return b ? { size: b.length, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.length) } : null; },
+      async delete(keys) { for (const k of [].concat(keys)) objects.delete(k); },
+      async list() { return { objects: [], truncated: false }; },
+    };
+  })(),
 };
 
 const ROUTES = {};
-for (const name of ['case', 'cases', 'person', 'suggestion', 'ssn', 'evidence', 'run', 'signoff', 'rules', 'suppressions', 'possible-issue']) {
+for (const name of ['case', 'cases', 'person', 'suggestion', 'ssn', 'evidence', 'run', 'signoff', 'rules', 'suppressions', 'possible-issue', 'process']) {
   ROUTES[`/api/proof-scan-v2-${name}`] = (await import(`../../../functions/api/proof-scan-v2-${name}.js`)).onRequest;
 }
+ROUTES['/api/proof-scan-upload'] = (await import('../../../functions/api/proof-scan-upload.js')).onRequest;
 
 async function call(path, method, body, query) {
   const url = new URL(`http://preview.local${path}`);
@@ -145,7 +163,9 @@ const server = http.createServer(async (req, res) => {
       const chunks = [];
       for await (const c of req) chunks.push(c);
       const body = chunks.length ? Buffer.concat(chunks) : undefined;
-      const request = new Request(url, { method: req.method, headers: { 'content-type': 'application/json', authorization: 'Bearer preview' }, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body });
+      // The upload route reads the file type from Content-Type, so pass it through.
+      const contentType = req.headers['content-type'] || 'application/json';
+      const request = new Request(url, { method: req.method, headers: { 'content-type': contentType, authorization: 'Bearer preview' }, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body });
       const out = await ROUTES[path]({ request, env: ENV });
       res.writeHead(out.status, { 'content-type': 'application/json' });
       res.end(await out.text());

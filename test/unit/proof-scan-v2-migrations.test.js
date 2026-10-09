@@ -29,6 +29,7 @@ describe('Proof Scan v2 migrations: security', () => {
       '2001_proof_scan_v2_core.sql',
       '2002_proof_scan_v2_rules.sql',
       '2003_proof_scan_v2_seed.sql',
+      '2004_proof_scan_v2_jobs.sql',
     ]);
     expect(policies.length).toBeGreaterThan(40);
     expect(tables.length).toBe(13);

@@ -36,6 +36,12 @@ export const tooLargeMessage = bytes =>
   `This package is ${mib(bytes)} MB, over the ${mib(MAX_PDF_BYTES)} MB limit a single scan can accept. `
   + 'Split it — scanning the forms and the evidence separately works — and run each part.';
 
+// What may be staged. The live checker sends PDFs; Proof Scan v2 also reads
+// photos of documents (an EAD, a birth certificate), so the Content-Type header
+// picks one of these and anything else is stored as a PDF, as before. The type
+// is a claim: whatever reads the object back checks the magic bytes.
+export const STAGED_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Guard against an id from elsewhere being used to read or clobber an arbitrary
@@ -82,11 +88,13 @@ export async function onRequest({ request, env }) {
 
   const uploadId = crypto.randomUUID();
   const key      = tmpKey(uploadId);
+  const declaredType = (request.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const contentType  = STAGED_TYPES.has(declaredType) ? declaredType : 'application/pdf';
 
   let stored;
   try {
     stored = await env.R2.put(key, request.body, {
-      httpMetadata: { contentType: 'application/pdf' },
+      httpMetadata: { contentType },
     });
   } catch (err) {
     console.error('[proof-scan-upload] R2 put failed:', err.message);

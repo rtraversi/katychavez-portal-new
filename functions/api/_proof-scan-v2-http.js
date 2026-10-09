@@ -81,14 +81,23 @@ export const clientIp = (request) =>
   request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || null;
 
 // ── Uploaded files ───────────────────────────────────────────────────────────
-// Files arrive as base64 in JSON, the v1.2 way. They are read by the model and
-// then dropped: nothing here, or anywhere in v2, stores a file (D-84).
+// Two ways in. Inline: base64 in the JSON body, the v1.2 way, capped at 12 MB a
+// file. Staged: the page PUTs each file to /api/proof-scan-upload (R2) and the
+// run is a queued job that reads them back (_proof-scan-v2-job.js), which is
+// what lets a full package through without a 524. Staged files live in R2 only
+// until the job has read them, and the daily cron drops any left behind, so
+// nothing is kept (D-84 in spirit: no file outlives its run).
 
 export const MAX_FILE_BYTES = 12 * 1024 * 1024;          // per file (D-95, v1.2's limit)
 export const MAX_TOTAL_BYTES = 22 * 1024 * 1024;         // per request, under the 32 MB API ceiling once base64'd
 export const MAX_FILES = 20;
 export const MAX_FILE_MB = 12;
 export const MAX_TOTAL_MB = 22;
+
+// Staged runs: one Anthropic request carries every file, base64'd, under its
+// 32 MB ceiling, so the limit is on the total, the live checker's 23 MB.
+export const MAX_STAGED_TOTAL_BYTES = 23 * 1024 * 1024;
+export const MAX_STAGED_TOTAL_MB = 23;
 
 export const MEDIA_TYPES = {
   'application/pdf': { magic: (b) => b.startsWith('%PDF-'), block: 'document' },
@@ -107,15 +116,16 @@ export function base64ByteLength(base64) {
 const FILENAME_RE = /^[^/\\\x00-\x1f\x7f-\x9f\u2028\u2029]{1,255}$/;
 
 // Returns { bytes } or { error } with a message staff can act on.
-export function checkFile(file) {
+export function checkFile(file, { maxFileBytes = MAX_FILE_BYTES } = {}) {
   const name = String(file?.filename ?? '').trim();
   if (!name || !FILENAME_RE.test(name)) return { error: 'Each file needs a plain filename.' };
   const type = MEDIA_TYPES[file?.media_type];
   if (!type) return { error: `${name}: only PDF, JPEG, PNG or WebP files can be read.` };
   const bytes = base64ByteLength(file?.file_base64 || '');
   if (bytes === null || bytes <= 0) return { error: `${name}: the file could not be read.` };
-  if (bytes > MAX_FILE_BYTES) {
-    return { error: `${name} is larger than ${MAX_FILE_MB} MB. Reduce the file size and try again.` };
+  if (bytes > maxFileBytes) {
+    const mb = Math.round(maxFileBytes / (1024 * 1024));
+    return { error: `${name} is larger than ${mb} MB. Reduce the file size and try again.` };
   }
   let header;
   try { header = atob(String(file.file_base64).replace(/[\r\n]/g, '').slice(0, 16)); }
@@ -124,17 +134,18 @@ export function checkFile(file) {
   return { bytes, name };
 }
 
-export function checkFiles(files) {
+export function checkFiles(files, { maxFileBytes = MAX_FILE_BYTES, maxTotalBytes = MAX_TOTAL_BYTES } = {}) {
   if (!Array.isArray(files) || !files.length) return { error: 'Add at least one file.' };
   if (files.length > MAX_FILES) return { error: `Add at most ${MAX_FILES} files at a time.` };
   let total = 0;
   for (const f of files) {
-    const r = checkFile(f);
+    const r = checkFile(f, { maxFileBytes });
     if (r.error) return r;
     total += r.bytes;
   }
-  if (total > MAX_TOTAL_BYTES) {
-    return { error: `These files add up to more than ${MAX_TOTAL_MB} MB. Reduce them and try again.` };
+  if (total > maxTotalBytes) {
+    const mb = Math.round(maxTotalBytes / (1024 * 1024));
+    return { error: `These files add up to more than ${mb} MB. Reduce them and try again.` };
   }
   return { total };
 }

@@ -10,6 +10,7 @@
 //   acc.stopReason()  → 'end_turn' | 'max_tokens' | … | null
 //   acc.usage()       → { input_tokens, output_tokens, … } accumulated, or {}
 //   acc.error()       → error message string, or null
+//   acc.model()       → the model that answered (message_start), or null
 
 export function createSseAccumulator() {
   let buffer = '';
@@ -17,6 +18,7 @@ export function createSseAccumulator() {
   let stopReason = null;
   let errorMsg = null;
   let usage = {};
+  let model = null;
 
   const handleData = (jsonStr) => {
     if (!jsonStr || jsonStr === '[DONE]') return;
@@ -30,8 +32,9 @@ export function createSseAccumulator() {
       // no response body to read usage off, so anything that records cost has
       // to pick it up in passing.
       if (evt.usage) usage = { ...usage, ...evt.usage };
-    } else if (evt.type === 'message_start' && evt.message?.usage) {
-      usage = { ...usage, ...evt.message.usage };
+    } else if (evt.type === 'message_start') {
+      if (evt.message?.model) model = evt.message.model;
+      if (evt.message?.usage) usage = { ...usage, ...evt.message.usage };
     } else if (evt.type === 'error') {
       errorMsg = evt.error?.message || 'stream error';
     }
@@ -54,6 +57,7 @@ export function createSseAccumulator() {
     stopReason: () => stopReason,
     usage:      () => usage,
     error:      () => errorMsg,
+    model:      () => model,
   };
 }
 

@@ -96,7 +96,7 @@ const v2Sources = import.meta.glob(['../../functions/api/*proof-scan-v2*.js', '.
 describe('static guards', () => {
   it('registers every v2 route in the worker', () => {
     const files = Object.keys(v2Sources).map((p) => p.split('/').pop()).filter((f) => !f.startsWith('_'));
-    expect(files.length).toBe(11);
+    expect(files.length).toBe(12); // 11 from the v2 build, plus proof-scan-v2-process (staged runs)
     for (const f of files) expect(routes[`/api/${f.replace(/\.js$/, '')}`], f).toBeTypeOf('function');
   });
 

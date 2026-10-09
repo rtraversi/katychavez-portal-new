@@ -10,7 +10,7 @@ import {
   el, t, button, section, dropZone, icon, fmtDate, fmtANumber, maskSsn, remask, errorLine,
 } from './ui.js';
 import {
-  checkFiles, DATE_FIELDS, visibleFields, suggestionsFor, sourceKind,
+  checkFiles, EVIDENCE_LIMITS, DATE_FIELDS, visibleFields, suggestionsFor, sourceKind,
   workspaceDocuments, docFactKeys, docFactValue, docFactUnreadable, DOC_TYPE_SETS, isGeneral, mainPerson,
 } from './model.js';
 import { errorText } from './api.js';
@@ -83,7 +83,7 @@ export function renderEvidenceZero(mount, ctx) {
     local.error = '';
     local.note = '';
     for (const file of files) {
-      const problem = checkFiles([file]);
+      const problem = checkFiles([file], [], EVIDENCE_LIMITS);
       if (problem) { local.error = t(problem.key, problem.vars); ctx.redraw(); return; }
     }
     for (const file of files) {

@@ -72,6 +72,12 @@ export function createFakeSupabase(initial = {}) {
       neq(col, v) { filters.push((r) => r[col] !== v); return api; },
       in(col, vs) { filters.push((r) => vs.includes(r[col])); return api; },
       is(col, v) { filters.push((r) => (v === null ? r[col] == null : r[col] === v)); return api; },
+      not(col, operator, v) {
+        if (operator !== 'is' || v !== null) throw new Error(`fake-supabase: not(${operator}, ${v}) unsupported`);
+        filters.push((r) => r[col] != null);
+        return api;
+      },
+      lt(col, v) { filters.push((r) => r[col] != null && r[col] < v); return api; },
       ilike(col, pattern) {
         const re = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*')}$`, 'i');
         filters.push((r) => re.test(String(r[col] ?? '')));

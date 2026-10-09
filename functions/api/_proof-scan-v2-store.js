@@ -159,23 +159,50 @@ export async function deleteOpenSuggestionsFromDocument(admin, documentId) {
 }
 
 // ── Runs (proof_scans rows inside a case) ────────────────────────────────────
+// A staged run is a row from the moment it is queued (_proof-scan-v2-job.js),
+// so a case can hold queued, processing and error rows as well as finished
+// ones. Only a finished run ('structured') is a report: the case view, the
+// tracker and sign-off see those alone. The page follows an unfinished run
+// through getRun by id.
 
 const RUN_LIST_COLUMNS = 'id, created_at, stage, scope, rule_set_version, report_state, attention_count, filename';
 
 export async function listRuns(admin, caseId) {
   return run('list runs', admin.from('proof_scans').select(RUN_LIST_COLUMNS)
-    .eq('case_id', caseId).order('created_at', { ascending: false }).limit(100));
+    .eq('case_id', caseId).eq('status', 'structured').order('created_at', { ascending: false }).limit(100));
 }
 
 export async function getRun(admin, id) {
   return one(await run('get run', admin.from('proof_scans')
-    .select('id, case_id, created_at, stage, scope, rule_set_version, report_state, attention_count, result_json')
+    .select('id, case_id, created_at, status, error_detail, stage, scope, rule_set_version, report_state, attention_count, result_json, job')
     .eq('id', id).limit(1)));
 }
 
 export async function latestRun(admin, caseId, stage) {
   return one(await run('latest run', admin.from('proof_scans').select('id, stage, case_id, created_at')
-    .eq('case_id', caseId).eq('stage', stage).order('created_at', { ascending: false }).limit(1)));
+    .eq('case_id', caseId).eq('stage', stage).eq('status', 'structured')
+    .order('created_at', { ascending: false }).limit(1)));
+}
+
+// queued -> processing as one conditional UPDATE: two starters racing on the
+// same run get one winner. Only v2 rows (case_id set) are ever claimed here.
+export async function claimRun(admin, id) {
+  return one(await run('claim run', admin.from('proof_scans')
+    .update({ status: 'processing', started_at: new Date().toISOString() })
+    .eq('id', id).eq('status', 'queued').not('case_id', 'is', null)
+    .select('id, case_id, stage, scope, rule_set_version, filename, scanned_by, attempts, job')));
+}
+
+// Writes a terminal state onto a run this worker holds. Guarded on
+// 'processing' so a run the sweeper has since requeued is not overwritten.
+export async function finishRun(admin, id, patch) {
+  return one(await run('finish run', admin.from('proof_scans')
+    .update({ ...patch, completed_at: new Date().toISOString() })
+    .eq('id', id).eq('status', 'processing').select('id')));
+}
+
+export async function updateRunFields(admin, id, patch) {
+  await run('update run', admin.from('proof_scans').update(patch).eq('id', id));
 }
 
 export async function insertRun(admin, row) {

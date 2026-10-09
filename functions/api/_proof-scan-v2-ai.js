@@ -1,9 +1,16 @@
 // _proof-scan-v2-ai.js: what Proof Scan v2 asks the model, and how the answer is
 // checked. NOT a route.
 //
-// Same call pattern as v1.2 (raw fetch, output_config.format json_schema, no
-// beta header) and the same model, claude-sonnet-4-6. Changing the model is
-// Rob's decision (Q-28).
+// Raw fetch with output_config.format json_schema, as v1.2 did. The model is
+// the `proof` role in _models.js (Sonnet 5.5 by default, MODEL_PROOF to pin a
+// portal), never a string here, so retiring a model is a config change.
+//
+// The call streams. A non-streaming call over a large package is what produced
+// the 524s on the live checker; streaming keeps bytes moving for the whole
+// generation and is what makes a large max_tokens safe. Current models think
+// by default and thinking counts against max_tokens, so budgets are generous.
+// Only text deltas are collected, so a leading thinking block never reaches
+// the JSON parse.
 //
 // The model reports OBSERVATIONS ONLY (D-18). It never decides severity,
 // wording, counts, the report state, what fills a record, or what is a
@@ -14,45 +21,72 @@ import { z } from 'zod';
 import {
   DOC_TYPES, ROLES, REFERENCE_FIELDS, ROLE_LABELS, formatName,
 } from './_proof-scan-v2-common.js';
+import { modelFor } from './_models.js';
+import { readSseStream } from '../utils/anthropic-stream.js';
 
-export const MODEL = 'claude-sonnet-4-6';
 const API_URL = 'https://api.anthropic.com/v1/messages';
+
+// Generous: a stage run over a 100+ page package streams for minutes. Kept
+// under the job sweeper's stuck threshold (_proof-scan-v2-job.js).
+const MODEL_TIMEOUT_MS = 9 * 60_000;
+
+// Models that accept server-side refusal fallback. A safety-classifier false
+// positive on an immigration package then reroutes inside the same call rather
+// than failing the run. Any other model (a portal pinning MODEL_PROOF to
+// something older) is sent the plain request, which those models accept.
+const FALLBACK_MODELS = new Set(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1']);
+const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+
+export function modelRequest(env, { system, content, schema, maxTokens }) {
+  const model = modelFor('proof', env);
+  const headers = {
+    'x-api-key': env.ANTHROPIC_API_KEY,
+    'anthropic-version': '2023-06-01',
+    'content-type': 'application/json',
+  };
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    stream: true,
+    system,
+    output_config: { format: { type: 'json_schema', schema } },
+    messages: [{ role: 'user', content }],
+  };
+  if (FALLBACK_MODELS.has(model)) {
+    headers['anthropic-beta'] = FALLBACK_BETA;
+    body.fallbacks = 'default';
+  }
+  return { model, headers, body };
+}
 
 // Returns { ok: true, json, meta } or { ok: false, status, error, code }.
 // `code` is logged; nothing from the document is.
-export async function callModel(env, { system, content, schema, maxTokens = 8000 }) {
-  let data;
+export async function callModel(env, { system, content, schema, maxTokens = 16000 }) {
+  const { model, headers, body } = modelRequest(env, { system, content, schema, maxTokens });
+  let acc;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), MODEL_TIMEOUT_MS);
   try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'x-api-key': env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: maxTokens,
-        system,
-        output_config: { format: { type: 'json_schema', schema } },
-        messages: [{ role: 'user', content }],
-      }),
-    });
+    const res = await fetch(API_URL, { method: 'POST', signal: abort.signal, headers, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`Claude API ${res.status}`);
-    data = await res.json();
+    acc = await readSseStream(res);
   } catch (err) {
-    console.error('[proof-scan-v2] model call failed:', err.message);
+    console.error('[proof-scan-v2] model call failed:', err.name === 'AbortError' ? 'timed out' : err.message);
     return { ok: false, status: 502, code: 'model_unavailable', error: 'The document checker is unavailable right now. Please try again.' };
+  } finally {
+    clearTimeout(timer);
   }
+  const usage = acc.usage();
   const meta = {
-    model: data?.model || MODEL,
-    stop_reason: data?.stop_reason || null,
-    input_tokens: data?.usage?.input_tokens ?? null,
-    output_tokens: data?.usage?.output_tokens ?? null,
+    model: acc.model() || model,
+    stop_reason: acc.stopReason() || null,
+    input_tokens: usage.input_tokens ?? null,
+    output_tokens: usage.output_tokens ?? null,
   };
+  if (acc.error()) return failed('model_stream_error');
   if (meta.stop_reason !== 'end_turn') return failed(`model_stop_reason_${meta.stop_reason || 'missing'}`);
-  const text = data?.content?.find((b) => b?.type === 'text')?.text;
-  if (typeof text !== 'string') return failed('model_response_missing_text');
+  const text = acc.text();
+  if (!text) return failed('model_response_missing_text');
   try {
     return { ok: true, json: JSON.parse(text), meta };
   } catch {

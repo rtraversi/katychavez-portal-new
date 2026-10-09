@@ -69,7 +69,7 @@ async function readDocument({ request, env, gate }) {
     system: evidenceZeroPrompt({ caseTypeLabel: CASE_TYPE_LABELS[caseType], people: snapshot.people }),
     schema: evidenceZeroSchema(),
     content: [fileBlock(file), { type: 'text', text: `File: ${check.name}. Read this one document.` }],
-    maxTokens: 4000,
+    maxTokens: 16000,   // thinking counts against this (_proof-scan-v2-ai.js)
   });
   if (!answer.ok) return json(answer.status, { error: answer.error });
   const read = parseEvidenceZero(answer.json);

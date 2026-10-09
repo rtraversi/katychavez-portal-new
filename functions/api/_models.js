@@ -14,9 +14,12 @@
 //   reason   document work needing real comprehension (translate, route pages)
 //   judge    high-stakes review where a miss costs a USCIS rejection and a false
 //            positive wastes paralegal time
+//   proof    Proof Scan v2's structured observation calls (Evidence Zero reads
+//            and the stage runs). Its own role so v2 can be tuned or pinned
+//            separately from the live checker's `judge` while both run.
 //
 // Per-client override without a code change: set MODEL_CHAT / MODEL_EXTRACT /
-// MODEL_REASON / MODEL_JUDGE as a Worker var in that client's wrangler.toml.
+// MODEL_REASON / MODEL_JUDGE / MODEL_PROOF as a Worker var in that client's wrangler.toml.
 // Use it to pin a portal to a known-good model, or to try a new one on the
 // sandbox before it becomes everyone's default here.
 //
@@ -35,6 +38,10 @@ const MODELS = {
   // queued job now (PROOF-SCAN-HANDOFF.md §12 step 4), so nothing is waiting on
   // it and the stronger model is simply better.
   judge:   'claude-opus-5',
+  // Sonnet, as Max built v2 on (his open question Q-28). Rob chose the current
+  // Sonnet over the 4.6 v2 was written against, so a retirement of 4.6 cannot
+  // take the scanner down. Supports output_config.format json_schema.
+  proof:   'claude-sonnet-5-5',
 };
 
 const ENV_OVERRIDE = {
@@ -42,6 +49,7 @@ const ENV_OVERRIDE = {
   extract: 'MODEL_EXTRACT',
   reason:  'MODEL_REASON',
   judge:   'MODEL_JUDGE',
+  proof:   'MODEL_PROOF',
 };
 
 // Returns the model id for a role. Unknown roles throw rather than defaulting —

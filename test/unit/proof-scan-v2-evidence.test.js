@@ -80,12 +80,13 @@ describe('access and input', () => {
     expect(r.status).toBe(503);
   });
 
-  it('calls the v1.2 model the v1.2 way: raw fetch, json_schema output', async () => {
+  it('calls the proof model, streamed, with json_schema output', async () => {
     const kase = await newCase();
     const calls = mockModel(vi, [read()]);
     await upload(kase.case.id);
     expect(calls[0].url).toBe('https://api.anthropic.com/v1/messages');
-    expect(calls[0].body.model).toBe('claude-sonnet-4-6');
+    expect(calls[0].body.model).toBe('claude-sonnet-5-5');
+    expect(calls[0].body.stream).toBe(true);
     expect(calls[0].body.output_config.format).toEqual({ type: 'json_schema', schema: evidenceZeroSchema() });
   });
 });

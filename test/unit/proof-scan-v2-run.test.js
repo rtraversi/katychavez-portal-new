@@ -136,13 +136,31 @@ describe('access and input', () => {
 // ── What is asked, and fail-closed answers ───────────────────────────────────
 
 describe('the request to the AI', () => {
-  it('uses the v1.2 call pattern and model, and sends each file labelled', async () => {
+  it('records the model that answered, read past the leading thinking block', async () => {
+    const { caseId } = readyDaca();
+    mockModel(vi, [observations({ forms: dacaForms() })]);
+    const r = await run({ case_id: caseId, stage: 'physical_scan' });
+    expect(r.status).toBe(200);
+    expect(db.rows('proof_scans').at(-1).model).toBe('claude-sonnet-5-5');
+  });
+
+  it('lets a portal pin the model with MODEL_PROOF, and drops fallback for a model without it', async () => {
+    const { caseId } = readyDaca();
+    const calls = mockModel(vi, [observations({ forms: dacaForms() })]);
+    await run({ case_id: caseId, stage: 'physical_scan' }, { ...ENV, MODEL_PROOF: 'claude-sonnet-4-6' });
+    expect(calls[0].body.model).toBe('claude-sonnet-4-6');
+    expect(calls[0].body.fallbacks).toBeUndefined();
+  });
+
+  it('uses the proof model streamed with refusal fallback, and sends each file labelled', async () => {
     const { caseId } = readyDaca();
     const calls = mockModel(vi, [observations({ forms: dacaForms() })]);
     await run({ case_id: caseId, stage: 'physical_scan', files: [pdfFile('a.pdf'), { filename: 'b.png', media_type: 'image/png', file_base64: btoa('\x89PNG\r\n\x1a\n00000000') }] });
     const body = calls[0].body;
     expect(calls[0].url).toBe('https://api.anthropic.com/v1/messages');
-    expect(body.model).toBe('claude-sonnet-4-6');
+    expect(body.model).toBe('claude-sonnet-5-5');
+    expect(body.stream).toBe(true);
+    expect(body.fallbacks).toBe('default');
     expect(body.output_config.format.type).toBe('json_schema');
     expect(body.messages[0].content.map((c) => c.type)).toEqual(['text', 'document', 'text', 'image', 'text']);
   });

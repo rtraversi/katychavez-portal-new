@@ -32,16 +32,18 @@ import { onRequest as signoffRoute } from '../../functions/api/proof-scan-v2-sig
 import { onRequest as rulesRoute } from '../../functions/api/proof-scan-v2-rules.js';
 import { onRequest as suppressionsRoute } from '../../functions/api/proof-scan-v2-suppressions.js';
 import { onRequest as possibleIssueRoute } from '../../functions/api/proof-scan-v2-possible-issue.js';
+import { onRequest as processRoute } from '../../functions/api/proof-scan-v2-process.js';
+import { onRequest as uploadRoute } from '../../functions/api/proof-scan-upload.js';
 
 import { mountProofScanV2 } from '../../pages/proof-scan-v2/app.js';
 import { createApi } from '../../pages/proof-scan-v2/api.js';
 import { renderReviewResult, renderPhysicalScanResult } from '../../pages/proof-scan-v2/results.js';
 import { renderPossibleIssues } from '../../pages/proof-scan-v2/possible-issues.js';
 import {
-  checkFiles, LIMITS, reviewModel, physicalScanReport, stepState, mediaTypeOf,
+  checkFiles, LIMITS, EVIDENCE_LIMITS, reviewModel, physicalScanReport, stepState, mediaTypeOf,
 } from '../../pages/proof-scan-v2/model.js';
 import { modelAnswer } from '../fixtures/proof-scan-v2/scenarios.mjs';
-import { seededDb, ENV, STAFF } from '../support/proof-scan-v2-harness.js';
+import { seededDb, ENV, STAFF, sseResponse } from '../support/proof-scan-v2-harness.js';
 import {
   fakeV2Document, byClass, oneByClass, byTag, textOf, click, flush, change, fakeFile, findAll,
 } from '../support/fake-dom-v2.js';
@@ -51,14 +53,42 @@ const ROUTES = {
   '/api/proof-scan-v2-suggestion': suggestionRoute, '/api/proof-scan-v2-ssn': ssnRoute, '/api/proof-scan-v2-evidence': evidenceRoute,
   '/api/proof-scan-v2-run': runRoute, '/api/proof-scan-v2-signoff': signoffRoute, '/api/proof-scan-v2-rules': rulesRoute,
   '/api/proof-scan-v2-suppressions': suppressionsRoute, '/api/proof-scan-v2-possible-issue': possibleIssueRoute,
+  '/api/proof-scan-v2-process': processRoute, '/api/proof-scan-upload': uploadRoute,
 };
 
+// Stage runs stage their files in R2 and run as a job; an in-memory bucket.
+function fakeR2() {
+  const objects = new Map();
+  return {
+    objects,
+    async put(key, body) {
+      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+      objects.set(key, bytes);
+      return { size: bytes.length };
+    },
+    async get(key) {
+      const bytes = objects.get(key);
+      return bytes ? { size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) } : null;
+    },
+    async delete(keys) { for (const k of [].concat(keys)) objects.delete(k); },
+  };
+}
+let env;
+
 // The page's own API client, with fetch going straight to the route handlers.
+// The page fires the job runner without waiting on it; the test keeps hold of
+// it so a poll can wait for the job instead of guessing at timing.
+const inflight = new Set();
 const routedFetch = async (url, opts) => {
   const u = new URL(url, 'http://portal.test');
   const handler = ROUTES[u.pathname];
   if (!handler) throw new Error(`no route ${u.pathname}`);
-  return handler({ request: new Request(u, opts), env: ENV });
+  const p = handler({ request: new Request(u, opts), env });
+  if (u.pathname === '/api/proof-scan-v2-process') {
+    inflight.add(p);
+    p.finally(() => inflight.delete(p));
+  }
+  return p;
 };
 
 let db;
@@ -71,15 +101,14 @@ beforeEach(() => {
   db = seededDb();
   helpersMock.makeAdminClient.mockReturnValue(db);
   helpersMock.verifyAuth.mockResolvedValue(STAFF);
-  // The model: synthetic observations from the preview scenarios.
+  env = { ...ENV, R2: fakeR2() };
+  // The model: synthetic observations from the preview scenarios, streamed.
   globalThis.fetch = vi.fn(async (url, opts) => {
     if (!String(url).startsWith('https://api.anthropic.com/')) return new Response('{}', { status: 200 });
-    return new Response(JSON.stringify({
-      model: 'test', stop_reason: 'end_turn', usage: {},
-      content: [{ type: 'text', text: JSON.stringify(modelAnswer(JSON.parse(opts.body))) }],
-    }), { status: 200 });
+    return sseResponse({ text: JSON.stringify(modelAnswer(JSON.parse(opts.body))) });
   });
-  api = createApi({ fetchImpl: routedFetch, getToken: async () => 't' });
+  // Polling without the wait: each poll yields, so the fired job keeps running.
+  api = createApi({ fetchImpl: routedFetch, getToken: async () => 't', wait: () => Promise.allSettled([...inflight]) });
   for (const k of Object.keys(api)) api[k] = vi.fn(api[k]);
   priorDoc = globalThis.document;
   priorMatch = globalThis.matchMedia;
@@ -354,12 +383,14 @@ describe('size limits in the browser', () => {
   const MB = 1024 * 1024;
   const pdf = (name, size) => ({ name, size, type: 'application/pdf' });
 
-  it('matches the server: 12 MB a file, 22 MB a request, 20 files, four types', () => {
-    expect(LIMITS).toMatchObject({ fileBytes: 12 * MB, requestBytes: 22 * MB, maxFiles: 20 });
-    expect(checkFiles([pdf('a.pdf', 12 * MB)])).toBeNull();
-    expect(checkFiles([pdf('a.pdf', 12 * MB + 1)])).toMatchObject({ key: 'limit.file_too_big', vars: { name: 'a.pdf' } });
+  it('matches the server: 23 MB a review (staged), 12 MB for Evidence Zero, 20 files, four types', () => {
+    expect(LIMITS).toMatchObject({ fileBytes: 23 * MB, requestBytes: 23 * MB, maxFiles: 20 });
+    expect(EVIDENCE_LIMITS).toMatchObject({ fileBytes: 12 * MB, maxFiles: 1 });
+    expect(checkFiles([pdf('a.pdf', 23 * MB)])).toBeNull();
+    expect(checkFiles([pdf('a.pdf', 23 * MB + 1)])).toMatchObject({ key: 'limit.file_too_big', vars: { name: 'a.pdf', limit: 23 } });
+    expect(checkFiles([pdf('a.pdf', 12 * MB + 1)], [], EVIDENCE_LIMITS)).toMatchObject({ key: 'limit.file_too_big', vars: { limit: 12 } });
     expect(checkFiles([pdf('a.pdf', 11 * MB), pdf('b.pdf', 11 * MB)])).toBeNull();
-    expect(checkFiles([pdf('c.pdf', 1)], [pdf('a.pdf', 11 * MB), pdf('b.pdf', 11 * MB)])).toMatchObject({ key: 'limit.total_too_big' });
+    expect(checkFiles([pdf('c.pdf', 2 * MB)], [pdf('a.pdf', 11 * MB), pdf('b.pdf', 11 * MB)])).toMatchObject({ key: 'limit.total_too_big' });
     expect(checkFiles(Array.from({ length: 21 }, (_, i) => pdf(`${i}.pdf`, 1)))).toMatchObject({ key: 'limit.too_many' });
     expect(checkFiles([{ name: 'a.docx', size: 10, type: '' }])).toMatchObject({ key: 'limit.wrong_type' });
     expect(checkFiles([pdf('empty.pdf', 0)])).toMatchObject({ key: 'limit.empty' });
@@ -373,7 +404,7 @@ describe('size limits in the browser', () => {
     expect(textOf(oneByClass(root, 'ps-drop'))).toContain('up to 12 MB');
     for (const stage of ['draft_review', 'preflight', 'physical_scan']) {
       await openStage(root, stage);
-      expect(textOf(oneByClass(root, 'ps-drop'))).toContain('Up to 12 MB per file and 22 MB per review');
+      expect(textOf(oneByClass(root, 'ps-drop'))).toContain('Up to 23 MB per review, all files together');
     }
   });
 
@@ -385,13 +416,13 @@ describe('size limits in the browser', () => {
     expect(textOf(oneByClass(root, 'v2-error'))).toContain('huge.pdf is 13.0 MB. The limit is 12 MB per file.');
   });
 
-  it('refuses a review over 22 MB in total, and never calls the run route', async () => {
+  it('refuses a review over 23 MB in total, and never calls the run route', async () => {
     const root = await mount();
     await readyDacaCase(root);
     await openStage(root, 'draft_review');
     await pickFiles(root, [fakeFile('a.pdf', { size: 11 * MB }), fakeFile('b.pdf', { size: 11 * MB })]);
-    await pickFiles(root, [fakeFile('c.pdf', { size: MB })]);
-    expect(textOf(oneByClass(root, 'v2-error'))).toContain('The limit is 22 MB per review');
+    await pickFiles(root, [fakeFile('c.pdf', { size: 2 * MB })]);
+    expect(textOf(oneByClass(root, 'v2-error'))).toContain('The limit is 23 MB per review');
     expect(byClass(root, 'v2-file-name').map((n) => n.textContent)).toEqual(['a.pdf', 'b.pdf']);
     expect(api.run).not.toHaveBeenCalled();
   });

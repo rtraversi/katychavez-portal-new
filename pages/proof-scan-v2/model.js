@@ -20,10 +20,16 @@ export const CASE_TYPES = [
 // ── Size limits and file types (D-95) ────────────────────────────────────────
 // The same numbers the server enforces (_proof-scan-v2-http.js). The browser
 // checks them first so staff hear about a large file before a long upload; the
-// server stays the authority.
+// server stays the authority. D-95: no splitting; the limit is stated and staff
+// reduce a file that is over it.
+//
+// Stage runs upload each file to R2 and run as a job, so the ceiling is the one
+// Anthropic request every file shares: 23 MB in total, the live checker's limit.
+// Evidence Zero still sends one document inline, at v1.2's 12 MB.
 
 const MB = 1024 * 1024;
-export const LIMITS = { fileBytes: 12 * MB, requestBytes: 22 * MB, maxFiles: 20, fileMb: 12, requestMb: 22 };
+export const LIMITS = { fileBytes: 23 * MB, requestBytes: 23 * MB, maxFiles: 20, fileMb: 23, requestMb: 23 };
+export const EVIDENCE_LIMITS = { fileBytes: 12 * MB, requestBytes: 12 * MB, maxFiles: 1, fileMb: 12, requestMb: 12 };
 
 export const MEDIA_TYPES = {
   'application/pdf': ['pdf'],
@@ -44,16 +50,16 @@ const mb = (bytes) => (bytes / MB).toFixed(1);
 // Returns null when the files may be sent together, or { key, vars } naming the
 // first problem (a copy key and its values). `already` are files already
 // added to the same request.
-export function checkFiles(files, already = []) {
+export function checkFiles(files, already = [], limits = LIMITS) {
   const all = [...already, ...files];
-  if (all.length > LIMITS.maxFiles) return { key: 'limit.too_many', vars: { n: LIMITS.maxFiles } };
+  if (all.length > limits.maxFiles) return { key: 'limit.too_many', vars: { n: limits.maxFiles } };
   for (const f of files) {
     if (!mediaTypeOf(f)) return { key: 'limit.wrong_type', vars: { name: f.name } };
     if (!f.size) return { key: 'limit.empty', vars: { name: f.name } };
-    if (f.size > LIMITS.fileBytes) return { key: 'limit.file_too_big', vars: { name: f.name, mb: mb(f.size) } };
+    if (f.size > limits.fileBytes) return { key: 'limit.file_too_big', vars: { name: f.name, mb: mb(f.size), limit: limits.fileMb } };
   }
   const total = all.reduce((sum, f) => sum + (f.size || 0), 0);
-  if (total > LIMITS.requestBytes) return { key: 'limit.total_too_big', vars: { mb: mb(total) } };
+  if (total > limits.requestBytes) return { key: 'limit.total_too_big', vars: { mb: mb(total), limit: limits.requestMb } };
   return null;
 }
 

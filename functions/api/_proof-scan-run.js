@@ -285,6 +285,9 @@ export async function claimScan(admin, scanId) {
     .from('proof_scans')
     .update({ status: 'processing', started_at: new Date().toISOString() })
     .eq('id', scanId).eq('status', 'queued')
+    // Proof Scan v2 stage runs share this table and these statuses; they are
+    // run by _proof-scan-v2-job.js, never by the HTML checker.
+    .is('case_id', null)
     .select('id, filename, upload_id, attempts');
   return rows?.[0] || null;
 }
@@ -441,7 +444,7 @@ export async function runProofScanSweep(env) {
   const { data: stuck } = await admin
     .from('proof_scans')
     .select('id, attempts, started_at')
-    .eq('status', 'processing')
+    .eq('status', 'processing').is('case_id', null)
     .lt('started_at', new Date(now - STUCK_AFTER_MS).toISOString())
     .limit(5);
 
@@ -468,7 +471,7 @@ export async function runProofScanSweep(env) {
   const { data: waiting } = await admin
     .from('proof_scans')
     .select('id, filename, upload_id, attempts')
-    .eq('status', 'queued')
+    .eq('status', 'queued').is('case_id', null)
     .lt('created_at', new Date(now - QUEUED_GRACE_MS).toISOString())
     .order('created_at', { ascending: true })
     .limit(1);

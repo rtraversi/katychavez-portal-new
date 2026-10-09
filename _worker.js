@@ -92,6 +92,8 @@ import { onRequest as proofScanV2Signoff }          from './functions/api/proof-
 import { onRequest as proofScanV2Rules }            from './functions/api/proof-scan-v2-rules.js';
 import { onRequest as proofScanV2Suppressions }     from './functions/api/proof-scan-v2-suppressions.js';
 import { onRequest as proofScanV2PossibleIssue }    from './functions/api/proof-scan-v2-possible-issue.js';
+import { onRequest as proofScanV2Process }          from './functions/api/proof-scan-v2-process.js';
+import { runProofScanV2Sweep }                      from './functions/api/_proof-scan-v2-job.js';
 import { onRequest as translationStart, runTranslationTmpCleanup } from './functions/api/translation-start.js';
 import { onRequest as translationProcess }          from './functions/api/translation-process.js';
 import { onRequest as translationPoll }             from './functions/api/translation-poll.js';
@@ -256,6 +258,7 @@ export const routes = {
   '/api/proof-scan-v2-rules':            proofScanV2Rules,
   '/api/proof-scan-v2-suppressions':     proofScanV2Suppressions,
   '/api/proof-scan-v2-possible-issue':   proofScanV2PossibleIssue,
+  '/api/proof-scan-v2-process':          proofScanV2Process,
   '/api/translation-start':             translationStart,
   '/api/translation-process':           translationProcess,
   '/api/translation-poll':              translationPoll,
@@ -431,6 +434,7 @@ export default {
       // died mid-run when a tab closed. The scan is a job now; this is what
       // makes closing the tab safe (PROOF-SCAN-HANDOFF.md §12 step 4).
       ctx.waitUntil(runProofScanSweep(env));
+      ctx.waitUntil(runProofScanV2Sweep(env));
     } else if (event.cron === '0 15 * * 1') {
       // Weekly, Monday 10am CST — check every USCIS form's edition against
       // uscis.gov and flag any that have gone stale (or that could not be

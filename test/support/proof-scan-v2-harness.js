@@ -85,6 +85,27 @@ export function oversizePdf(mb = 12) {
   return head + 'A'.repeat(Math.ceil((bytes - 9) / 3) * 4);
 }
 
+// A streamed Messages response, the way the API sends one: a thinking block
+// first (current models think by default), then the text, then the stop reason
+// and usage. callModel must read past the thinking block to the text.
+export function sseResponse({ text, model = 'claude-sonnet-5-5', stopReason = 'end_turn', usage = { input_tokens: 1000, output_tokens: 500 } }) {
+  const events = [
+    { type: 'message_start', message: { model, usage: { input_tokens: usage.input_tokens } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'reading the package' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+    // Split mid-text so the accumulator has to join deltas.
+    { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: text.slice(0, Math.floor(text.length / 2)) } },
+    { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: text.slice(Math.floor(text.length / 2)) } },
+    { type: 'content_block_stop', index: 1 },
+    { type: 'message_delta', delta: { stop_reason: stopReason }, usage: { output_tokens: usage.output_tokens } },
+    { type: 'message_stop' },
+  ];
+  const body = events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join('');
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+}
+
 // Mock Anthropic: each call returns the next queued JSON body as the text block.
 export function mockModel(vi, responses) {
   const queue = [...responses];
@@ -96,17 +117,11 @@ export function mockModel(vi, responses) {
     if (next === undefined) throw new Error('unexpected extra model call');
     // A function builds its answer from the request (the IDs this run asked for).
     if (typeof next === 'function') next = { output: next(body) };
-    if (next?.httpStatus) return { ok: false, status: next.httpStatus, json: async () => ({}) };
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        model: 'claude-sonnet-4-6',
-        stop_reason: next?.stop_reason || 'end_turn',
-        content: [{ type: 'text', text: typeof next === 'string' ? next : JSON.stringify(next?.output ?? next) }],
-        usage: { input_tokens: 1000, output_tokens: 500 },
-      }),
-    };
+    if (next?.httpStatus) return new Response('{}', { status: next.httpStatus });
+    return sseResponse({
+      text: typeof next === 'string' ? next : JSON.stringify(next?.output ?? next),
+      stopReason: next?.stop_reason || 'end_turn',
+    });
   });
   return calls;
 }
