@@ -14,6 +14,7 @@ export async function onRequest({ request, env }) {
   const { data: scans, error } = await admin
     .from('proof_scans')
     .select('id, filename, status, created_at')
+    .is('case_id', null)   // Proof Scan v2 stage runs live inside their case, not here
     .order('created_at', { ascending: false })
     .limit(10);
 

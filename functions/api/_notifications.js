@@ -4,12 +4,13 @@
 // Gracefully no-ops when RESEND_API_KEY is absent (dev / pre-domain setup).
 
 import { makeAdminClient } from './_helpers.js';
+import { buildProofScanEmail, buildProofScanStageEmail } from './_proof-scan-email.js';
 
 async function sendEmail(env, to, subject, html, type = 'other') {
   const apiKey = env.RESEND_API_KEY;
   if (!apiKey) {
     console.log(`[notify] RESEND_API_KEY not set — skipping: "${subject}" → ${to}`);
-    return;
+    return false;
   }
   const firmName  = env.PORTAL_FIRM_NAME  || 'Your Law Firm';
   const fromEmail = env.PORTAL_FROM_EMAIL || 'noreply@example.com';
@@ -38,6 +39,7 @@ async function sendEmail(env, to, subject, html, type = 'other') {
   } catch (logErr) {
     console.error('[notify] email_log insert failed:', logErr.message);
   }
+  return status === 'sent';
 }
 
 function layout(env, body) {
@@ -451,4 +453,45 @@ export async function notifyFormEditionStale(env, { toEmail, forms }) {
       ${btn(`${portalUrl}/portal#draft-forms`, 'Open USCIS Forms')}
     `), 'form_edition_stale'
   );
+}
+
+// ── Structured Proof Scan (Batch 4) ──────────────────────────────────────────
+//
+// The only Proof Scan notification a structured scan can produce. Its content is
+// built entirely from the validated, server-composed result by
+// _proof-scan-email.js, which escapes every observed value and re-validates the
+// result before it will return anything at all.
+//
+// Returns true only when Resend accepted the message with a successful response.
+// A result that does not validate returns false and sends nothing — there is no
+// partial email, no fallback body, and no path here that accepts HTML from a caller.
+export async function notifyStructuredProofScan(env, { toEmail, result }) {
+  if (!toEmail) return false;
+
+  const message = buildProofScanEmail(result, {
+    firmName:  env.PORTAL_FIRM_NAME || 'Your Law Firm',
+    portalUrl: env.PORTAL_URL || 'https://your-portal.workers.dev',
+  });
+  if (!message) {
+    console.error('[notify] proof scan result did not validate — no notification sent');
+    return false;
+  }
+
+  return sendEmail(env, toEmail, message.subject, message.html, 'proof_scan');
+}
+
+// ── Proof Scan v2 stage result (D-61) ────────────────────────────────────────
+// Optional, staff choose it per run. Only the stage and its official result,
+// with a link. Possible issues never generate email (D-36).
+export async function notifyProofScanStage(env, { toEmail, result }) {
+  if (!toEmail) return false;
+  const message = buildProofScanStageEmail(result, {
+    firmName:  env.PORTAL_FIRM_NAME || 'Your Law Firm',
+    portalUrl: env.PORTAL_URL || 'https://your-portal.workers.dev',
+  });
+  if (!message) {
+    console.error('[notify] proof scan stage result did not validate; no notification sent');
+    return false;
+  }
+  return sendEmail(env, toEmail, message.subject, message.html, 'proof_scan');
 }

@@ -53,7 +53,9 @@ export async function onRequest({ request, env }) {
     body: JSON.stringify({
       model:      modelFor('chat', env),
       max_tokens: 1024,
-      system:     KNOWLEDGE_BASE,
+      // KNOWLEDGE_BASE is static and resent on every turn of a conversation
+      // (up to 40 messages) — cache it so only the first turn pays full price.
+      system:     [{ type: 'text', text: KNOWLEDGE_BASE, cache_control: { type: 'ephemeral' } }],
       messages,
     }),
   });

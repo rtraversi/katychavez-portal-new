@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "_note": "SYNTHETIC. The same person's newer EAD. It replaces the older EAD in the workspace (D-55) and its different expiration date is PROPOSED, never written over the record.",
+  "sample_label": "Sample newer EAD",
+  "filename": "sample-ead-renewed.pdf",
+  "doc_type": "ead",
+  "type_label": "EAD card",
+  "read_quality": "clear",
+  "issued": "2026-10-02",
+  "summary_fields": ["name", "date_of_birth", "a_number", "ead_expiration"],
+  "facts": {
+    "first_name": "ANA",
+    "middle_name": "MARIA",
+    "last_name": "RIVERA",
+    "date_of_birth": "1994-06-18",
+    "a_number": "A-123456789",
+    "ead_expiration": "2028-10-01"
+  }
+}

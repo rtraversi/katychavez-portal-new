@@ -304,6 +304,23 @@ window.MODULE_REGISTRY = [
     description: 'Verify immigration documents and build proof of status packages.',
     badge:     'OPEN →',
   },
+  // Proof Scan v2 sits next to the old checker while Max tests it (D-88). Same
+  // module key, so exactly the staff who can open the old checker see this one;
+  // no new permission row or migration is needed.
+  {
+    key:       'proof_scan',
+    name:      'Proof Scan v2',
+    group:     'intake',
+    icon:      'tile-proof-scan',
+    navIcon:   'shield',
+    route:     'proof-scan-v2',
+    wave:      1,
+    sortOrder: 58,
+    staffOnly: true,
+    requires:  'immigration',
+    description: 'Staged case checks: Evidence Zero, Draft Review, Pre-flight and Physical Scan.',
+    badge:     'OPEN →',
+  },
 
   // ── Wave 2 ─────────────────────────────────────────────────────────────────
   {

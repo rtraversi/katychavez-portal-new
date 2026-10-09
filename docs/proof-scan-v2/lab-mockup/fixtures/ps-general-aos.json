@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "label": "General: AOS-style package",
+  "_note": "SYNTHETIC. Placeholder people for the General case type. Deliberate findings: I-130 marriage date vs marriage certificate (D-98); beneficiary country of birth MEXICO on I-485 vs GUATEMALA on I-765 (D-100 #1); beneficiary's Spanish birth certificate with no translation (D-100 #6, counted); expired passport (D-100 #5, Possible issues only).",
+  "scan": {
+    "filename": "general-package-scan.pdf",
+    "scanned_at": "2026-10-07T00:00:00Z",
+    "pages": 137
+  },
+  "case_type": {
+    "key": "general",
+    "label": "General"
+  },
+  "results": {
+    "PS-302": {
+      "status": "needs_attention",
+      "summary": "The beneficiary's A-Number on the I-765 is A-234567809. The I-485 has A-234567890.",
+      "locations": [
+        "I-765, page 1",
+        "I-485, page 1"
+      ]
+    }
+  },
+  "people": [
+    {
+      "role": "petitioner",
+      "name": "[placeholder] MORALES, DANIEL",
+      "first_name": "DANIEL",
+      "last_name": "MORALES",
+      "date_of_birth": "1990-02-11",
+      "country_of_birth": "UNITED STATES",
+      "country_of_citizenship": "UNITED STATES",
+      "address": "1842 W Encanto Blvd, Apt 6, Phoenix, AZ 85007",
+      "phone": "(602) 555-0182",
+      "email": "daniel.morales@example.test",
+      "employer": "Desert Freight LLC",
+      "marriage_date": "2021-05-15",
+      "marriage_place": "Phoenix, AZ"
+    },
+    {
+      "role": "beneficiary",
+      "name": "[placeholder] REYES, LUCIA",
+      "first_name": "LUCIA",
+      "last_name": "REYES",
+      "date_of_birth": "1993-09-30",
+      "a_number": "A-234567890",
+      "country_of_birth": "MEXICO",
+      "country_of_citizenship": "MEXICO",
+      "address": "1842 W Encanto Blvd, Apt 6, Phoenix, AZ 85007",
+      "phone": "(602) 555-0147",
+      "email": "lucia.reyes@example.test",
+      "i94_number": "123456789A1",
+      "last_entry_date": "2019-07-04",
+      "port_of_entry": "Nogales, AZ",
+      "marriage_date": "2021-05-15",
+      "marriage_place": "Phoenix, AZ"
+    }
+  ],
+  "forms": [
+    {
+      "form": "I-130",
+      "pages": 12,
+      "person": "petitioner",
+      "values": {
+        "first_name": "DANIEL",
+        "last_name": "MORALES",
+        "date_of_birth": "1990-02-11",
+        "country_of_birth": "UNITED STATES",
+        "marriage_date": "2021-05-12",
+        "marriage_place": "Phoenix, AZ",
+        "phone": "(602) 555-0182"
+      }
+    },
+    {
+      "form": "I-130A",
+      "pages": 6,
+      "person": "beneficiary",
+      "values": {
+        "first_name": "LUCIA",
+        "last_name": "REYES",
+        "date_of_birth": "1993-09-30",
+        "country_of_birth": "MEXICO"
+      }
+    },
+    {
+      "form": "I-485",
+      "pages": 20,
+      "person": "beneficiary",
+      "values": {
+        "first_name": "LUCIA",
+        "last_name": "REYES",
+        "date_of_birth": "1993-09-30",
+        "a_number": "A-234567890",
+        "country_of_birth": "MEXICO",
+        "country_of_citizenship": "MEXICO",
+        "i94_number": "123456789A1",
+        "last_entry_date": "2019-07-04",
+        "port_of_entry": "Nogales, AZ"
+      }
+    },
+    {
+      "form": "I-864",
+      "pages": 10,
+      "person": "petitioner",
+      "values": {
+        "first_name": "DANIEL",
+        "last_name": "MORALES",
+        "date_of_birth": "1990-02-11",
+        "employer": "Desert Freight LLC",
+        "phone": "(602) 555-0182"
+      }
+    },
+    {
+      "form": "I-765",
+      "pages": 7,
+      "person": "beneficiary",
+      "values": {
+        "first_name": "LUCIA",
+        "last_name": "REYES",
+        "a_number": "A-234567809",
+        "country_of_birth": "GUATEMALA",
+        "country_of_citizenship": "MEXICO",
+        "i94_number": "123456789A1"
+      }
+    },
+    {
+      "form": "G-28",
+      "pages": 4,
+      "person": "beneficiary",
+      "values": {
+        "first_name": "LUCIA",
+        "last_name": "REYES"
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "label": "Birth certificate",
+      "owners": [
+        "petitioner"
+      ],
+      "pages": 2,
+      "facts": {
+        "first_name": "DANIEL",
+        "last_name": "MORALES",
+        "date_of_birth": "1990-02-11",
+        "country_of_birth": "UNITED STATES"
+      }
+    },
+    {
+      "label": "Birth certificate",
+      "owners": [
+        "beneficiary"
+      ],
+      "pages": 3,
+      "language": "Spanish",
+      "translation": false,
+      "facts": {
+        "first_name": "LUCIA",
+        "last_name": "REYES",
+        "date_of_birth": "1993-09-30",
+        "country_of_birth": "MEXICO"
+      }
+    },
+    {
+      "label": "Marriage certificate",
+      "owners": [
+        "petitioner",
+        "beneficiary"
+      ],
+      "pages": 2,
+      "facts": {
+        "marriage_date": "2021-05-15",
+        "marriage_place": "Phoenix, AZ"
+      }
+    },
+    {
+      "label": "Passport",
+      "owners": [
+        "beneficiary"
+      ],
+      "pages": 1,
+      "expires": "2025-03-01",
+      "facts": {
+        "first_name": "LUCIA",
+        "last_name": "REYES",
+        "date_of_birth": "1993-09-30",
+        "country_of_citizenship": "MEXICO"
+      }
+    },
+    {
+      "label": "Tax return transcript, 2025",
+      "owners": [
+        "petitioner"
+      ],
+      "pages": 6,
+      "facts": {
+        "first_name": "DANIEL",
+        "last_name": "MORALES"
+      }
+    }
+  ]
+}

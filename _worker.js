@@ -81,6 +81,17 @@ import { onRequest as proofScanPoll }               from './functions/api/proof-
 import { runProofScanSweep }                        from './functions/api/_proof-scan-run.js';
 import { onRequest as proofScanHistory }            from './functions/api/proof-scan-history.js';
 import { onRequest as proofScanConfig }             from './functions/api/proof-scan-config.js';
+import { onRequest as proofScanV2Case }             from './functions/api/proof-scan-v2-case.js';
+import { onRequest as proofScanV2Cases }            from './functions/api/proof-scan-v2-cases.js';
+import { onRequest as proofScanV2Person }           from './functions/api/proof-scan-v2-person.js';
+import { onRequest as proofScanV2Suggestion }       from './functions/api/proof-scan-v2-suggestion.js';
+import { onRequest as proofScanV2Ssn }              from './functions/api/proof-scan-v2-ssn.js';
+import { onRequest as proofScanV2Evidence }         from './functions/api/proof-scan-v2-evidence.js';
+import { onRequest as proofScanV2Run }              from './functions/api/proof-scan-v2-run.js';
+import { onRequest as proofScanV2Signoff }          from './functions/api/proof-scan-v2-signoff.js';
+import { onRequest as proofScanV2Rules }            from './functions/api/proof-scan-v2-rules.js';
+import { onRequest as proofScanV2Suppressions }     from './functions/api/proof-scan-v2-suppressions.js';
+import { onRequest as proofScanV2PossibleIssue }    from './functions/api/proof-scan-v2-possible-issue.js';
 import { onRequest as translationStart, runTranslationTmpCleanup } from './functions/api/translation-start.js';
 import { onRequest as translationProcess }          from './functions/api/translation-process.js';
 import { onRequest as translationPoll }             from './functions/api/translation-poll.js';
@@ -234,6 +245,17 @@ export const routes = {
   '/api/proof-scan-poll':                proofScanPoll,
   '/api/proof-scan-history':             proofScanHistory,
   '/api/proof-scan-config':              proofScanConfig,
+  '/api/proof-scan-v2-case':             proofScanV2Case,
+  '/api/proof-scan-v2-cases':            proofScanV2Cases,
+  '/api/proof-scan-v2-person':           proofScanV2Person,
+  '/api/proof-scan-v2-suggestion':       proofScanV2Suggestion,
+  '/api/proof-scan-v2-ssn':              proofScanV2Ssn,
+  '/api/proof-scan-v2-evidence':         proofScanV2Evidence,
+  '/api/proof-scan-v2-run':              proofScanV2Run,
+  '/api/proof-scan-v2-signoff':          proofScanV2Signoff,
+  '/api/proof-scan-v2-rules':            proofScanV2Rules,
+  '/api/proof-scan-v2-suppressions':     proofScanV2Suppressions,
+  '/api/proof-scan-v2-possible-issue':   proofScanV2PossibleIssue,
   '/api/translation-start':             translationStart,
   '/api/translation-process':           translationProcess,
   '/api/translation-poll':              translationPoll,

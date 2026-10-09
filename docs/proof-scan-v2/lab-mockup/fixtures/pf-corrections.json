@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "_note": "SYNTHETIC. The client's pen markups on the drafts, and the pages the firm retyped afterwards. Handwriting is read by OCR, so markup_read says how sure the read was. One of each outcome: fixed, not fixed, typed differently, unreadable. 2026-10-02: the client wrote United States as the country; the firm leaves it out on US addresses on purpose. A G-28 markup with no corrected G-28 page shows the missing-corrected-page case.",
+  "label": "Sample markups and corrected pages",
+  "marked_file": "sample-client-markups.pdf",
+  "corrected_file": "sample-corrected-pages.pdf",
+  "corrections": [
+    {
+      "form": "I-821D",
+      "page": 1,
+      "field": "street",
+      "original": "1842 W Encanto Blvd",
+      "markup": "456 Sample St",
+      "markup_read": "clear",
+      "corrected": "456 Sample St"
+    },
+    {
+      "form": "I-765",
+      "page": 2,
+      "field": "phone",
+      "original": "(602) 555-0147",
+      "markup": "(602) 555-0199",
+      "markup_read": "clear",
+      "corrected": "(602) 555-0147"
+    },
+    {
+      "form": "G-1145",
+      "page": 1,
+      "field": "email",
+      "original": "ana.rivera@example.test",
+      "markup": "ana.m.rivera@example.test",
+      "markup_read": "clear",
+      "corrected": "ana.m.rivera@exmaple.test"
+    },
+    {
+      "form": "I-821D",
+      "page": 1,
+      "field": "apt_number",
+      "original": "6",
+      "markup": "16?",
+      "markup_read": "unclear",
+      "corrected": "16"
+    },
+    {
+      "form": "I-821D",
+      "page": 1,
+      "field": "country",
+      "original": "",
+      "markup": "United States",
+      "markup_read": "clear",
+      "corrected": ""
+    },
+    {
+      "form": "G-28",
+      "page": 2,
+      "field": "phone",
+      "original": "(602) 555-0147",
+      "markup": "(602) 555-0199",
+      "markup_read": "clear",
+      "corrected": null
+    }
+  ]
+}

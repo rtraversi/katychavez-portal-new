@@ -44,6 +44,8 @@ vitest.config.mjs
 *.md
 memory/
 deploy/
+# Proof Scan v2 handoff (2026-10-08): design mockup source and records, never served.
+docs/
 _planning/
 _migrations/
 

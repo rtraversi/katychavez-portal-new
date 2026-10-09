@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "_note": "SYNTHETIC. A simulated EAD. No file is read; this JSON stands in for what identification and extraction would return. Never put a real client's data in a fixture.",
+  "sample_label": "Sample EAD",
+  "filename": "sample-ead-front-back.pdf",
+  "doc_type": "ead",
+  "type_label": "EAD card",
+  "read_quality": "clear",
+  "issued": "2024-11-14",
+  "summary_fields": ["name", "date_of_birth", "a_number", "ead_expiration"],
+  "facts": {
+    "first_name": "ANA",
+    "middle_name": "MARIA",
+    "last_name": "RIVERA",
+    "date_of_birth": "1994-06-18",
+    "a_number": "A-123456789",
+    "ead_expiration": "2026-11-14"
+  }
+}

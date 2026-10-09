@@ -69,3 +69,32 @@ export const DemoEventSchema = z.object({
   action:     z.string().max(100).nullish(),
   ip_hash:    z.string().max(128).nullish(),
 });
+
+// ── Proof Scan (structured DACA pipeline) ────────────────────────────────────
+// Staff pick the scan profile explicitly; it is never inferred from the filename,
+// the forms inside the PDF, or the model. Only configured profiles are accepted.
+// `.strict()` rejects unknown properties, so a browser cannot smuggle rules,
+// severities, titles, or a profile version past the boundary.
+
+export const PROOF_SCAN_PROFILE_IDS = ['daca_renewal'];
+
+// 32 MB is the Anthropic request ceiling for a base64 PDF; hold well under it so
+// the prompt, schema and JSON framing still fit. base64 is 4 chars per 3 bytes.
+export const PROOF_SCAN_MAX_PDF_BYTES = 12 * 1024 * 1024;
+export const PROOF_SCAN_MAX_BASE64_CHARS = Math.ceil(PROOF_SCAN_MAX_PDF_BYTES / 3) * 4 + 8;
+const MAX_PDF_MB = Math.floor(PROOF_SCAN_MAX_PDF_BYTES / (1024 * 1024));
+
+export const ProofScanSchema = z.object({
+  scan_profile: z.enum(PROOF_SCAN_PROFILE_IDS, {
+    message: `must be one of: ${PROOF_SCAN_PROFILE_IDS.join(', ')}`,
+  }),
+  filename: z.string().trim().min(1).max(255)
+    .regex(/\.pdf$/i, 'must be a .pdf file')
+    // No path separators or control characters — the name is stored and displayed.
+    .regex(/^[^/\\\x00-\x1f\x7f-\x9f\u2028\u2029]+$/,
+      'contains characters that are not allowed in a filename'),
+  file_base64: z.string()
+    .min(1, 'No file provided')
+    .max(PROOF_SCAN_MAX_BASE64_CHARS, `PDF is too large — the limit is ${MAX_PDF_MB} MB`)
+    .regex(/^[A-Za-z0-9+/\r\n]+={0,2}$/, 'is not valid base64'),
+}).strict();

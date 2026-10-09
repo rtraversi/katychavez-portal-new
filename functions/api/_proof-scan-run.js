@@ -25,7 +25,7 @@ import { makeAdminClient }        from './_helpers.js';
 import { tmpKey, MAX_PDF_BYTES, tooLargeMessage } from './proof-scan-upload.js';
 import { segmentPackage, spansFrom, checkSpans, bytesToBase64, contentBlockFor } from './_segment-package.js';
 
-const FALLBACK_EDITIONS = 'G-1145|1p|09/26/14, G-1450|1p|06/03/25, G-1650|1p|06/03/25, G-28|4p|09/17/18, I-90|7p|01/20/25, I-130|12p|04/01/24, I-130A|6p|04/01/24, I-131|14p|01/20/25, I-485|24p|01/20/25, I-751|11p|04/01/24, I-765|7p|08/21/25, I-765WS|1p|08/21/25, I-821D|7p|01/20/25, I-864|12p|10/17/24, N-400|14p|01/20/25';
+export const FALLBACK_EDITIONS = 'G-1145|1p|09/26/14, G-1450|1p|06/03/25, G-1650|1p|06/03/25, G-28|4p|09/17/18, I-90|7p|01/20/25, I-130|12p|04/01/24, I-130A|6p|04/01/24, I-131|14p|01/20/25, I-485|24p|01/20/25, I-751|11p|04/01/24, I-765|7p|08/21/25, I-765WS|1p|08/21/25, I-821D|7p|01/20/25, I-864|12p|10/17/24, N-400|14p|01/20/25';
 
 const SYSTEM_PROMPT_BASE = `You are a USCIS document proof checker for an immigration law firm. Review the uploaded PDF and check for the issues listed below. Your response must be valid HTML only — no Markdown.
 
