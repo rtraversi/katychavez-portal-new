@@ -57,6 +57,30 @@ the same person matches; **PS-306** foreign-language evidence needs an English t
 
 `docs/proof-scan-v2/`: this folder.
 
+## v2.0.1: fixes from Max's first live review (2026-10-09)
+
+Branch `proof-scan-v2.0.1`, from `module/forms-page-reorg` at `780c403`. No migration, no
+new settings. 914 tests (904 before). Decisions D-103 to D-110 in `DECISIONS-MASTER-RECORD.md`.
+
+- **D-103** Physical Scan is open without the evidence requirement (DACA too); Draft Review
+  and Pre-flight still wait for it. Editing the record after approval no longer forces a
+  re-approval before the next run.
+- **D-104** A partly readable EAD counts as the EAD on file and fills the empty fields it read
+  clearly; unreadable fields are skipped, no suggestions. A clear EAD is never replaced by a
+  less clear copy.
+- **D-105 / D-106** No "not on the case card yet" note; no "forms found" list.
+- **D-107** G-28 EAD delivery: all boxes empty or home ticked is clear; office ticked is a
+  gentle confirm, never counted.
+- **D-108** Edition dates: the AI reference uses the edition the weekly USCIS check found
+  (`form_editions.upstream_edition`, when `check_status` is current or stale), so a current
+  form is no longer called out of date. The old checker is unchanged.
+- **D-109** A problem's headline is the finding ("The I-765 signature page (page 6) is
+  missing."), never the rule's own wording.
+- **D-110** DACA: when the forms carry a full middle name the EAD does not show, and no
+  other evidence shows it, a gentle confirm asks whether it was checked with the client.
+- The Physical Scan report now has the same "Please confirm" block as Draft Review, so these
+  confirms are visible there too (never counted).
+
 ## What is NOT done
 
 - Never run against the real Anthropic API, the real Supabase, or a real PDF.
