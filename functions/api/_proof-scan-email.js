@@ -17,6 +17,8 @@
 
 import { validateStoredScanResult, reportStateLanguage, STAFF_REVIEW_REMINDER } from './proof-scan-contract.js';
 import { buildReportModel } from '../../pages/proof-scan/report-model.js';
+import { FIELD_LABELS, ROLE_LABELS, DOC_TYPE_LABELS } from './_proof-scan-v2-common.js';
+import { copyText } from './_proof-scan-v2-copy.js';
 
 // Same shaping the portal renders, so a line in the email is the line on screen.
 // report-model.js is pure — no DOM, no fetch — which is why it can be imported here.
@@ -142,22 +144,89 @@ export function buildProofScanEmail(result, { firmName, portalUrl } = {}) {
   return { subject, html };
 }
 
-// ── Proof Scan v2: the optional stage email (D-61) ───────────────────────────
+// ── Proof Scan v2: the optional stage email (D-61, D-114, Q-51) ──────────────
 //
-// Only the official stage result and a link to the report. No client name, no
-// findings, and never a Possible issue (D-36). The phrase is recomputed from the
-// stored state and count through reportStateLanguage(), so the email cannot say
-// anything the report does not.
+// v2.0.2 (D-114): the case's last names, a link that opens that exact case,
+// and a summary of what needs attention; "good to go" when nothing does.
+// Q-51: no personal information beyond the last names. Every summary line is
+// built from the structured fields of an attention item (its kind, the form,
+// the field, the document type, the person's role), never from its title or
+// any value, so no date, number, address or first name can reach an inbox.
+// Never a Possible issue (D-36), and never a gentle confirm: neither is counted.
+// The words are placeholders in pages/proof-scan-v2/copy.js (D-87).
 const V2_STAGE_LABELS = { draft_review: 'Draft Review', preflight: 'Pre-flight', physical_scan: 'Physical Scan' };
+const LAST_NAME_ROLE_ORDER = ['petitioner', 'beneficiary', 'applicant', 'sponsor', 'joint_sponsor', 'household_member'];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function buildProofScanStageEmail(result, { firmName, portalUrl } = {}) {
+// The case's last names, main person first: "MORALES & REYES". Nothing else
+// about anyone. Header-safe (no control characters), bounded.
+export function caseLastNames(people = []) {
+  const ordered = [...people].filter((p) => String(p?.last_name || '').trim())
+    .sort((a, b) => (Number(Boolean(b.is_main)) - Number(Boolean(a.is_main)))
+      || LAST_NAME_ROLE_ORDER.indexOf(a.role) - LAST_NAME_ROLE_ORDER.indexOf(b.role));
+  const names = [...new Set(ordered.map((p) => subjectFilename(p.last_name).toUpperCase()))];
+  return names.slice(0, 4).join(' & ').slice(0, 120);
+}
+
+// The link to this exact case. The portal's router owns the hash, so the
+// case travels in the query string; the v2 page opens it on load.
+export function proofScanCaseUrl(portalUrl, caseId) {
+  const base = proofScanReportUrl(portalUrl);
+  if (!base) return null;
+  const url = new URL(base);
+  url.hash = 'proof-scan-v2';
+  if (UUID.test(String(caseId || ''))) url.searchParams.set('ps2case', caseId);
+  return url.href;
+}
+
+// One line per attention item, from its structured fields only.
+export function stageSummaryLines(result) {
+  const general = result?.case_type === 'general';
+  const who = (role) => (general && ROLE_LABELS[role] ? `the ${ROLE_LABELS[role].toLowerCase()}'s ` : '');
+  const field = (f) => FIELD_LABELS[f] || '';
+  const formName = (f) => String(f || '').replace(/[^A-Za-z0-9 -]/g, '').slice(0, 20);
+  const forms = (xs) => [...new Set((xs || []).map(formName).filter(Boolean))].join(', ');
+  const lines = [];
+  for (const a of result?.attention || []) {
+    const vars = { form: formName(a.form), field: field(a.field), who: who(a.person_role), forms: forms(a.forms) };
+    let line;
+    switch (a.kind) {
+      case 'missing_item': line = copyText('v202.email.line.missing_item', vars); break;
+      case 'reference_difference': line = copyText('v202.email.line.reference_difference', vars); break;
+      case 'case_card_difference': line = copyText('v202.email.line.case_card_difference', vars); break;
+      case 'evidence_difference': line = copyText('v202.email.line.evidence_difference', { ...vars, doc: (DOC_TYPE_LABELS[a.doc_type] || DOC_TYPE_LABELS.other).toLowerCase() }); break;
+      case 'form_difference': line = copyText('v202.email.line.form_difference', vars); break;
+      case 'translation': line = copyText('v202.email.line.translation', vars); break;
+      case 'correction': line = copyText('v202.email.line.correction', vars); break;
+      case 'not_carried': line = copyText('v202.email.line.not_carried', vars); break;
+      case 'check': line = a.rule_title
+        ? copyText(a.form ? 'v202.email.line.check_form' : 'v202.email.line.check', { ...vars, rule: String(a.rule_title).replace(/\.$/, '') })
+        : copyText('v202.email.line.other'); break;
+      default: line = copyText('v202.email.line.other');
+    }
+    if (!lines.includes(line)) lines.push(line);
+  }
+  if (result?.not_checked_count > 0) lines.push(copyText('v202.email.not_checked', { n: result.not_checked_count }));
+  return lines;
+}
+
+export function buildProofScanStageEmail(result, { firmName, portalUrl, caseId, people } = {}) {
   const stageLabel = V2_STAGE_LABELS[result?.stage];
   const language = reportStateLanguage(result?.report_state, result?.attention_count);
   if (!stageLabel || !language || language !== result?.primary_report_language) return null;
 
-  const subject = `Proof Scan: ${stageLabel}: ${language}`;
+  const names = caseLastNames(people);
+  const subject = (names
+    ? copyText('v202.email.subject', { names, stage: stageLabel, result: language })
+    : copyText('v202.email.subject_unnamed', { stage: stageLabel, result: language })).slice(0, SUBJECT_LIMIT);
   const tone = TONE[result.report_state] || '#374151';
-  const reportUrl = proofScanReportUrl(portalUrl);
+  const caseUrl = proofScanCaseUrl(portalUrl, caseId);
+  const clean = result.report_state === 'no_issues_found';
+  const lines = clean ? [] : stageSummaryLines(result);
+  const summary = clean
+    ? `<p style="margin:0 0 16px;font-size:14px;color:#111">${esc(copyText('v202.email.good_to_go'))}</p>`
+    : `<p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#111">${esc(copyText('v202.email.needs_heading'))}</p>
+    <ul style="margin:0 0 16px;padding-left:18px">${lines.map((l) => `<li style="margin:0 0 6px;font-size:13px;color:#111;line-height:1.5">${esc(l)}</li>`).join('')}</ul>`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
@@ -167,16 +236,18 @@ export function buildProofScanStageEmail(result, { firmName, portalUrl } = {}) {
     <p style="margin:2px 0 0;color:#fff;font-size:12px;opacity:.8">Proof Scan result</p>
   </div>
   <div style="padding:24px 32px 4px">
+    ${names ? `<p style="margin:0 0 4px;font-size:13px;color:#111">${esc(copyText('v202.email.case', { names }))}</p>` : ''}
     <p style="margin:0 0 4px;font-size:13px;color:#6b7280">${esc(stageLabel)}</p>
     <p style="margin:0 0 16px;font-size:18px;font-weight:700;color:${tone}">${esc(language)}</p>
+    ${summary}
   </div>
   <div style="margin:0 32px;padding:12px 16px;background:#f9fafb;border-left:3px solid #1a3a5c">
     <p style="margin:0;font-size:12px;color:#374151">${esc(STAFF_REVIEW_REMINDER)}</p>
   </div>
-  ${reportUrl ? `<div style="padding:20px 32px 28px">
-    <a href="${esc(reportUrl)}"
+  ${caseUrl ? `<div style="padding:20px 32px 28px">
+    <a href="${esc(caseUrl)}"
       style="display:inline-block;padding:11px 22px;background:#1a3a5c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px"
-    >Open the report</a>
+    >${esc(copyText('v202.email.open_case'))}</a>
   </div>` : '<div style="padding:12px"></div>'}
   <div style="padding:14px 32px;background:#f9fafb;font-size:11px;color:#9ca3af;text-align:center">
     Secure notification from your client portal. Do not reply to this email.

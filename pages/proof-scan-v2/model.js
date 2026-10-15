@@ -91,9 +91,8 @@ export function stepState(view, stage) {
     }
     return ready ? 'done' : 'todo';
   }
-  // D-103: Physical Scan is always open; only Draft Review and Pre-flight wait
-  // on the evidence requirement.
-  if (!ready && stage !== 'physical_scan') return 'locked';
+  // D-103, D-113, Q-50 (v2.0.2): no stage is ever locked. Draft Review and
+  // Pre-flight ask for a missing EAD gently, in their report.
   if (isSignedOff(view, stage)) return 'done';
   const run = latestRuns(view.runs)[stage];
   if (!run) return 'todo';
@@ -115,7 +114,9 @@ export const ADDRESS_PARTS = ['street', 'apt_type', 'apt_number', 'city', 'state
 // D-100: the other per-person facts the form maps fill. Like the D-82 address
 // parts, they appear only when a document, form or scan carried them.
 export const EXTRA_FIELDS = ['uscis_account_number', 'country_of_birth', 'country_of_citizenship', 'i94_number',
-  'i94_expiration', 'last_entry_date', 'port_of_entry', 'employer', 'marriage_date', 'marriage_place'];
+  'i94_expiration', 'last_entry_date', 'port_of_entry', 'employer', 'marriage_date', 'marriage_place',
+  // v2.0.2, Q-56: carried always, compared only for a US birth.
+  'city_of_birth'];
 export const OPTIONAL_FIELDS = new Set(['in_care_of', 'province', 'postal_code', 'country', ...EXTRA_FIELDS]);
 export const DATE_FIELDS = new Set(['date_of_birth', 'ead_expiration', 'marriage_date', 'i94_expiration', 'last_entry_date', 'expiration_date']);
 
@@ -125,7 +126,7 @@ export const FIELD_GROUPS = [
   ['address', ['street', 'apt_type', 'apt_number', 'city', 'state', 'zip', 'in_care_of', 'province', 'postal_code', 'country']],
   ['identity', ['date_of_birth', 'a_number', 'ead_expiration', 'ssn']],
   ['contact', ['phone', 'email']],
-  ['immigration', ['uscis_account_number', 'country_of_birth', 'country_of_citizenship', 'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry']],
+  ['immigration', ['uscis_account_number', 'city_of_birth', 'country_of_birth', 'country_of_citizenship', 'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry']],
   ['work', ['employer']],
   ['marriage', ['marriage_date', 'marriage_place']],
 ];
@@ -164,7 +165,10 @@ export const suggestionsFor = (view, person) => (view?.suggestions || []).filter
 
 export const DOC_TYPE_SETS = {
   daca_renewal: ['ead', 'intake', 'other'],
-  general: ['birth_certificate', 'marriage_certificate', 'passport', 'i94', 'green_card', 'other'],
+  general: ['birth_certificate', 'marriage_certificate', 'passport', 'i94', 'green_card',
+    // v2.0.2, D-121: the everyday evidence a person names on sight.
+    'naturalization_certificate', 'citizenship_certificate', 'tax_return', 'w2', 'pay_stub', 'employment_letter',
+    'bank_statement', 'national_id', 'divorce_decree', 'death_certificate', 'other'],
 };
 
 // Documents shown in the workspace. A replaced card has done its job (D-55).

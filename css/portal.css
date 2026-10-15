@@ -3608,6 +3608,9 @@ body.help-drawer-lock { overflow: hidden; }
 .ps2 .v2-pi-facts { margin: 4px 0 var(--space-2); }
 .ps2 .v2-rule-retire { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .ps2 .v2-rulebook-type { max-width: 420px; }
+/* v2.0.2, D-128: run the USCIS edition check now. Kit tokens only. */
+.ps2 .v2-editions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0 0 var(--space-4); }
+.ps2 .v2-editions .v2-editions-status { margin: 0; flex: 1 1 260px; }
 .ps2 .v2-rulebook-version { font-size: 12px; color: var(--ink-faint); }
 .ps2 .v2-not-this-stage { margin-top: var(--space-2); }
 .ps2 .v2-ps-extra { margin-top: var(--space-2); }

@@ -212,7 +212,9 @@ describe('Possible issues (D-36 to D-39, D-59, D-60)', () => {
   it('"never suggest this reasoning again" suppresses it firm-wide, and it does not come back (D-59)', async () => {
     const { caseId, issue } = await issueFromRun();
     const r = await act({ issue_id: issue.id, action: 'dismiss', reason: 'never_suggest_reasoning' });
-    expect(r.body.suppression).toMatchObject({ reasoning_key: 'rotated_page', origin: 'possible_issue', label: 'Page 5 looks rotated' });
+    // Q-57 (v2.0.2): the label is the reasoning only, never the issue's headline.
+    expect(r.body.suppression).toMatchObject({ reasoning_key: 'rotated_page', origin: 'possible_issue', label: 'Rotated page.' });
+    expect(r.body.suppression.label).not.toContain('Page 5');
     mockModel(vi, [observations({ possible: [{ title: 'Rotated again', description: 'd', evidence: 'p.2', why_it_matters: 'w', uncertainty: 'u', reasoning_key: 'rotated_page' }] })]);
     const again = await runGeneral(caseId);
     expect(again.body.possible_issues).toEqual([]);
@@ -239,7 +241,7 @@ describe('Possible issues (D-36 to D-39, D-59, D-60)', () => {
 });
 
 describe('the optional stage email (D-61)', () => {
-  it('sends only the stage result and a link, never Possible issues, only when asked and stored', async () => {
+  it('sends the stage result, what needs attention and a link to the case, never Possible issues, only when asked and stored', async () => {
     const caseId = generalCase();
     const sent = [];
     mockModel(vi, [
@@ -257,9 +259,12 @@ describe('the optional stage email (D-61)', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0].to).toEqual(['alerts@example.test']);
     expect(sent[0].subject).toBe('Proof Scan: Physical Scan: 1 item needs attention');
-    expect(sent[0].html).toContain('https://portal.example.test/portal#proof-scan');
+    // D-114 (v2.0.2): the link opens this exact case.
+    expect(sent[0].html).toContain(`https://portal.example.test/portal?ps2case=${caseId}#proof-scan-v2`);
+    // ...and says what needs attention, in the firm's own words for the check.
+    expect(sent[0].html).toContain('Not met: Edition date is current on every page');
     expect(sent[0].html).not.toContain('SECRET IDEA');
-    expect(sent[0].html).not.toContain('Zeta'); // no client or case label
+    expect(sent[0].html).not.toContain('Zeta'); // never the case label (it can carry a first name)
     expect(sent[0].html).not.toContain('—');
     await call(runRoute, '/api/proof-scan-v2-run', { method: 'POST', body: { case_id: caseId, stage: 'physical_scan', files: [pdfFile()] } }, env);
     expect(sent).toHaveLength(1); // off unless asked

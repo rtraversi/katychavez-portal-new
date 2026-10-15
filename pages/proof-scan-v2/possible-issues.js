@@ -12,6 +12,11 @@
 // classes, the dismiss reasons and the layout are the same, so it looks the same.
 
 import { DISMISS_REASONS } from '../proof-scan/exploration-model.js';
+
+// D-123 / Q-55 (v2.0.2): reasoning the server raises itself and never lets the
+// firm suppress for good (blank or duplicate pages). Mirrors
+// RESERVED_REASONING_KEYS in the server's engine.
+const NOT_SUPPRESSIBLE = new Set(['blank_or_duplicate_pages']);
 import { el, t, button } from './ui.js';
 import { errorText } from './api.js';
 
@@ -96,7 +101,11 @@ function card(issue, ctx) {
       const choices = el('div', 'ps-explore-choices');
       choices.setAttribute('role', 'group');
       choices.setAttribute('aria-label', t('pi.dismiss_reasons'));
-      for (const reason of DISMISS_REASONS) {
+      const reasons = NOT_SUPPRESSIBLE.has(issue.reasoning_key) || !issue.reasoning_key
+        ? DISMISS_REASONS.filter((r) => r.reason_id !== 'never_suggest_reasoning')
+        : DISMISS_REASONS;
+      if (reasons.length !== DISMISS_REASONS.length) choices.appendChild(el('p', 'ps-explore-note', t('v202.pi.never_unavailable')));
+      for (const reason of reasons) {
         const choice = button(reason.label, 'ps-explore-control ps-explore-choice', () => decide(
           { action: 'dismiss', issue_id: issue.id, reason: reason.reason_id },
           () => {
@@ -144,7 +153,10 @@ function editor(issue, ctx, { onSave, onCancel }) {
   const wording = el('textarea', 'v2-input v2-textarea');
   wording.id = `${id}-wording`;
   wording.rows = 3;
-  wording.value = [issue.title, issue.description].filter(Boolean).join('. ').slice(0, 500);
+  // D-125 (v2.0.2): pre-filled with a general rule, never this case's details.
+  // The server keeps the model's general wording only when it carries nothing
+  // from the case; otherwise the firm's default sentence.
+  wording.value = String(issue.general_rule || t('suggest.prefill_default')).slice(0, 500);
   const scope = el('fieldset', 'v2-suggest-scope');
   scope.appendChild(el('legend', 'v2-ref-label', t('suggest.scope')));
   const radios = [];

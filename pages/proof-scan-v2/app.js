@@ -385,7 +385,8 @@ export function mountProofScanV2({ root, api }) {
 
   // ── The stage choice (D-67), when the requirement is met and no stage is open ──
   function drawChoice() {
-    if (!gateReady(ctx.view) || ctx.stage) return;
+    // D-113 (v2.0.2): every stage is open, so the choice never waits on the requirement.
+    if (ctx.stage) return;
     const choose = section(t('choose.heading'));
     choose.wrap.classList.add('v2-choose');
     choose.body.appendChild(el('p', 'v2-hint', t('choose.sub')));
@@ -410,6 +411,19 @@ export function mountProofScanV2({ root, api }) {
   }
 
   showMode('scan');
+  // D-114 (v2.0.2): the stage email links to one exact case
+  // (/portal?ps2case=<id>#proof-scan-v2). Open it, then drop it from the
+  // address so a reload or a shared link does not reopen it.
+  try {
+    const loc = globalThis.location;
+    const linked = loc ? new URLSearchParams(loc.search).get('ps2case') : null;
+    if (linked && /^[0-9a-f-]{36}$/i.test(linked)) {
+      const url = new URL(loc.href);
+      url.searchParams.delete('ps2case');
+      globalThis.history?.replaceState?.(null, '', url.href);
+      openCase(linked);
+    }
+  } catch { /* no address to read: nothing to open */ }
   return ctx;
 }
 

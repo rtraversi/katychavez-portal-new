@@ -43,11 +43,13 @@ CHAIN=(
   1302_proof_scan_async.sql
   1303_proof_scan_structured_results.sql
   1304_proof_scan_history_metadata.sql
+  1704_form_edition_guard.sql
   2000_proof_scan_security.sql
   2001_proof_scan_v2_core.sql
   2002_proof_scan_v2_rules.sql
   2003_proof_scan_v2_seed.sql
   2004_proof_scan_v2_jobs.sql
+  2005_proof_scan_v2_0_2.sql
 )
 
 PSQL=(psql -X -q -v ON_ERROR_STOP=1 -d "$DB")

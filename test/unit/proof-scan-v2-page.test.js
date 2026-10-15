@@ -269,7 +269,7 @@ describe('stored results drive every block', () => {
     const attention = byClass(result, 'psr-notice--needs_attention');
     const titles = attention.map((n) => flatText(n));
     expect(titles).toHaveLength(3);
-    expect(titles[0]).toContain("The beneficiary's birth certificate shows date of birth 09/30/1993. The I-485 shows 09/03/1993.");
+    expect(titles[0]).toContain("The beneficiary's birth certificate (aos-package-scan.pdf, pages 101-102) shows date of birth 09/30/1993. The I-485 (aos-package-scan.pdf, pages 19-38) shows 09/03/1993.");
     // D-100 #1, #6: a cross-form difference and an untranslated Spanish document, both counted.
     expect(titles[1]).toContain("The forms disagree on the beneficiary's country of birth. It is MEXICO on the I-130A and the I-485, but GUATEMALA on the I-765.");
     expect(titles[2]).toContain("The beneficiary's birth certificate is in Spanish. There is no English translation of it in the package.");
@@ -493,15 +493,14 @@ describe('SSN', () => {
 // ── The evidence requirement (D-74, D-91) and General (D-95) ─────────────────
 
 describe('evidence requirement', () => {
-  it('DACA: Draft Review and Pre-flight stay locked until the requirement is met; Physical Scan is open (D-103)', async () => {
+  it('DACA: no stage is ever locked; Evidence Zero still says what it is missing (D-103, D-113, Q-50)', async () => {
     const root = await mount();
     await startCase(root, 'daca_renewal');
-    for (const s of ['draft_review', 'preflight']) {
-      expect(stepOf(root, s).className).toContain('v2-step--locked');
-      expect(stepButton(root, s).disabled).toBe(true);
+    for (const s of ['draft_review', 'preflight', 'physical_scan']) {
+      expect(stepOf(root, s).className).not.toContain('v2-step--locked');
+      expect(stepButton(root, s).disabled).toBe(false);
     }
-    expect(stepOf(root, 'physical_scan').className).not.toContain('v2-step--locked');
-    expect(stepButton(root, 'physical_scan').disabled).toBe(false);
+    // A DACA case still opens in Evidence Zero (D-63); that is a starting place, not a lock.
     expect(byClass(root, 'v2-choose')).toHaveLength(0);
     const gate = textOf(oneByClass(root, 'v2-gate'));
     expect(gate).toContain('Add the EAD in Evidence Zero');
@@ -509,7 +508,7 @@ describe('evidence requirement', () => {
 
     await pickFiles(root, [fakeFile('ead-ana-rivera.pdf')]);
     await pickFiles(root, [fakeFile('intake-ana-rivera.pdf')]);
-    expect(stepButton(root, 'draft_review').disabled).toBe(true); // not approved yet
+    expect(stepButton(root, 'draft_review').disabled).toBe(false); // open before approval too (Q-50)
     await click(oneByClass(root, 'v2-approve'));
     await flush();
     // D-67: approving a ready record moves on to the stage choice.
@@ -549,7 +548,9 @@ describe('evidence requirement', () => {
     expect(stepState(view, 'draft_review')).toBe('done');
     expect(stepState(view, 'preflight')).toBe('attention');
     expect(stepState(view, 'physical_scan')).toBe('done');
-    expect(stepState({ ...view, evidence_requirement: { ready: false } }, 'preflight')).toBe('locked');
+    // D-113, Q-50: the requirement never locks a stage.
+    expect(stepState({ ...view, evidence_requirement: { ready: false } }, 'preflight')).toBe('attention');
+    expect(stepState({ ...view, runs: [], evidence_requirement: { ready: false } }, 'draft_review')).toBe('todo');
     expect(stepState({ ...view, evidence_requirement: { ready: false } }, 'physical_scan')).not.toBe('locked'); // D-103
   });
 });

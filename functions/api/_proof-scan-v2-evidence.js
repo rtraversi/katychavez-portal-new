@@ -19,9 +19,10 @@
 //         never hold a full SSN
 
 import {
-  REFERENCE_FIELDS, DOC_TYPE_LABELS, toCardValue, sameValue, normalizeDate, ssnDigits,
-  maskSsn, truthValue, mainPerson, redactSsn,
+  REFERENCE_FIELDS, toCardValue, sameValue, normalizeDate, ssnDigits,
+  maskSsn, truthValue, mainPerson, redactSsn, dateOrderFor,
 } from './_proof-scan-v2-common.js';
+import { evidenceLabel } from './_proof-scan-v2-engine.js';
 import { containsFullSsn } from './proof-scan-contract.js';
 
 // The facts stored on the card. The SSN keeps only its last four; any other
@@ -48,8 +49,11 @@ const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x))
 // read: validated model output. cardSsn: Map(person id -> 9 digits | null),
 // decrypted by the route for comparison only.
 export function planEvidenceZero({ caseType, people, documents, read, filename, cardSsn = new Map() }) {
-  const label = DOC_TYPE_LABELS[read.doc_type];
+  const label = evidenceLabel(read.doc_type, read.doc_title);
   const clear = read.read_quality === 'clear';
+  // D-117: a document's all-number dates are read the way its own country
+  // writes them (a Mexican birth certificate is day first).
+  const order = dateOrderFor(read.issuing_country, read.language);
   // D-104: "partial" still counts as the document on file and fills the empty
   // fields it read clearly; only "unreadable" is held for source review (D-54).
   const usable = clear || read.read_quality === 'partial';
@@ -61,6 +65,12 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
     facts: storedFacts(read.facts),
     status: usable ? 'current' : 'source_review',
   };
+  // v2.0.2: what the document is and where it is from travel with its facts,
+  // so later stages read its dates the same way (D-117) and name it (D-121).
+  for (const key of ['doc_title', 'issuing_country', 'language']) {
+    const v = String(read[key] ?? '').trim();
+    if (v && !/\d{3}/.test(v)) document.facts[key] = redactSsn(v).slice(0, 120);
+  }
 
   // Owners. DACA is one person (D-94), whatever the model proposed.
   const newPeople = [];
@@ -102,8 +112,8 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
     return { ...plan, note: `A clearer ${label} is already on file, so this copy was kept for review only.` };
   }
   if (older) {
-    const olderIssued = normalizeDate(older.facts?.issued_date);
-    const thisIssued = normalizeDate(read.issued_date);
+    const olderIssued = normalizeDate(older.facts?.issued_date, { order: dateOrderFor(older.facts?.issuing_country, older.facts?.language) });
+    const thisIssued = normalizeDate(read.issued_date, { order });
     if (olderIssued && thisIssued && olderIssued > thisIssued) {
       return { ...plan, outcome: 'older_not_kept', note: `This ${label} is older than the one already on file, so it was not kept.` };
     }
@@ -121,7 +131,7 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
 
   for (const field of REFERENCE_FIELDS) {
     if (unreadable.has(field)) continue;
-    const c = toCardValue(field, read.facts[field]);
+    const c = toCardValue(field, read.facts[field], { order });
     // Printed but not in a form the record can hold (a date it cannot parse):
     // flagged on the card for staff, never guessed at.
     if (c.invalid) {

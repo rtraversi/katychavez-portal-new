@@ -176,7 +176,7 @@ describe('evidence against forms, full list', () => {
       evidence: [ev('passport', ['beneficiary'], { country_of_citizenship: 'MEXICO' }), ev('i94', ['beneficiary'], { i94_number: '111' })],
     })]);
     const r = await run({ case_id: kase.case.id, stage: 'physical_scan' });
-    expect(r.body.result.attention.map((a) => a.title)).toEqual(["The beneficiary's passport shows country of citizenship MEXICO. The I-485 shows GUATEMALA."]);
+    expect(r.body.result.attention.map((a) => a.title)).toEqual(["The beneficiary's passport (package.pdf, page 90) shows country of citizenship MEXICO. The I-485 (package.pdf, page 1) shows GUATEMALA."]);
     expect(r.body.result.evidence_matches.filter((m) => m.ok).map((m) => m.field)).toEqual(['i94_number']);
   });
 });

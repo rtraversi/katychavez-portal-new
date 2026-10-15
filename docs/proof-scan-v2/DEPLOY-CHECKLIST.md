@@ -69,3 +69,25 @@ Do these in order. Dev first, always. Nothing here has been done yet.
   stored reports cannot be deleted by design (triggers), so drop the triggers first if you
   need to clean up a test case.
 - `1302` / `1303`: v1.2's columns and constraints on `proof_scans`; legacy rows stay valid.
+
+## v2.0.2 (branch `proof-scan-v2.0.2`)
+
+Apply the migration FIRST, then deploy. The code writes `general_rule`, `city_of_birth` and
+`edition_notices`; before 2005 those writes fail.
+
+- [ ] Confirm 1704 and 2000 to 2004 are applied (they are on production per the 10-09 notes).
+- [ ] Apply `supabase/migrations/2005_proof_scan_v2_0_2.sql` to **dev**. It is idempotent.
+- [ ] Check on dev:
+      `select case_type, version, is_current from proof_scan_rule_sets order by 1, 2;`
+      Each case type has a new current version (one above the previous current), the old one
+      `is_current = false`.
+      `select s.case_type, r.retired from proof_scan_rules r join proof_scan_rule_sets s on s.id = r.rule_set_id where s.is_current and r.rule_id = 'PS-103';`
+      Both `true`.
+      `\d proof_scan_people` shows `city_of_birth`; `\d form_editions` shows `edition_notices`.
+- [ ] Apply the same file to **production**. Update `applied-dev.txt` / `applied-prod.txt`.
+- [ ] Deploy from branch `proof-scan-v2.0.2` (by hand, as before).
+- [ ] After deploy: in Proof Scan v2 > Rulebook press "Check USCIS editions now" once, so the
+      accepted editions are read without waiting for Monday.
+- Rollback: 2005 only adds nullable columns and a new rule-set version. To undo the rules,
+  set the new version's `is_current` to false, then the old version's to true (one current
+  version per case type is enforced, so in that order).

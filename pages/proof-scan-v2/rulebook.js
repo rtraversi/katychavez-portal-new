@@ -23,6 +23,7 @@ export async function renderRulebook(mount, ctx) {
   masthead.appendChild(el('h1', 'dk-title', t('rulebook.title')));
   masthead.appendChild(el('p', 'dk-sub', t('rulebook.sub')));
   mount.appendChild(masthead);
+  mount.appendChild(editionsCheck(ctx));
 
   // Which case type's rules are shown. Firm-wide rules are the same in both.
   const pick = el('div', 'v2-scope v2-rulebook-type');
@@ -242,4 +243,26 @@ export async function renderRulebook(mount, ctx) {
     wrap.appendChild(form);
     return wrap;
   }
+}
+
+// D-128 (v2.0.2): run the USCIS edition check now, when staff notice the
+// editions changed before the weekly check has run.
+function editionsCheck(ctx) {
+  const box = el('div', 'v2-editions');
+  const status = el('p', 'v2-hint v2-editions-status', t('v202.editions.hint'));
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  const go = button(t('v202.editions.button'), 'btn btn--secondary v2-editions-run', async () => {
+    go.disabled = true;
+    status.textContent = t('v202.editions.running');
+    const res = await ctx.api.checkEditions();
+    go.disabled = false;
+    if (!res.ok) { status.textContent = t('v202.editions.failed', { error: errorText(res) }); return; }
+    const d = res.data || {};
+    const lines = [t('v202.editions.done', { checked: d.checked ?? 0, changed: (d.changed || []).length })];
+    if ((d.unclear || []).length) lines.push(t('v202.editions.alerts', { n: d.unclear.length, forms: d.unclear.join(', ') }));
+    status.textContent = lines.join(' ');
+  });
+  box.append(go, status);
+  return box;
 }
