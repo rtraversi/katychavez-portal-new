@@ -166,6 +166,11 @@ export function failed(code) {
 }
 
 const nullableString = (description) => ({ anyOf: [{ type: 'string' }, { type: 'null' }], description });
+
+// D-121: the actual document, named; D-117: the country it is from, which
+// decides how its dates are read (the server decides, from this observation).
+const DOC_TITLE_NOTE = 'The document\'s own printed title, e.g. "U.S. Individual Income Tax Return", "Earnings Statement", "Acta de Nacimiento". Only the title: never a name, number or date. null if it has none.';
+const ISSUING_COUNTRY_NOTE = 'The country that issued the document, as printed or as plainly shown (a Mexican birth certificate: "Mexico"). null if it cannot be told.';
 const zText = z.string().max(2000).nullable();
 
 // ── Evidence Zero: read one document (specs E.1) ─────────────────────────────
@@ -179,9 +184,12 @@ export function evidenceZeroSchema() {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['doc_type', 'read_quality', 'unreadable_fields', 'issued_date', 'owner_roles', 'facts'],
+    required: ['doc_type', 'doc_title', 'issuing_country', 'language', 'read_quality', 'unreadable_fields', 'issued_date', 'owner_roles', 'facts'],
     properties: {
       doc_type: { type: 'string', enum: DOC_TYPES, description: 'What this document is. "other" when it is none of the listed types.' },
+      doc_title: nullableString(DOC_TITLE_NOTE),
+      issuing_country: nullableString(ISSUING_COUNTRY_NOTE),
+      language: nullableString('The language the document is written in, e.g. "English", "Spanish".'),
       read_quality: {
         type: 'string', enum: ['clear', 'partial', 'unreadable'],
         description: 'clear = every printed fact is legible; partial = damaged, cut off or partly illegible; unreadable = cannot be read.',
@@ -206,8 +214,15 @@ export function evidenceZeroSchema() {
   };
 }
 
+// v2.0.2 fields are optional here so an answer without them still validates;
+// the request always asks for them.
+const zOptionalText = (max) => z.string().max(max).nullable().optional().transform((v) => v ?? null);
+
 const EvidenceZeroOutput = z.object({
   doc_type: z.enum(DOC_TYPES),
+  doc_title: zOptionalText(120),
+  issuing_country: zOptionalText(80),
+  language: zOptionalText(60),
   read_quality: z.enum(['clear', 'partial', 'unreadable']),
   unreadable_fields: z.array(z.enum(FACT_FIELDS)).max(FACT_FIELDS.length),
   issued_date: zText,
@@ -235,7 +250,8 @@ You report what the document says. You never decide whether anything is right or
 3. unreadable_fields: facts that are printed but cannot be read with confidence.
 4. issued_date: the issue date, as printed, or null.
 5. owner_roles: which of the people below this document is about. A document about two people (a marriage certificate) lists both. Leave it empty if you cannot tell.
-6. facts: every listed fact exactly as printed on THIS document. null when the document does not print it. Never normalise, correct, or complete a value. Address parts such as In Care Of, province, postal code and country are filled only when the document prints them. expiration_date is the document's own expiry (a passport, I-94, EAD or green card), if it has one. The ssn field may carry the full number when it is printed; no other field may.
+6. doc_title, issuing_country, language: the document's own title, the country that issued it, and its language. Never a name, number or date in doc_title.
+7. facts: every listed fact exactly as printed on THIS document. null when the document does not print it. Never normalise, correct, or complete a value. Address parts such as In Care Of, province, postal code and country are filled only when the document prints them. expiration_date is the document's own expiry (a passport, I-94, EAD or green card), if it has one. The ssn field may carry the full number when it is printed; no other field may.
 
 People on the case:
 ${describePeople(people)}`;
@@ -253,7 +269,11 @@ export const EVIDENCE_FACT_FIELDS = [
   'first_name', 'middle_name', 'last_name', 'date_of_birth', 'a_number',
   'uscis_account_number', 'country_of_birth', 'country_of_citizenship', 'i94_number', 'i94_expiration',
   'last_entry_date', 'port_of_entry', 'employer', 'marriage_date', 'marriage_place', 'expiration_date',
+  'city_of_birth',
 ];
+// Added in v2.0.2: optional in validation (Q-56).
+const OPTIONAL_EVIDENCE_FACTS = new Set(['city_of_birth']);
+export const PAGE_PROBLEM_KINDS = ['blank', 'duplicate'];
 // Fields a client may correct by hand (D-68). 'departures' switches on the
 // I-821D departures check at Pre-flight (D-71); 'other' is anything else.
 export const MARKUP_FIELDS = [...REFERENCE_FIELDS, 'departures', 'other'];
@@ -264,7 +284,7 @@ const stringArray = (description) => ({ type: 'array', items: { type: 'string' }
 
 // Built from the rules and items THIS run sends, so the IDs are closed enums.
 // A section with nothing to ask is left out (an empty enum is not a schema).
-export function stageRunSchema({ ruleIds, itemIds, withMarkups }) {
+export function stageRunSchema({ ruleIds, itemIds, withMarkups, withPages = false }) {
   const properties = {};
   const required = [];
   if (ruleIds.length) {
@@ -324,9 +344,11 @@ export function stageRunSchema({ ruleIds, itemIds, withMarkups }) {
     type: 'array',
     description: 'Supporting documents in these files that are not USCIS forms (an EAD copy, a birth certificate, a marriage certificate).',
     items: {
-      type: 'object', additionalProperties: false, required: ['doc_type', 'file', 'pages', 'owner_roles', 'read_quality', 'language', 'has_english_translation', 'facts'],
+      type: 'object', additionalProperties: false, required: ['doc_type', 'doc_title', 'issuing_country', 'file', 'pages', 'owner_roles', 'read_quality', 'language', 'has_english_translation', 'facts'],
       properties: {
         doc_type: { type: 'string', enum: DOC_TYPES },
+        doc_title: nullableString(DOC_TITLE_NOTE),
+        issuing_country: nullableString(ISSUING_COUNTRY_NOTE),
         language: { type: 'string', description: 'The language the document is written in, e.g. "English", "Spanish".' },
         has_english_translation: { type: 'boolean', description: 'For a document not in English: whether a certified English translation of it is in these files. true for an English document.' },
         file: { type: 'string' },
@@ -361,19 +383,35 @@ export function stageRunSchema({ ruleIds, itemIds, withMarkups }) {
       },
     };
   }
+  if (withPages) {
+    required.push('page_problems');
+    properties.page_problems = {
+      type: 'array',
+      description: 'Pages that look blank, or that repeat another page of the same form copy. Usually empty.',
+      items: {
+        type: 'object', additionalProperties: false, required: ['kind', 'file', 'pages'],
+        properties: {
+          kind: { type: 'string', enum: PAGE_PROBLEM_KINDS },
+          file: { type: 'string' },
+          pages: { type: 'string', description: 'The page or pages, e.g. "14" or "14, 15".' },
+        },
+      },
+    };
+  }
   properties.possible_issues = {
     type: 'array',
     description: 'Anything that may be a problem but is not one of the listed checks. Usually empty.',
     items: {
       type: 'object', additionalProperties: false,
-      required: ['title', 'description', 'evidence', 'why_it_matters', 'uncertainty', 'reasoning_key'],
+      required: ['title', 'description', 'evidence', 'why_it_matters', 'uncertainty', 'reasoning_key', 'general_rule'],
       properties: {
         title: { type: 'string', description: 'What was noticed, in a few words.' },
         description: { type: 'string' },
         evidence: { type: 'string', description: 'Where in the files it appears.' },
         why_it_matters: { type: 'string' },
         uncertainty: { type: 'string', description: 'What makes it uncertain.' },
-        reasoning_key: { type: 'string', description: 'A short snake_case name for the reasoning pattern, e.g. "signature_date_order".' },
+        reasoning_key: { type: 'string', description: 'A short snake_case name for the reasoning pattern, e.g. "signature_date_order". General words only: never a name, place, number or date from these files.' },
+        general_rule: { type: 'string', description: 'The rule a firm could adopt from this, worded generally for every case, e.g. "Check that a sponsor\'s date of birth matches the sponsor\'s own evidence." Never a name, date, number, place or anything else from these files.' },
       },
     },
   };
@@ -384,23 +422,30 @@ const zShort = z.string().max(300);
 const zLocations = z.array(z.string().max(500)).max(50);
 const zNullable = z.string().max(2000).nullable();
 
-export function stageRunValidator({ ruleIds, itemIds, withMarkups }) {
+export function stageRunValidator({ ruleIds, itemIds, withMarkups, withPages = false }) {
   const shape = {
     forms_found: z.array(z.object({
       form: zShort, file: zShort, pages: z.string().max(100), person_role: z.enum(ROLES).nullable(),
       values: z.object(Object.fromEntries(FORM_VALUE_FIELDS.map((f) => [f, z.string().max(300).nullable()]))).strict(),
     }).strict()).max(60),
     evidence_found: z.array(z.object({
-      doc_type: z.enum(DOC_TYPES), file: zShort, pages: z.string().max(100),
+      doc_type: z.enum(DOC_TYPES), doc_title: zOptionalText(120), issuing_country: zOptionalText(80),
+      file: zShort, pages: z.string().max(100),
       owner_roles: z.array(z.enum(ROLES)).max(6), read_quality: z.enum(['clear', 'partial', 'unreadable']),
       language: z.string().trim().min(1).max(60), has_english_translation: z.boolean(),
-      facts: z.object(Object.fromEntries(EVIDENCE_FACT_FIELDS.map((f) => [f, z.string().max(300).nullable()]))).strict(),
+      facts: z.object(Object.fromEntries(EVIDENCE_FACT_FIELDS.map((f) => [f, OPTIONAL_EVIDENCE_FACTS.has(f) ? zOptionalText(300) : z.string().max(300).nullable()]))).strict(),
     }).strict()).max(60),
     possible_issues: z.array(z.object({
       title: z.string().min(1).max(300), description: z.string().max(2000), evidence: z.string().max(2000),
       why_it_matters: z.string().max(2000), uncertainty: z.string().max(2000), reasoning_key: z.string().max(120),
+      general_rule: zOptionalText(500),
     }).strict()).max(20),
   };
+  if (withPages) {
+    shape.page_problems = z.array(z.object({
+      kind: z.enum(PAGE_PROBLEM_KINDS), file: zShort, pages: z.string().max(100),
+    }).strict()).max(50).optional().transform((v) => v ?? []);
+  }
   if (ruleIds.length) {
     shape.rule_results = z.array(z.object({
       rule_id: z.string().max(120), status: z.enum(CHECK_STATUSES), summary: zNullable,
@@ -437,7 +482,7 @@ export function stageRunValidator({ ruleIds, itemIds, withMarkups }) {
     };
     if (!coverage(data.rule_results, 'rule_id', ruleIds)) return failed('rule_id_coverage');
     if (!coverage(data.package_items, 'item_id', itemIds)) return failed('item_id_coverage');
-    return { ok: true, data: { rule_results: [], package_items: [], markups: [], ...data } };
+    return { ok: true, data: { rule_results: [], package_items: [], markups: [], page_problems: [], ...data } };
   };
 }
 
@@ -445,6 +490,8 @@ export function stageRunValidator({ ruleIds, itemIds, withMarkups }) {
 // D-107: on the G-28, an EAD delivery choice left blank means home, which is fine.
 export const RULE_GUIDANCE = {
   'DACA-G28-003': 'All delivery boxes left empty means the EAD goes to the applicant\'s home: that is clear. Home ticked is clear. Report needs_attention only when the office box is ticked.',
+  // v2.0.2, D-112, D-120, D-126: name consistency is read the way a person reads it.
+  'PS-301': 'Capitals and accents never make a difference (DOE = Doe, José = Jose). A first name printed together with the middle name is the same name. Report needs_attention only when the words of the name themselves differ.',
 };
 
 function describeRule(r, stage) {
@@ -479,7 +526,7 @@ const DACA_NOTES = `CASE NOTES (DACA renewal)
 - Every page of a USCIS form prints its edition date in the footer. Read every one.`;
 
 export function stageRunPrompt({
-  caseTypeLabel, caseType, stageLabel, scope, form, rules, stage, items, people, files, withMarkups, suppressions, formEditions,
+  caseTypeLabel, caseType, stageLabel, scope, form, rules, stage, items, people, files, withMarkups, withPages = false, suppressions, formEditions,
 }) {
   const fileList = files.map((f, i) => `${i + 1}. ${f.filename} (${FILE_KINDS[f.kind || 'package']})`).join('\n');
   return `You are reviewing USCIS filing material for an immigration law firm. Case type, chosen by the firm: ${caseTypeLabel}. Stage: ${stageLabel}.${scope ? ` Scope: ${scope === 'individual' ? `one form only, the ${form}. Ignore the rest of the package.` : 'the whole set of forms provided.'}` : ''}
@@ -506,19 +553,22 @@ FORMS FOUND
 List every form in the files, once per copy, with the person it is about and the values it shows. For each value: null when the form has no such field, "" when the field is there but blank, otherwise exactly as printed. Never normalise, correct, or fill in a value. The ssn value may carry the full number; no other field or text may.
 
 EVIDENCE FOUND
-List supporting documents that are not USCIS forms, with whose they are and the facts they print, including the document's own expiration date if it has one. Say what language each is written in and, for one not in English, whether a certified English translation of it is in these files. A damaged or partly illegible document is "partial".
-${withMarkups ? `
+List supporting documents that are not USCIS forms, with whose they are and the facts they print, including the document's own expiration date if it has one. Name each one as exactly as you can (a tax return, a pay stub, a W-2, a naturalization certificate...); use "other" only when it truly cannot be told, and then give its printed title. Say which country issued it, what language it is written in and, for one not in English, whether a certified English translation of it is in these files. Report every date exactly as printed: never reorder day and month. A damaged or partly illegible document is "partial".
+${withPages ? `
+PAGES
+List any page that looks blank, and any page that repeats another page of the same form copy. Multiple G-1450 or G-1650 forms are normal, one per fee, and are not repeats. Do not also report these as possible issues.
+` : ''}${withMarkups ? `
 CLIENT CORRECTIONS
 The marked-up files carry the client's handwritten corrections. For every handwritten change, report what was typed, what the handwriting seems to say and how sure you are, and what the corrected pages now show for that field. Handwriting is hard to read: when in doubt, say uncertain. If the corrected pages do not include that form, say so.
 ` : ''}
 POSSIBLE ISSUES
-Separately, anything that may be a problem and is not one of the checks above. Usually there are none. Each must say what you noticed, where it appears, why it might matter and what makes it uncertain. Never invent a legal requirement. Never suggest any of this reasoning, which the firm has ruled out:
+Separately, anything that may be a problem and is not one of the checks above. Usually there are none. Each must say what you noticed, where it appears, why it might matter and what makes it uncertain. Give the general rule it would become, worded for every case, with nothing from these files in it. Never invent a legal requirement. Never suggest any of this reasoning, which the firm has ruled out:
 ${suppressions.length ? suppressions.map((s) => `- ${s.reasoning_key}: ${s.label}`).join('\n') : '- (none)'}
 
 CASE CARDS (who is on this case; use them to tell whose form is whose, not as the truth to check against)
 ${describeCards(people)}
 
-USCIS FORM REFERENCE (the edition USCIS currently publishes for each form; a footer that matches it is current)
+USCIS FORM REFERENCE (the editions USCIS accepts today for each form, from uscis.gov; a footer that matches ANY listed edition is current)
 ${formEditions}
 ${caseType === 'daca_renewal' ? `\n${DACA_NOTES}` : ''}`;
 }

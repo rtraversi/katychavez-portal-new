@@ -22,6 +22,11 @@ const DOC_TYPE_LABEL_KEY = {
   ead: 'ez.type.ead', intake: 'ez.type.intake', birth_certificate: 'ez.type.birth_certificate',
   marriage_certificate: 'ez.type.marriage_certificate', passport: 'ez.type.passport', i94: 'ez.type.i94',
   green_card: 'ez.type.green_card', other: 'ez.type.other',
+  // v2.0.2, D-121
+  naturalization_certificate: 'ez.type.naturalization_certificate', citizenship_certificate: 'ez.type.citizenship_certificate',
+  tax_return: 'ez.type.tax_return', w2: 'ez.type.w2', pay_stub: 'ez.type.pay_stub', employment_letter: 'ez.type.employment_letter',
+  bank_statement: 'ez.type.bank_statement', national_id: 'ez.type.national_id', divorce_decree: 'ez.type.divorce_decree',
+  death_certificate: 'ez.type.death_certificate',
 };
 const docTypeLabel = (type) => t(DOC_TYPE_LABEL_KEY[type] || 'ez.type.other');
 const roleLabel = (role) => t(`role.${role}`);

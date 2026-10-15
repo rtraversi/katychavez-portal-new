@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { requireStaff, readJson, json, guarded, methodNotAllowed, HttpError } from './_proof-scan-v2-http.js';
 import { validate } from './_schemas.js';
 import * as store from './_proof-scan-v2-store.js';
-import { normalizeReasoningKey } from './_proof-scan-v2-engine.js';
+import { normalizeReasoningKey, RESERVED_REASONING_KEYS } from './_proof-scan-v2-engine.js';
 
 const AddSchema = z.object({
   label: z.string().trim().min(1).max(300),
@@ -32,6 +32,8 @@ export const onRequest = guarded('proof-scan-v2-suppressions', async ({ request,
   const v = validate(AddSchema, parsed.body);
   if (v.error) return v.error;
   const key = normalizeReasoningKey(v.data.reasoning_key || v.data.label);
+  // D-123 guard: blank or duplicate pages are never suppressed firm-wide.
+  if (RESERVED_REASONING_KEYS.has(key)) throw new HttpError(409, 'That reasoning cannot be suppressed for the whole firm.');
   if (await store.getSuppressionByKey(gate.admin, key)) throw new HttpError(409, 'That reasoning is already suppressed.');
   const suppression = await store.insertSuppression(gate.admin, {
     reasoning_key: key, label: v.data.label, origin: 'staff', created_by: gate.auth.profile.id,

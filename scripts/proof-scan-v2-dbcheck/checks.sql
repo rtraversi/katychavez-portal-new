@@ -82,7 +82,8 @@ SELECT dbcheck.record('seed: every rule has a Draft Review, Pre-flight and Physi
     SELECT 1 FROM public.proof_scan_rules r
     WHERE (SELECT array_agg(stage ORDER BY stage) FROM public.proof_scan_rule_stage_settings s WHERE s.rule_pk = r.id)
           IS DISTINCT FROM ARRAY['draft_review','physical_scan','preflight'])
-  AND (SELECT count(*) FROM public.proof_scan_rules) = 52,
+  -- The seed is version 1 of each case type; 2005 adds a copy as version 2.
+  AND (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id IN (dbcheck.rule_set('daca_renewal'), dbcheck.rule_set('general'))) = 52,
   format('rules without all three: %s',
     (SELECT count(*) FROM public.proof_scan_rules r
      WHERE (SELECT count(*) FROM public.proof_scan_rule_stage_settings s WHERE s.rule_pk = r.id) <> 3)));
@@ -93,7 +94,8 @@ SELECT dbcheck.record('seed: every Physical Scan setting is checked',
 SELECT dbcheck.record('seed: PS-306 translations: checked at Physical Scan, only with evidence before (D-100)',
   (SELECT array_agg(r.rule_set_id::text || ':' || s.stage || '=' || s.state ORDER BY r.rule_set_id, s.stage) IS NOT NULL
    FROM public.proof_scan_rules r JOIN public.proof_scan_rule_stage_settings s ON s.rule_pk = r.id WHERE r.rule_id = 'PS-306')
-  AND (SELECT count(*) FROM public.proof_scan_rules WHERE rule_id = 'PS-306' AND scope = 'firm') = 2
+  AND (SELECT count(*) FROM public.proof_scan_rules WHERE rule_id = 'PS-306' AND scope = 'firm'
+       AND rule_set_id IN (dbcheck.rule_set('daca_renewal'), dbcheck.rule_set('general'))) = 2
   AND NOT EXISTS (SELECT 1 FROM public.proof_scan_rules r JOIN public.proof_scan_rule_stage_settings s ON s.rule_pk = r.id
                   WHERE r.rule_id = 'PS-306' AND s.state <> CASE WHEN s.stage = 'physical_scan' THEN 'checked' ELSE 'if_evidence' END));
 
@@ -387,3 +389,51 @@ SELECT dbcheck.record('ssn: document facts never hold a full SSN, a last four is
                           dbcheck.id('doc')))).err IS NOT NULL
   AND (dbcheck.attempt(format($q$UPDATE public.proof_scan_documents SET facts = '{"ssn": "XXX-XX-6789"}' WHERE id = %L$q$,
                           dbcheck.id('doc')))).n = 1);
+
+
+-- ── v2.0.2 (migration 2005) ──────────────────────────────────────────────────
+
+SELECT dbcheck.record('v2.0.2: each case type has a new current version, v1 kept as it was',
+  (SELECT count(*) FROM public.proof_scan_rule_sets WHERE is_current AND version = 2) = 2
+  AND (SELECT count(*) FROM public.proof_scan_rule_sets WHERE version = 1 AND NOT is_current) = 2);
+
+SELECT dbcheck.record('v2.0.2: PS-103 is retired in the current versions and live in v1 (D-123)',
+  (SELECT bool_and(r.retired) FROM public.proof_scan_rules r
+     JOIN public.proof_scan_rule_sets s ON s.id = r.rule_set_id WHERE s.is_current AND r.rule_id = 'PS-103')
+  AND (SELECT bool_and(NOT r.retired) FROM public.proof_scan_rules r
+     JOIN public.proof_scan_rule_sets s ON s.id = r.rule_set_id WHERE s.version = 1 AND r.rule_id = 'PS-103'));
+
+SELECT dbcheck.record('v2.0.2: the new versions copy every rule, stage setting and package item',
+  (SELECT bool_and(
+     (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = n.id) = (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = o.id)
+     AND (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = n.id) = (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = o.id)
+     AND (SELECT count(*) FROM public.proof_scan_rule_stage_settings x JOIN public.proof_scan_rules r ON r.id = x.rule_pk WHERE r.rule_set_id = n.id)
+       = (SELECT count(*) FROM public.proof_scan_rule_stage_settings x JOIN public.proof_scan_rules r ON r.id = x.rule_pk WHERE r.rule_set_id = o.id))
+   FROM public.proof_scan_rule_sets n JOIN public.proof_scan_rule_sets o ON o.case_type = n.case_type AND o.version = 1
+   WHERE n.version = 2));
+
+SELECT dbcheck.record('v2.0.2: PS-306 notes the passport exception; both changes are logged (D-124)',
+  (SELECT bool_and(r.note LIKE '%passports%') FROM public.proof_scan_rules r
+     JOIN public.proof_scan_rule_sets s ON s.id = r.rule_set_id WHERE s.is_current AND r.rule_id = 'PS-306')
+  AND (SELECT count(*) FROM public.proof_scan_rule_changes WHERE rule_id IN ('PS-103', 'PS-306')) = 4);
+
+CREATE TABLE dbcheck.v202_before AS SELECT dbcheck.seed_fingerprint() AS fp, (SELECT count(*) FROM public.proof_scan_rule_changes) AS changes;
+\ir ../../supabase/migrations/2005_proof_scan_v2_0_2.sql
+SELECT dbcheck.record('v2.0.2: running 2005 a second time changes nothing',
+  (SELECT fp FROM dbcheck.v202_before) = dbcheck.seed_fingerprint()
+  AND (SELECT changes FROM dbcheck.v202_before) = (SELECT count(*) FROM public.proof_scan_rule_changes));
+
+SELECT dbcheck.record('v2.0.2: a person card holds a city of birth, and a suggestion may carry one (Q-56)',
+  (dbcheck.attempt(format($q$UPDATE public.proof_scan_people SET city_of_birth = 'Raleigh' WHERE id = %L$q$, dbcheck.id('person')))).n = 1
+  AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_suggestions (person_id, field, value, source_label)
+                              VALUES (%L, 'city_of_birth', 'Durham', 'Birth certificate')$q$, dbcheck.id('person')))).err IS NULL
+  AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_suggestions (person_id, field, value, source_label)
+                              VALUES (%L, 'shoe_size', '9', 'Birth certificate')$q$, dbcheck.id('person')))).err IS NOT NULL);
+
+SELECT dbcheck.record('v2.0.2: edition notices must be an object; a general rule is bounded',
+  (dbcheck.attempt($q$UPDATE public.form_editions SET edition_notices = '[]'::jsonb WHERE form_number = 'I-765'$q$)).err IS NOT NULL
+  AND (dbcheck.attempt($q$UPDATE public.form_editions SET edition_notices = '{"statements": [], "unreadable": []}'::jsonb WHERE form_number = 'I-765'$q$)).n = 1
+  AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_possible_issues (run_id, title, description, evidence, why_it_matters, uncertainty, general_rule)
+                              SELECT id, 't', 'd', 'e', 'w', 'u', '' FROM public.proof_scans WHERE case_id IS NOT NULL LIMIT 1$q$))).err IS NOT NULL
+  AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_possible_issues (run_id, title, description, evidence, why_it_matters, uncertainty, general_rule)
+                              SELECT id, 't', 'd', 'e', 'w', 'u', 'Check the evidence.' FROM public.proof_scans WHERE case_id IS NOT NULL LIMIT 1$q$))).n = 1);

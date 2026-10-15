@@ -72,7 +72,9 @@ describe('evaluate', () => {
   it('is "error" — never "current" — when the page has no parseable edition', () => {
     const v = evaluate(row, { html: '<h1>I-130</h1> bot-check page' });
     expect(v.check_status).toBe('error');
-    expect(v.upstream_edition).toBeNull();
+    // D-122 (v2.0.2): an unreadable page carries no edition at all, so the
+    // last good one stored is kept rather than wiped.
+    expect(v.upstream_edition).toBeUndefined();
     expect(v.check_error).toMatch(/no edition/i);
   });
 

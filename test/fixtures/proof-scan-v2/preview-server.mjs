@@ -58,11 +58,17 @@ for (const rs of seed.rule_sets) {
 }
 db.rows('proof_scan_suppressions').push({ id: 'sup-r1', reasoning_key: 'signature_date_order', label: 'Signature date order, for example an attorney signing before the applicant. Not a requirement at this firm.', origin: 'firm_decision', created_by: null, created_at: '2026-10-07T00:00:00Z' });
 db.rows('proof_scan_config').push({ id: 'cfg', notify_email: 'alerts@example.test' });
+// D-127, D-128: one form edition row, so "Check USCIS editions now" has something to check.
+db.rows('form_editions').push({ id: 'fe-g28', form_number: 'G-28', pages: 4, edition_date: '09/17/18', upstream_edition: '09/17/18', check_status: 'current', last_checked_at: null });
 
 // ── The AI and the mailer, stood in ─────────────────────────────────────────
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
+  // D-128 in the preview: a canned USCIS page, never the real site.
+  if (u.startsWith('https://www.uscis.gov/')) {
+    return new Response('<div class="alert-message"><p>You may continue using the 09/17/18 and 05/23/18 editions.</p></div><div>Edition Date 09/17/18</div>', { status: 200 });
+  }
   if (u.startsWith('https://api.anthropic.com/')) {
     // The real call streams (_proof-scan-v2-ai.js), so the canned answer does too.
     const text = JSON.stringify(modelAnswer(JSON.parse(opts.body)));
@@ -98,7 +104,7 @@ const ENV = {
 };
 
 const ROUTES = {};
-for (const name of ['case', 'cases', 'person', 'suggestion', 'ssn', 'evidence', 'run', 'signoff', 'rules', 'suppressions', 'possible-issue', 'process']) {
+for (const name of ['case', 'cases', 'person', 'suggestion', 'ssn', 'evidence', 'run', 'signoff', 'rules', 'suppressions', 'possible-issue', 'process', 'editions']) {
   ROUTES[`/api/proof-scan-v2-${name}`] = (await import(`../../../functions/api/proof-scan-v2-${name}.js`)).onRequest;
 }
 ROUTES['/api/proof-scan-upload'] = (await import('../../../functions/api/proof-scan-upload.js')).onRequest;

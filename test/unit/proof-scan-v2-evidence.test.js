@@ -353,7 +353,7 @@ describe('people (D-94)', () => {
 
 describe('fail closed', () => {
   it.each([
-    ['an unknown document type', { ...read(), doc_type: 'tax_return' }],
+    ['an unknown document type', { ...read(), doc_type: 'parking_ticket' }],
     ['an extra property', { ...read(), verdict: 'ok' }],
     ['a missing fact', (() => { const r = read(); delete r.facts.email; return r; })()],
     ['not JSON at all', 'here is the document'],

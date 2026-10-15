@@ -32,10 +32,11 @@ import {
 } from './_proof-scan-v2-http.js';
 import { validate } from './_schemas.js';
 import * as store from './_proof-scan-v2-store.js';
-import { loadCase, publicCaseView, gateFor } from './_proof-scan-v2-case.js';
+import { loadCase, publicCaseView } from './_proof-scan-v2-case.js';
 import { REVIEW_STAGES, SCOPED_STAGES, STAGE_LABELS, CASE_TYPE_LABELS, REFERENCE_FIELDS } from './_proof-scan-v2-common.js';
 import { callModel, stageRunSchema, stageRunValidator, stageRunPrompt } from './_proof-scan-v2-ai.js';
-import { selectRules, evaluateRun, RESULT_SCHEMA_VERSION } from './_proof-scan-v2-engine.js';
+import { selectRules, evaluateRun, RESULT_SCHEMA_VERSION, PAGES_RULE } from './_proof-scan-v2-engine.js';
+import { acceptedEditions } from './_uscis-editions.js';
 import { FALLBACK_EDITIONS } from './_proof-scan-run.js';
 import { isUploadId } from './proof-scan-upload.js';
 import { DEMO_UNAVAILABLE } from './proof-scan-v2-evidence.js';
@@ -70,20 +71,44 @@ const RunSchema = z.object({
 // Streaming makes a large budget safe, and the model's thinking counts against it.
 const MAX_TOKENS = 64000;
 
+// D-108: the edition USCIS publishes right now (upstream_edition), when the
+// weekly check has one. D-122 (v2.0.2): a check that could not read the page
+// this time ('error') keeps the last good edition it stored, so a current form
+// is never called out of date because of one failed fetch.
 export function liveEdition(row) {
   const upstream = String(row.upstream_edition || '').trim();
-  return upstream && (row.check_status === 'current' || row.check_status === 'stale') ? upstream : row.edition_date;
+  return upstream && ['current', 'stale', 'error'].includes(row.check_status) ? upstream : row.edition_date;
 }
 
-async function formEditions(admin) {
+// D-127: every edition USCIS accepts on the scan date, from the page's notices
+// as the check stored them; grace periods are resolved against `on`.
+export function editionsFor(row, on) {
+  const notices = row.edition_notices;
+  const published = liveEdition(row);
+  if (!notices || !row.upstream_edition) return { editions: [published], unclear: false };
+  const r = acceptedEditions({ published, statements: notices.statements || [], unreadable: notices.unreadable || [] }, on);
+  return { editions: r.editions.length ? r.editions : [published], unclear: r.unclear };
+}
+
+// Returns { text, alerts }: the reference sent to the model, and the forms
+// whose USCIS notice could not be read for certain (a person checks those).
+async function formEditions(admin, on) {
   try {
-    // D-108: the weekly USCIS check stores the edition USCIS publishes right now
-    // (upstream_edition). When it has one, that is the reference, so a current
-    // form is never called out of date against a stale row.
-    const { data } = await admin.from('form_editions').select('form_number, pages, edition_date, upstream_edition, check_status').order('form_number', { ascending: true });
-    if (data?.length) return data.map((r) => `${r.form_number}|${r.pages}p|${liveEdition(r)}`).join(', ');
+    let res = await admin.from('form_editions').select('form_number, pages, edition_date, upstream_edition, check_status, edition_notices').order('form_number', { ascending: true });
+    // Before migration 2005 there is no edition_notices column.
+    if (res.error) res = await admin.from('form_editions').select('form_number, pages, edition_date, upstream_edition, check_status').order('form_number', { ascending: true });
+    const data = res.data;
+    if (data?.length) {
+      const alerts = [];
+      const text = data.map((r) => {
+        const { editions, unclear } = editionsFor(r, on);
+        if (unclear) alerts.push(r.form_number);
+        return `${r.form_number}|${r.pages}p|${editions.join(' or ')}`;
+      }).join(', ');
+      return { text, alerts };
+    }
   } catch { /* fall back */ }
-  return FALLBACK_EDITIONS;
+  return { text: FALLBACK_EDITIONS, alerts: [] };
 }
 
 function cardSsnMap(people, env) {
@@ -158,12 +183,9 @@ export async function prepareRun(admin, body) {
 
   const snapshot = await loadCase(admin, body.case_id);
   const caseType = snapshot.case.case_type;
-  // D-103: Physical Scan is always open; the evidence requirement only gates
-  // Draft Review and Pre-flight.
-  const requirement = gateFor(snapshot);
-  if (body.stage !== 'physical_scan' && !requirement.ready) {
-    return { response: json(409, { error: 'The evidence requirement is not met yet.', evidence_requirement: requirement }) };
-  }
+  // D-103, D-113, Q-50 (v2.0.2): no stage waits on the evidence requirement.
+  // Draft Review and Pre-flight run without the EAD, the address or the record
+  // approval; when there is no EAD anywhere they ask for it gently (engine).
 
   const ruleSet = await store.loadCurrentRuleSet(admin, caseType);
   if (!ruleSet) throw new HttpError(503, 'No rule set is configured for this case type. Apply migration 2003.');
@@ -177,6 +199,9 @@ export async function prepareRun(admin, body) {
       ruleIds: selection.ask.map((r) => r.rule_id),
       itemIds: selection.items.map((i) => i.item_id),
       withMarkups: body.stage === 'preflight' && hasMarkedFiles,
+      // D-123: blank or duplicate pages are observed where PS-103 used to be
+      // checked, and raised as a Possible issue once it is no longer a check.
+      withPages: body.stage !== 'preflight' && !selection.ask.some((r) => r.rule_id === PAGES_RULE),
     },
   };
 }
@@ -184,8 +209,10 @@ export async function prepareRun(admin, body) {
 // The model call and the engine. `files` carry file_base64. Returns
 // { ok: true, evaluation, meta } or { ok: false, status, error }.
 export async function executeRun(env, admin, { body, prep, files }) {
-  const { snapshot, caseType, ruleSet, scope, hasMarkedFiles, selection, ruleIds, itemIds, withMarkups } = prep;
+  const { snapshot, caseType, ruleSet, scope, hasMarkedFiles, selection, ruleIds, itemIds, withMarkups, withPages = false } = prep;
   const suppressions = await store.listSuppressions(admin);
+  const scannedAt = new Date().toISOString();
+  const editions = await formEditions(admin, scannedAt.slice(0, 10));
 
   const content = [];
   files.forEach((f, i) => {
@@ -198,14 +225,14 @@ export async function executeRun(env, admin, { body, prep, files }) {
     system: stageRunPrompt({
       caseTypeLabel: CASE_TYPE_LABELS[caseType], caseType, stageLabel: STAGE_LABELS[body.stage], stage: body.stage,
       scope, form: body.form, rules: selection.ask, items: selection.items, people: snapshot.people,
-      files, withMarkups, suppressions, formEditions: await formEditions(admin),
+      files, withMarkups, withPages, suppressions, formEditions: editions.text,
     }),
-    schema: stageRunSchema({ ruleIds, itemIds, withMarkups }),
+    schema: stageRunSchema({ ruleIds, itemIds, withMarkups, withPages }),
     content,
     maxTokens: MAX_TOKENS,
   });
   if (!answer.ok) return { ok: false, status: answer.status, error: answer.error };
-  const obs = stageRunValidator({ ruleIds, itemIds, withMarkups })(answer.json);
+  const obs = stageRunValidator({ ruleIds, itemIds, withMarkups, withPages })(answer.json);
   if (!obs.ok) return { ok: false, status: obs.status, error: 'The scan could not be completed. Nothing was saved. Please try again.' };
 
   const evaluation = evaluateRun({
@@ -213,7 +240,7 @@ export async function executeRun(env, admin, { body, prep, files }) {
     people: snapshot.people, documents: snapshot.documents, openSuggestions: snapshot.suggestions,
     cardSsn: cardSsnMap(snapshot.people, env), obs: obs.data, hasMarkedFiles,
     suppressedKeys: suppressions.map((s) => s.reasoning_key),
-    files: files.map((f) => ({ filename: f.filename.trim(), kind: f.kind })), scannedAt: new Date().toISOString(),
+    files: files.map((f) => ({ filename: f.filename.trim(), kind: f.kind })), scannedAt, editionAlerts: editions.alerts,
   });
   return { ok: true, evaluation, meta: answer.meta };
 }
@@ -261,7 +288,11 @@ export async function completeRun(env, admin, { runId, caseId, stage, people, ev
       const toEmail = await store.getNotifyEmail(admin);
       if (toEmail) {
         notificationAttempted = true;
-        notificationSent = await notifyProofScanStage(env, { toEmail, result: evaluation.result });
+        // D-114: the case's last names and a link to this exact case.
+        const caseView = await loadCase(admin, caseId).catch(() => null);
+        notificationSent = await notifyProofScanStage(env, {
+          toEmail, result: evaluation.result, caseId, people: caseView?.people || people,
+        });
       }
     } catch (err) {
       console.error('[proof-scan-v2-run] notification failed:', err.message);

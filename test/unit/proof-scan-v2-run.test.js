@@ -116,21 +116,27 @@ describe('access and input', () => {
     expect(r.status).toBe(400);
   });
 
-  it('stops a DACA run until the evidence requirement is met, without calling the AI (D-74, D-91)', async () => {
+  it('runs DACA Draft Review and Pre-flight before the evidence requirement is met (D-113, Q-50)', async () => {
     const caseId = addCase('daca_renewal');
     addPerson(caseId, 'applicant', {}, { is_main: true, approved_at: null });
-    const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(r.status).toBe(409);
-    expect(r.body.evidence_requirement.missing).toEqual(['ead_doc', 'ead_facts', 'address', 'approve']);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    mockModel(vi, [observations(), observations()]);
+    for (const stage of ['draft_review', 'preflight']) {
+      const r = await run({ case_id: caseId, stage, scope: 'whole' });
+      expect(r.status).toBe(200);
+      // No EAD anywhere: a gentle ask, never counted, never a lock (Q-50).
+      const ask = r.body.result.checks.find((c) => c.rule_id === 'confirm:ead_missing');
+      expect(ask.status).toBe('please_confirm');
+      expect(r.body.result.attention.some((a) => String(a.key).includes('ead'))).toBe(false);
+    }
   });
 
-  it('lets a DACA Physical Scan run before the evidence requirement is met (D-103)', async () => {
+  it('lets a DACA Physical Scan run before the evidence requirement is met, with no EAD ask (D-103, Q-49)', async () => {
     const caseId = addCase('daca_renewal');
     addPerson(caseId, 'applicant', {}, { is_main: true, approved_at: null });
     mockModel(vi, [observations()]);
-    expect((await run({ case_id: caseId, stage: 'physical_scan' })).status).toBe(200);
-    expect((await run({ case_id: caseId, stage: 'preflight', scope: 'whole' })).status).toBe(409);
+    const r = await run({ case_id: caseId, stage: 'physical_scan' });
+    expect(r.status).toBe(200);
+    expect(r.body.result.checks.some((c) => c.rule_id === 'confirm:ead_missing')).toBe(false);
   });
 
   it('a change after approval does not ask for approval again (D-103)', async () => {
@@ -560,8 +566,8 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
       ] })]);
       const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
       expect(r.body.result.attention.map((a) => a.title)).toEqual([
-        "The petitioner's birth certificate shows last name TESTER. The I-130 shows TESTOR.",
-        "The petitioner's birth certificate shows date of birth 05/05/1985. The I-130 shows 05/06/1985.",
+        "The petitioner's birth certificate (birth_certificate.pdf) shows last name TESTER. The I-130 (package.pdf, page 1) shows TESTOR.",
+        "The petitioner's birth certificate (birth_certificate.pdf) shows date of birth 05/05/1985. The I-130 (package.pdf, page 1) shows 05/06/1985.",
       ]);
       expect(check(r, 'PS-304').status).toBe('needs_attention');
       expect(r.body.result.attention_count).toBe(2);
@@ -761,9 +767,10 @@ describe('form editions', () => {
     expect(liveEdition({ ...row, check_status: 'current', upstream_edition: '01/20/25' })).toBe('01/20/25');
   });
 
-  it('falls back to the stored edition when the check failed or never ran', () => {
+  it('keeps the last good edition when the latest check failed, and falls back only when there never was one (D-122)', () => {
     const row = { form_number: 'I-765', pages: 7, edition_date: '01/20/25', upstream_edition: '04/01/26', check_status: 'error' };
-    expect(liveEdition(row)).toBe('01/20/25');
+    expect(liveEdition(row)).toBe('04/01/26');
+    expect(liveEdition({ ...row, upstream_edition: null })).toBe('01/20/25');
     expect(liveEdition({ ...row, check_status: null, upstream_edition: null })).toBe('01/20/25');
     expect(liveEdition({ ...row, check_status: 'stale', upstream_edition: '  ' })).toBe('01/20/25');
   });

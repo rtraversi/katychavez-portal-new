@@ -1005,6 +1005,432 @@ or the client's record. [Claude, interpretation, unverified with Max] "If the ba
 provided" read as: no other evidence shows the full middle name. If any other document
 (birth certificate, passport and so on) shows it, the question is skipped.
 
+<!-- v2.0.2: copied verbatim from Anobe/proof-scan-lab/PROOF-SCAN.md on 2026-10-15. The master record wins if they ever differ. -->
+**Confirmed 2026-10-13 09:15.** Max, verbatim: "for the middle name check yes." The
+interpretation above is now Max's, as built.
+
+**D-111 (v2.0.2): A two-digit year is the same date.** Date: 2026-10-13 09:15. Source: Max,
+verbatim: "right now its being a bit too strict. so for example. ead shows 01/29/25. And the
+forms have 01/29/2025. that is not a mistake ok? in fact its expected bc forms have the
+mm/dd/yyyy format. but even if we wrote it like mm/dd/yy it'd be ok. so it would have to be
+less strict with that." [Claude, verified in code 2026-10-13] `normalizeDate` in
+`_proof-scan-v2-common.js` reads four-digit years only. "01/29/25" is therefore not read as a
+date: the evidence check compares it as text and reports a difference, and Evidence Zero
+cannot put it on the case card (it marks the field unreadable instead). Fix: MM/DD/YY and
+MM/DD/YYYY are the same date when month and day agree and the four-digit year ends in the
+two digits, in either direction (evidence or forms). [Claude] Storing a two-digit year on the
+case card needs a century rule; terminal proposes one, nothing is guessed.
+
+**D-112 (v2.0.2): Capitals are never a difference; last names and countries in caps is a
+firm rule.** Date: 2026-10-13 09:15. Source: Max, verbatim: "also with the name it was strict
+once too. record had Jane Doe Douglas. Instead of Jane DOE DOUGLAS. And it counted it as a
+mistake. forms should have the caps on their last names per our firm's rules. and countries
+should be in caps as well. i'd like that entered." [Claude, verified in code 2026-10-13] The
+server's name and value comparisons already ignore case (`sameName`, `sameValue`).
+[Claude, inferred, unverified] The likelier cause: the record held "Doe" as a middle name and
+"Douglas" as the last name, while the forms carry "DOE DOUGLAS" as a two-part last name, so
+the last names differed. The caps on the forms show which words are the last name. Terminal
+to confirm the cause before fixing. How the new caps rule reports: Q-48.
+
+**D-113 (v2.0.2): Draft Review does not need the EAD.** Date: 2026-10-13 09:15. Source: Max,
+verbatim: "drafting stage also does not require ead... so dont make it into a flag, only
+until pre-flight and mailing stage. ok?" Narrows D-103. [Claude, verified in code 2026-10-13]
+Today, in DACA, Draft Review and Pre-flight are both locked until the EAD, its facts, the
+address and the record approval are in (`evidenceRequirement`, `prepareRun`); Physical Scan
+is always open (D-103). [Claude] "Mailing stage" read as Physical Scan. Lock or flag at
+Pre-flight and Physical Scan: Q-49. What else Draft Review still waits on: Q-50.
+
+**D-114 (v2.0.2): The stage email names the case by last names, links to it, and says what
+needs attention.** Date: 2026-10-13 10:57. Source: Max, verbatim, answering Claude's
+question about the email (options: folder name in the subject, in the body, or no names and
+a link to the case): "just the last names and a link that opens that exact case and thats
+it. obviously a summary of the stuff that needs attention. if nothing then it should say
+its good to go." Supersedes D-61's email half (only the stage result and a report link);
+see R-8. [Claude, verified in code 2026-10-13] Today's email (`buildProofScanStageEmail`,
+`_proof-scan-email.js`) carries the stage, the result phrase and a general report link, and
+by design no client name and no findings. [Claude] D-36 still holds: Possible issues never
+appear in the email. Exact wording is Max's (D-87). Open: whether the summary shows the
+values themselves (dates, A-Numbers and so on) or only what is wrong: Q-51.
+
+**General checker notes from AOS use, 2026-10-13 11:35 (v2.0.2).** Max's message, verbatim
+and whole, so nothing below drifts from it:
+
+> "oh and that reminds me for the general check which i have been using for aos. i noticed
+> that the information that we have can sometimes be on spanish or have different formats,
+> we need to make it so that checker is smart enough for that. a mexican birth certificate
+> will obviously have different formats than what we enter on the forms.
+> in fact a couple of things are quite annoying.
+> marriage certificate shows place of marriage as "x" county, but forms show raleigh. yes its
+> supposed to be that way, the forms as for city. so obsly "x" county inside of raleigh is
+> supposed to say raleigh. this one should be a gentle confirm. asking if staff confirmed the
+> city is the correct one where they got married.
+> dob format. its using the passport, to check for dob anddd i mean its ok all these
+> documents have it but its a mexican document. it shows dd/mm/yyyy and american standard is
+> backwards mm/dd/yyyy. so its not a flaw. it would be a mistake if WE wrote it the wrong
+> way. the wrong way is obsly the mexican dd/mm ok?
+> citizenship also. i mean if it says MEX, the form expects MEXICO. I know it would make more
+> sense to say mexican. but thats a uscis thing. if it was american, it should say UNITED
+> STATES. capsice?
+> the paystubs that show info about employers, thats not very relevant. if you want we can
+> include a gentle confir,. but if we wrote it as Walmart instead of Wal-mart Associates and
+> Co. Its bc we meant to.
+> theres some docs that have name as "first name + middle name" together and this throws off
+> checker. it should pay more attention. either way a first name is always just one. and if
+> there are two it is a middle name. so on form it should just say ONE first name, and ONE
+> middle name if any.
+> also, it should identify what the document from evidence it is getting that info from is.
+> it just says "other document" its ok when it cannot be infered but a tax return should be
+> easy enough to identify, or a pay stub, or a birth certificate. you know. right now its
+> saying "other document shows last name as x, but form says y". if thats a real mistake
+> thats important and i have to verify, but if its a false negative i dont. so its not
+> helpful to just say and that then where it says where it syas simply 864. that helps no
+> one.
+> edition dates... now this has been an issue since day one. i want to confirm last update
+> got rid of that. i need checker to know the current eds.... can we ensure this]?
+> no blank or duplicate pages should not be a FATAL error, but at least something to bring
+> up. bc it might just be the scan and not the actual physical print out of our record.
+> also passports usually have translations on them, so they might not need to have a
+> translation document.
+> also when suggesting rules, or adding to them from possible issues. it should not word it
+> like this: "Joint sponsor date of birth differs from naturalization certificate. The joint
+> sponsor I-864 gives date of birth "x". The naturalization certificate in the package gives
+> "y"." what i mean is that its using an examples from a real client. the suggestion for a
+> future rule should jsut be the rule, not what happened. and also it should just say. check
+> for consistency among evidence and forms. specially with person specific, liek w the
+> sponsor it should check its evidence documents."
+
+**D-115 (v2.0.2): Evidence is read as its own country writes it.** Source: the message above,
+"the information that we have can sometimes be on spanish or have different formats, we need
+to make it so that checker is smart enough for that." The umbrella for D-116 to D-118.
+
+**D-116 (v2.0.2): A county on the marriage certificate against a city on the forms is a
+gentle confirm.** Max: "this one should be a gentle confirm. asking if staff confirmed the
+city is the correct one where they got married." Never counted.
+
+**D-116 follow-up, 2026-10-15 13:09.** Claude asked about a city on the forms that is not
+in the certificate's county (A counted, B still gentle). Max, verbatim: "ok but the form
+expects a city bro not the county. or do u say that wake county is the city? this one is a
+gentle confirm because certificate might say it happened in one county and we might use the
+seat count as the city." Settled: marriage place against a county is always a gentle
+confirm, never counted, whatever city the forms name (staff may use the county seat). A
+marriage outside the US: the city is not compared (Claude's stated default, same as Q-56;
+Max did not object).
+
+**D-117 (v2.0.2): Foreign documents are day first; the forms must be month first.** Max: "it
+would be a mistake if WE wrote it the wrong way. the wrong way is obsly the mexican dd/mm
+ok?" [Claude, verified in code 2026-10-13] `normalizeDate` reads every slashed date month
+first. "29/01/1995" is therefore not read at all and is reported as a difference. Worse, an
+ambiguous date such as 05/03/1995 (5 March on a Mexican document) is read as May 3, so a form
+wrongly written 05/03/1995 would match it and the real mistake would be missed.
+
+**D-118 (v2.0.2): Country codes are the country.** Max: "if it says MEX, the form expects
+MEXICO ... if it was american, it should say UNITED STATES." With D-112, countries on forms
+are in caps. [Claude, verified in code 2026-10-13] Countries are compared as plain text today,
+so "MEX" and "MEXICO" differ.
+
+**D-119 (v2.0.2): Employer names from pay stubs are not a mistake.** Max: "thats not very
+relevant. if you want we can include a gentle confir,. but if we wrote it as Walmart instead
+of Wal-mart Associates and Co. Its bc we meant to." Never counted. Gentle confirm or nothing:
+Q-53.
+
+**D-120 (v2.0.2): One first name, one middle name.** Max: "a first name is always just one.
+and if there are two it is a middle name. so on form it should just say ONE first name, and
+ONE middle name if any." A document that prints first and middle name together is not a
+difference. [Claude, verified in code 2026-10-13] `sameName` requires the first names to
+match exactly, so "first + middle" printed as one first name fails. Whether a form with two
+words in the first-name field is itself flagged: Q-54.
+
+**D-121 (v2.0.2): Every evidence finding names the document and where it is.** Max: "it should
+identify what the document from evidence it is getting that info from is. it just says
+"other document" its ok when it cannot be infered but a tax return should be easy enough to
+identify, or a pay stub, or a birth certificate." and "where it syas simply 864. that helps no
+one." [Claude, verified in code 2026-10-13] The engine knows eight document types (EAD,
+intake, birth certificate, marriage certificate, passport, I-94, green card, other); a tax
+return or pay stub can only be "Other document".
+
+**D-122 (v2.0.2): The checker must know the current USCIS editions.** Max: "edition dates...
+now this has been an issue since day one. i want to confirm last update got rid of that. i
+need checker to know the current eds.... can we ensure this]?" [Claude, verified in code
+2026-10-13] v2.0.1 (live since 2026-10-13 07:33) checks against the edition the weekly USCIS
+check stored (`liveEdition`, `proof-scan-v2-run.js`); the check runs Mondays 15:00 UTC
+(`wrangler.toml`). Gaps still open: when a USCIS page cannot be read, the check stores no
+edition (`upstream_edition: null`) and v2 falls back to the old reference date, so the false
+alarm returns until the next good check; the old checker still compares against the old
+date (Rob's item). [Claude, unverified, for Max to check] USCIS form pages sometimes list
+older editions that are still accepted; if so, those should pass too.
+
+**D-123 (v2.0.2): Blank or duplicate pages are not FATAL.** Max: "should not be a FATAL error,
+but at least something to bring up. bc it might just be the scan and not the actual physical
+print out of our record." [Claude, verified in code 2026-10-13] PS-103 is `fatal` in both
+seeded rule sets. How it is brought up: Q-55.
+
+**D-124 (v2.0.2): A passport usually carries its own translation.** Max: "passports usually
+have translations on them, so they might not need to have a translation document."
+[Claude, verified in code 2026-10-13] PS-306 (translation needed) is `fatal` and has no
+passport exception.
+
+**D-125 (v2.0.2): A rule suggested from a Possible issue is the rule, never the case.** Max:
+"the suggestion for a future rule should jsut be the rule, not what happened. and also it
+should just say. check for consistency among evidence and forms. specially with person
+specific, liek w the sponsor it should check its evidence documents." [Claude, verified in
+code 2026-10-13] The rule wording box is pre-filled from the issue's title and description
+(`possible-issues.js`), real client values included. Saved unchanged, those values would sit
+in the firm-wide rulebook and go to the AI with every scan. Whether any such rule was saved:
+Q-52.
+
+**D-126 to D-128 (v2.0.2), as logged in the master record's changelog of 2026-10-15:**
+
+- **2026-10-15 (13:11)**: **D-126 (v2.0.2): Rob's three extras are in.** Max, verbatim: "a",
+  to Claude's option "All three": accents never make a difference; CBP port-of-entry codes
+  match the port's name ("CHM" = Champlain); "(none)" printed on a form counts as not
+  applicable. Built by us in Katy's portal, not taken from Rob's code. [Claude, verified in
+  code 2026-10-15] `normText` drops accented letters, so "José" against "Jose" and
+  "Ramírez" against "Ramirez" are reported as differences today.
+- **2026-10-15 (13:13)**: **D-127 (v2.0.2): Accepted editions are confirmed on USCIS's own
+  page.** Claude asked whether an older edition USCIS still accepts should pass. Max,
+  verbatim: "it NEEDs to confirm that on uscis's website. im not sure if robs cron checks
+  for that". [Claude, verified in code] It does not: `extractEdition` in
+  `process-form-edition-check.js` reads only the first "Edition Date" value on each page.
+  [Claude, read from uscis.gov 2026-10-15 13:12] What is accepted lives in the page's alert
+  text, in plain English, and changes with court orders:
+  G-28: "you may continue using the 09/17/18 and 05/23/18 editions"; I-765: a court order
+  of Sept. 14, 2026 keeps the 08/21/25 edition and USCIS "is not accepting the 09/15/26
+  edition"; I-485: 09/18/26 only, no grace period, 01/20/25 and 09/04/26 rejected from
+  Sept. 18, 2026; I-864: 08/24/26 only from Oct. 1, 2026 (the 10/17/24 grace period ended).
+  v2.0.2: the check also reads each page's alerts and stores which editions USCIS accepts
+  and until when; the checker passes any accepted edition; an alert it cannot read is
+  flagged for a person, never guessed. [Claude] The I-485 change took effect the day it was
+  published, so a weekly check can be up to six days behind (Q-58).
+
+**Q-58 (v2.0.2, opened 2026-10-15).** Run the USCIS edition check daily instead of weekly?
+**ANSWERED 2026-10-15 13:25.** Max, verbatim: "meh weekly. we should be aware. if there has
+been an edition change, maybe we can add a button that says, heads up editions changed, so
+that if the weekly check passed, we are going to be aware of it and confirm with checker".
+The check stays weekly. An edition-change heads-up is wanted; which way it works (shown by
+the system after the check finds a change, or a button staff press to run the check now)
+is being confirmed with Max.
+**D-128 (v2.0.2), 2026-10-15 13:28.** Max, verbatim: "no i mean if we notice that the
+editions changed and the weekly check is not yet passed, we can let it know with a button,
+and it can check in that moment, so perhaps a "check USCIS editions" or update reference
+idk". A staff button runs the USCIS edition check (with D-127's accepted editions) on
+demand; the weekly run stays. Label is Max's to write (D-87). [Claude, verified in code
+2026-10-15] No manual trigger exists today: the check runs only from the cron in
+`_worker.js` (`runFormEditionCheck`).
+
+**AOS case type: scoping started 2026-10-15 13:42.** Max, verbatim: "lets start working with
+AOS case type. let me log in the aos checklist. actually can you check on my solarsaiko
+github, i have made a workers with a working checklist for aos, its got more stuff than we
+need for this, but the list is part of it so check". [Claude, verified] The list is not on
+GitHub: it is the `DATA` array in `~/sites/oversight-checklist/public/index.html` (local git,
+no remote, clean, last changed 2026-08-17 at `5f76d50`; served by the oversight-checklist
+Worker behind Access). Four sections: Fees and payments (9 lines), Evidence and documents
+(19), Forms (about 55, staged Prepared / Print and proof / Review), Mailing (6). Source only;
+nothing in it is a Proof Scan decision until Max settles it here.
+[Claude, to verify before any rule] Its form page numbers predate the I-485 edition of
+09/18/26 and the I-864 edition of 08/24/26 (both newer than 08-17), so pages may have moved.
+Fee amounts must be checked against USCIS's current fee schedule; "$1,140, client is 79 or
+older" for the I-485 looks unusual [unverified].
+
+**AOS source check, 2026-10-15 13:46.** Max, verbatim: "lemme verify that the checklist is
+complete from the document we use:" with `~/Downloads/AOS Checklist.docx` (the firm's sheet;
+blank template, no client data; no file metadata, so which is newer cannot be told).
+[Claude, verified cell by cell] The Worker matches the doc on fees, mailing and almost every
+form row, except:
+1. Missing from the Worker: "IF SPOUSAL CASE: Petitioner (1)" and "IF SPOUSAL CASE: Bona
+   fides" (evidence list).
+2. Missing from the Worker: "Question 61 ALWAYS YES", I-485, page "?". The Worker has instead
+   "Entry block: visa number, date and place of entry, date of visa issuance", which is not in
+   the doc.
+3. Signature rows (about 20): the doc marks Prepared AND Print and Proof as N/A; the Worker
+   pre-marks only Prepared.
+4. "All forms in order": the doc marks only Prepared N/A; the Worker also marks Print and
+   Proof.
+5. The Worker adds a note to "Is there a name change due to marriage?" ("If the beneficiary
+   is female and recently married, confirm which name she wants before any form is
+   started."); the doc has the question only.
+[Claude] The doc is the firm's sheet, so it is taken as the AOS source; the Worker is
+secondary.
+2026-10-15 13:48, on "IF SPOUSAL CASE: Petitioner (1)". Max, verbatim: "im not sure lets
+ignore and if it comes up we can add". Left out of the AOS case type for now.
+2026-10-15 13:50, on the I-485 line (A both, B "Question 61 ALWAYS YES" only, C the Worker's
+entry block only). Max, verbatim: "mmmmmmmmm i will say b". The AOS case type checks I-485
+Question 61 is answered Yes; the entry block line is out. [Claude] The question number and
+page must be found in the current I-485 edition (09/18/26) before it becomes a rule.
+
+**D-129 (AOS): Scope is forms and evidence, like DACA.** Date: 2026-10-15 13:52. Max,
+verbatim: "it will be similar to the daca. forms and evidence." The AOS case type takes the
+doc's Forms table (including the G-1450 rows and their amounts) and its evidence list. Out:
+the attorney fee, money-order lines, the mailing table, and the staff conversation items
+("Is there a name change due to marriage?", "Any criminal record for Immigrant"), as office
+tasks stayed out of DACA (R-5). [Claude] "Medical Exam" stays in as evidence (the I-693 in
+the package).
+**I-693, 2026-10-15 13:54.** Max, verbatim: "we usually include just the first page of it,
+so not the whole of 693 yea? we usually add that uuntil the veeeery end on physical scan".
+The package carries only the I-693's first page, and only at Physical Scan. It is not
+expected at Draft Review or Pre-flight, and one page is complete (page-count and
+missing-page checks must not treat it as a partial form).
+
+**D-130 (AOS): The DACA stage split.** Date: 2026-10-15 13:56. Max, verbatim: "a", to
+Claude's proposal:
+- Draft Review: the forms' content: edition dates, page order within a form, names, dates
+  of birth and addresses consistent across forms, G-28 boxes, I-485 Question 61 Yes, I-765
+  c-09 and "initial application", the I-864 income lines, G-1450 names and amounts, G-1145.
+  Not yet: signatures, G-1450 card details, evidence.
+- Pre-flight: client corrections reach every form (D-72), all signatures, G-1450 card
+  details, names and addresses still consistent.
+- Physical Scan: the full sheet, evidence included; conditional items count only when they
+  apply (spousal: I-130A and bona fides; co-sponsor; household member; I-131; divorce).
+Signatures at Pre-flight and Physical Scan, as DACA (not the paper sheet's Review only).
+
+**D-131 (AOS): Staff pick the AOS kind at the start; the rest is read from the package.**
+Date: 2026-10-15 13:57. Max, verbatim: "a and b. when say from the start aos type spousal,
+child to parent, parent to child", to Claude's options (A read from the package, B staff
+tick boxes at the start, C both with correction on the case card). Starting an AOS case asks
+which kind: spousal, child to parent, parent to child (labels are Max's to finalise, D-87).
+[Claude, interpretation, unverified with Max] Co-sponsor, household member (I-864A), I-131
+and divorce are read from the package, not asked. [Claude, proposal] If the I-130's
+relationship box disagrees with the kind chosen, that is flagged. What each kind changes in
+the evidence list: Q-59.
+
+**D-131 follow-ups, 2026-10-15 14:00.** On the I-130 relationship box disagreeing with the
+kind chosen, Max, verbatim: "possible issue". It is a Possible issue, never counted.
+**Q-59 ANSWERED.** Max, verbatim: "the only reason we will specify the type is so that when
+we do the final scan or the draft or pre flight, it wont go nuts trying be like omg this is
+spousal and no bona fides, when its child to parent yk?" The kind only switches the
+spousal-only items (I-130A, bona fides) on or off. Everything else on the sheet applies to
+every kind, with its own "if needed" conditions read from the package. [Claude,
+interpretation, unverified with Max] Marriage certificates are expected in a spousal case
+and not required in the other two (counted only if missing in spousal). Original wording:
+
+**Q-59 (AOS, opened 2026-10-15).** The firm's sheet only marks spousal items ("IF SPOUSAL
+CASE: Bona fides", "Spousal Petition only" I-130A). For child to parent and parent to child,
+which evidence changes?
+
+**Answers to Q-48 to Q-57 (v2.0.2), as in the master record:**
+
+**Q-48 — ANSWERED 2026-10-13 10:45.** Max, verbatim: "B gentle confirm". A last name or
+country not in caps on a form is a gentle confirm, never counted. Original wording:
+
+**Q-48 (v2.0.2, opened 2026-10-13).** D-112's caps rule: when a form has a last name or a
+country not in caps, is that an item needing attention (counted) or a gentle confirm (never
+counted)?
+
+**Q-49 — Pre-flight half ANSWERED 2026-10-13 10:50.** Max, verbatim: "at preflight if no
+ead is added on the files then its just gently flagged. but physical scan must have it."
+Pre-flight runs without the EAD; a missing EAD is a gentle flag, never a lock.
+[Claude, verified in code 2026-10-13] Physical Scan already checks the package list, which
+includes package item `DACA-COMP-EAD-CARD` ("EAD card", "Copy, front and back, enlarged
+colour"), and reports it when missing. Pre-flight checks no package items. Open: whether
+"must have it" means that package check (already built) or a lock on Physical Scan, which
+would reverse D-103.
+**Physical Scan half ANSWERED 2026-10-13 10:55.** Max, verbatim: "a", to Claude's option
+"That check is enough: the scan runs, and a missing EAD copy is a real problem in the report.
+Nothing to change." D-103 stands: Physical Scan is never locked. Original wording:
+
+**Q-49 (v2.0.2, opened 2026-10-13).** D-113: at Pre-flight and Physical Scan, does a missing
+EAD lock the stage (Pre-flight does today), or does the stage run and the report flag the
+missing EAD?
+
+**Q-51 — ANSWERED 2026-10-13 11:08.** Max, verbatim: "well dont list personal info. just say
+the stuff that needs attention and that is it." The email summary names what needs attention
+with no personal information in it (no names beyond the last names in D-114, no dates, numbers
+or addresses); the details stay in the report behind the link. Original wording:
+
+**Q-51 (v2.0.2, opened 2026-10-13).** D-114: does the email's summary of what needs
+attention show the values themselves (as the report does, e.g. both dates of birth), or only
+what is wrong, with the values left to the report behind the link?
+
+**Q-52 — ANSWERED 2026-10-13 11:37.** Max, verbatim: "I did, but I edited the wording."
+[Claude, verified in code] Only the text in the box at save time is stored (`onSave({ scope,
+title })`), so the pre-filled details were not saved from this path as long as the edit took
+them out.
+
+**Q-57 — ANSWERED 2026-10-15 12:37.** Max, verbatim: "well this has not happened but lets
+fix so that it does not become an issue ok?" No dismissal with "never suggest this
+reasoning" has carried client details. v2.0.2 fixes the path: a suppression stores the
+reasoning only, never the issue's headline or any case detail (with D-125, the same
+principle for suggested rules). [Claude, verified in code 2026-10-15] There is no way to
+remove a suppression today (`proof-scan-v2-suppressions.js`: GET and POST only); not asked
+for, noted only. Original wording:
+
+**Q-57 (opened 2026-10-13 11:37, privacy).** [Claude, verified in code 2026-10-13] A second
+path: dismissing a Possible issue with "never suggest this reasoning" stores the issue's
+title (up to 300 characters) firm-wide as the suppression label
+(`proof-scan-v2-possible-issue.js`), and every label is sent to the AI with every scan of
+every case (`_proof-scan-v2-ai.js`, POSSIBLE ISSUES section). An issue title can carry client
+details. Has anyone used that dismissal? Fix for v2.0.2 either way: the label must be the
+reasoning only, never case details.
+
+**Q-52 (opened 2026-10-13, privacy, first).** D-125: was a rule ever saved from a Possible
+issue with the pre-filled wording? If so, it holds a real client's details in the rulebook.
+
+**Q-53 — ANSWERED 2026-10-15 12:56.** Max, verbatim: "yeah just check that the info is
+there and there is no glaring typo. so this rule must be a little less strict, and more
+intelligent. a human will know if there is a mistake without being extremely scrutinous
+about it, so we want to mimick that in case we miss a typo or missing info when we do have
+it yeah?" Neither of Claude's options (not checked; gentle confirm). The employer check
+stays, judged the way a person would: a shortened or everyday name for the same employer
+passes ("Walmart" for "Wal-mart Associates and Co."); an employer the evidence shows but
+the form leaves out, or a glaring typo, is caught. [Claude, interpretation, unverified with
+Max] Missing or a glaring typo is an item needing attention (counted). [Claude] Build note:
+terminal proposes how "glaring typo" is told apart from "same employer, shorter name", with
+tests proving both ways.
+
+**Q-53 (v2.0.2).** D-119: employer names from pay stubs: a gentle confirm, or not checked at
+all?
+
+**Q-54 — ANSWERED 2026-10-15 12:59.** Max, verbatim: "A gentle confirm but honestly almost
+none of our clients have ever had two first names, they have a first and middle. so..."
+Two words in a form's first-name field is a gentle confirm, never counted. [Claude] Max's
+context for the wording (his to write, D-87): in practice the second word is almost always
+a middle name in the wrong field.
+
+**Q-54 (v2.0.2).** D-120: a form with two words in the first-name field: a gentle confirm,
+counted, or not checked?
+
+**Q-55 — ANSWERED 2026-10-15 13:00.** Max, verbatim: "b", to Claude's options (A gentle
+confirm next to the checks; B a Possible issue in the "for your judgment" section that
+staff can dismiss). Blank or duplicate pages move out of the counted rules (PS-103) and are
+raised as a Possible issue, never counted, never in the email (D-36). [Claude] Build note:
+a Possible issue can be dismissed with "never suggest this reasoning", which would silence
+blank or duplicate pages firm-wide for good; terminal should flag how that is handled.
+
+**Q-55 (v2.0.2).** D-123: blank or duplicate pages: a gentle confirm, or a Possible issue?
+
+**Q-56 — ANSWERED 2026-10-15 13:06.** Max, verbatim: "mmmmm i would say that only if its
+in the us but for cities outside the us its not necessary yeah." to Claude's options (A
+neither, foreign cities never compared, Katy's suggestion; B city of birth on the cards,
+compared only when it is a US city, employer address off; C both). Read as B: city of birth
+is carried and compared only when it is in the US; a city outside the US is never compared;
+employer address stays off the cards. Rob's GeoNames table is not needed. [Claude,
+interpretation] Employer address was not mentioned by Max; it stays off as option B said.
+
+**Q-56 (parked 2026-10-13).** City of birth and employer address on the General case cards:
+add both, city of birth only, or neither? (Asked 10-08 and again 10-13; Max moved on to
+D-115 to D-125.)
+
+**Q-50 — ANSWERED 2026-10-13 10:55.** Max, verbatim: "ok but drafting should ask for it
+tho. otherwise it wont rly check against anything." Settled: Draft Review and Pre-flight are
+fully open (no lock on the EAD, the address or the record approval). Both gently ask for the
+EAD when none is found anywhere (not uploaded, not in the package); never counted, never a
+lock. No note for the missing address or approval. [Claude] D-113's "dont make it into a
+flag" read as "not counted"; a gentle ask is not a flag. Proposal and Max's input below.
+
+**Q-50, Max's input 2026-10-13 10:55 (superseded by the answer above).** Max, verbatim: "it gently asks for
+it. bc sometimes the package has the ead so why require it yk. what do u suggest?"
+[Claude, verified in code 2026-10-13] PS-304 (evidence matches the forms) is `checked` at
+Draft Review, Pre-flight and Physical Scan in the DACA seed, and reads both Evidence Zero
+documents and evidence read clearly from the package, so an EAD inside the package is
+already compared with the forms at every stage. Claude's proposal, awaiting Max: open both
+stages fully. Draft Review: no EAD note at all (D-113, "dont make it into a flag").
+Pre-flight: one gentle ask only when no EAD is found anywhere (not uploaded, not in the
+package), per Q-49. Drop the address and approval waits with no note (a list of missing
+case-card fields is the note D-105 removed).
+
+**Q-50 (v2.0.2, opened 2026-10-13).** D-113: with the EAD no longer needed for Draft Review,
+does Draft Review still wait on the address and the record approval, or is it fully open?
+
+
 **D-97 — A different SSN from a newer document becomes an encrypted suggestion.** Date:
 2026-10-07. Source: Max, "2. ok" to Claude's proposal after terminal Batch 1 left it
 open. The suggested SSN is stored encrypted like the main one, and shown masked behind

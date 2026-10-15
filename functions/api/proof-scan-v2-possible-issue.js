@@ -16,7 +16,17 @@ import { requireStaff, readJson, json, guarded, methodNotAllowed, HttpError } fr
 import { validate } from './_schemas.js';
 import * as store from './_proof-scan-v2-store.js';
 import { NewRuleSchema, createRule } from './proof-scan-v2-rules.js';
-import { normalizeReasoningKey } from './_proof-scan-v2-engine.js';
+import { normalizeReasoningKey, RESERVED_REASONING_KEYS } from './_proof-scan-v2-engine.js';
+
+// Q-57 (v2.0.2): a suppression stores the reasoning only, never the issue's
+// headline or any case detail. Every label is sent to the AI with every scan
+// of every case, so it must be general. The key is already general (the engine
+// keeps only general words); the label is the key in words.
+export function suppressionLabel(key) {
+  const words = String(key || '').split('_').filter((w) => w && !/\d/.test(w)).join(' ');
+  const text = words ? `${words[0].toUpperCase()}${words.slice(1)}.` : 'Unnamed reasoning.';
+  return text.slice(0, 300);
+}
 
 const id = z.string().uuid();
 const ActionSchema = z.discriminatedUnion('action', [
@@ -51,12 +61,20 @@ export const onRequest = guarded('proof-scan-v2-possible-issue', async ({ reques
   if (v.data.action === 'dismiss') {
     // D-39: dismissal choices exist only on an open issue.
     if (issue.status !== 'open') throw new HttpError(409, 'This possible issue has already been decided.');
+    const never = v.data.reason === 'never_suggest_reasoning';
+    // Q-57: without a reasoning key there is nothing general to suppress; the
+    // title is never used in its place, it can carry the case's details.
+    const key = issue.reasoning_key ? normalizeReasoningKey(issue.reasoning_key) : null;
+    // D-123 / Q-55 guard: blank or duplicate pages can be dismissed for this
+    // case only. Silencing them firm-wide would hide them on every package for good.
+    if (never && (!key || RESERVED_REASONING_KEYS.has(key))) {
+      throw new HttpError(409, 'This possible issue can only be dismissed for this case.');
+    }
     const updated = await store.updatePossibleIssue(admin, issue.id, { status: 'dismissed', dismiss_reason: v.data.reason, ...decided });
     let suppression = null;
-    if (v.data.reason === 'never_suggest_reasoning') {
-      const key = normalizeReasoningKey(issue.reasoning_key || issue.title);
+    if (never) {
       suppression = await store.getSuppressionByKey(admin, key)
-        || await store.insertSuppression(admin, { reasoning_key: key, label: issue.title.slice(0, 300), origin: 'possible_issue', created_by: userId });
+        || await store.insertSuppression(admin, { reasoning_key: key, label: suppressionLabel(key), origin: 'possible_issue', created_by: userId });
     }
     return json(200, { issue: updated, suppression });
   }

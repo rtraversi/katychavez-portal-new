@@ -13,10 +13,13 @@
 
 import {
   REFERENCE_FIELDS, OPTIONAL_FIELDS, NAME_FIELDS, ADDRESS_FIELDS, EXTRA_FIELDS, FIELD_LABELS, ROLE_LABELS,
-  DOC_TYPE_LABELS, STAGE_LABELS, CASE_TYPE_LABELS, sameValue, sameName, normText, digits, toCardValue,
+  DOC_TYPE_LABELS, STAGE_LABELS, CASE_TYPE_LABELS, sameValue, normText, digits, toCardValue,
   displayValue, formatName, formatAddress, truthValue, mainPerson, redactSsn, ssnDigits, maskSsn, normalizeDate,
   reportState, reportStateLanguage, STAFF_REVIEW_REMINDER,
+  compareNames, isNotApplicable, placeParts, namesCounty, usCountry, dateOrderFor, notInCaps, twoWordFirstName,
+  COUNTRY_FIELDS, pagesText,
 } from './_proof-scan-v2-common.js';
+import { copyText } from './_proof-scan-v2-copy.js';
 
 export const RESULT_SCHEMA_VERSION = 2;
 export const CONSISTENCY = new Set(['PS-301', 'PS-302', 'PS-303', 'PS-305']); // D-47 "our errors"
@@ -139,6 +142,55 @@ const shown = (field, v) => (blank(v) ? 'blank' : displayValue(field, v));
 // same person, on the full fact list.
 const EVIDENCE_FIELDS = ['first_name', 'last_name', 'date_of_birth', 'a_number', 'ead_expiration', ...EXTRA_FIELDS];
 
+// v2.0.2, D-123 / Q-55: blank or duplicate pages are a Possible issue, never
+// counted. The server raises it from the model's page observations under this
+// key, which can never be suppressed firm-wide: dismissing it is per case only,
+// so one "never suggest this" cannot silence it for every package for good.
+export const PAGES_REASONING_KEY = 'blank_or_duplicate_pages';
+export const RESERVED_REASONING_KEYS = new Set([PAGES_REASONING_KEY]);
+export const PAGES_RULE = 'PS-103';
+
+// D-121: the actual document, by its type, or by its own printed title when
+// its type is "other"; "Other document" only when nothing better is known.
+export function evidenceLabel(docType, docTitle) {
+  const title = String(docTitle || '').trim().replace(/\s+/g, ' ');
+  if (docType === 'other' && title && !/\d{3}/.test(title)) return title.slice(0, 60);
+  return DOC_TYPE_LABELS[docType] || DOC_TYPE_LABELS.other;
+}
+
+// Q-56, D-116 follow-up: a city of birth is compared only when the birth is
+// known to be in the US; a place of marriage is never compared when the
+// marriage is known to be outside the US. signals: country values and place
+// texts that may say which.
+function placeCompared(field, places, countries) {
+  const says = [...countries.map(usCountry), ...places.map((v) => placeParts(v).us)].filter((x) => x != null);
+  if (says.includes(false)) return false;
+  if (field === 'city_of_birth') return says.includes(true);
+  return true;
+}
+const PLACE_FIELDS = new Set(['city_of_birth', 'marriage_place']);
+
+// Words that would carry this case's details into firm-wide text (D-125,
+// Q-57): every name and value on the cards, the forms and the evidence.
+function caseWords(people, forms, evidence) {
+  const words = new Set();
+  const add = (v) => {
+    if (v == null || typeof v === 'object') return;
+    for (const w of normText(v).split(' ')) if (w.length >= 3) words.add(w);
+  };
+  for (const p of people) for (const f of REFERENCE_FIELDS) add(p[f]);
+  for (const f of forms) Object.values(f.values || {}).forEach(add);
+  for (const e of evidence) Object.values(e.facts || {}).forEach(add);
+  return words;
+}
+const carriesCase = (text, words) => /\d/.test(String(text || '')) || normText(text).split(' ').some((w) => words.has(w));
+
+// A reasoning key keeps only its general words (Q-57).
+function generalKey(key, words) {
+  const parts = normalizeReasoningKey(key).split('_').filter((w) => w && !/\d/.test(w) && !words.has(w));
+  return parts.length ? normalizeReasoningKey(parts.join('_')) : 'unnamed_reasoning';
+}
+
 // D-100 #1: facts compared form against form, per person. Name, A-Number and
 // address stay with PS-301 to PS-303, which the model reports; everything else
 // shared by two forms about the same person is compared here.
@@ -149,13 +201,37 @@ export function evaluateRun(input) {
   const {
     caseType, stage, scope = null, form = null, ruleSet, selection, people, documents = [],
     openSuggestions = [], cardSsn = new Map(), obs, hasMarkedFiles = false, suppressedKeys = [],
-    files = [], scannedAt,
+    files = [], scannedAt, editionAlerts = [],
   } = input;
   const general = caseType === 'general';
-  const forms = obs.forms_found;
+  // D-126: "(none)" or "N/A" printed on a form means the field does not apply,
+  // which is a blank field, never a value. The stored result keeps what was printed.
+  const printedForms = obs.forms_found;
+  const forms = printedForms.map((f) => ({
+    ...f, values: Object.fromEntries(Object.entries(f.values).map(([k, v]) => [k, isNotApplicable(v) ? '' : v])),
+  }));
   const formsPresent = new Set(forms.map((f) => formKey(f.form)));
   const attention = [];
   const notes = [];
+  // v2.0.2: gentle confirms, never counted (D-112, D-116, Q-48, Q-50, Q-54, D-127).
+  const confirms = new Map();
+  const confirm = (id, key, vars = {}) => {
+    if (confirms.has(id)) return confirms.get(id);
+    const c = {
+      rule_id: `confirm:${id}`, status: 'please_confirm', severity: null, form: null, where: '',
+      title: copyText(key, vars), expected: null, consistency: false, summary: null, reason: null, evidence: null, locations: [],
+    };
+    confirms.set(id, c);
+    return c;
+  };
+  const whoOf = (role) => (general && role ? `the ${roleText(role)}'s ` : '');
+  const nameOf = (v) => ({ first_name: v.first_name, middle_name: v.middle_name, last_name: v.last_name });
+  const splitConfirm = (role, formLast, card, form) => confirm(`name_split:${role || 'main'}`, 'v202.confirm.name_split', {
+    who: whoOf(role), form, form_last: redactSsn(formLast), card_name: redactSsn(formatName(card)), card_middle: redactSsn(card.middle_name || ''),
+  });
+  const countyConfirm = (role, field, place, form) => confirm(`county:${role || 'main'}:${field}`, 'v202.confirm.county', {
+    who: whoOf(role), field: FIELD_LABELS[field], place: redactSsn(place), form,
+  });
 
   // ── People: cards found in the forms (D-94, D-95, D-99) ──
   const newPeople = [];       // roles to create
@@ -266,6 +342,9 @@ export function evaluateRun(input) {
     if (status === 'please_confirm') title = confirmRule ? confirmRule.confirmTitle : problemTitle(rule, setting, summary);
     checks.push({
       rule_id: rule.rule_id, status, severity: rule.severity, form: rule.form || null, where: whereOf(rule),
+      // The firm's own wording for the check, never the finding: the email
+      // names what needs attention without any case detail (Q-51).
+      rule_title: checkTitle(rule, setting, 'needs_attention'),
       title, expected: setting.stage_expected || rule.expected || null,
       consistency: CONSISTENCY.has(rule.rule_id),
       // The finding is already the headline; it is not repeated underneath.
@@ -282,7 +361,7 @@ export function evaluateRun(input) {
   for (const i of missingItems) {
     const name = `${i.form}${i.instance ? ` (${i.instance})` : ''}`;
     attention.push({
-      kind: 'missing_item', key: `item:${i.item_id}`,
+      kind: 'missing_item', key: `item:${i.item_id}`, form: i.form,
       title: `The ${name} is missing from the package.`,
       detail: `Expected for every ${CASE_TYPE_LABELS[caseType]} ${stage === 'physical_scan' ? 'final package' : 'draft set'}.`,
     });
@@ -296,9 +375,20 @@ export function evaluateRun(input) {
     for (const f of forms) {
       const person = personFor(f.person_role);
       if (!person || person._new) continue; // no card yet: nothing to compare against
+      // D-112, D-120: the name is read as a whole first. Capitals never count;
+      // first and middle name printed together is the same name; a last name
+      // that starts at a different word is a gentle confirm, never counted.
+      let namesHandled = false;
+      const cardName = { first_name: truthValue(person, 'first_name'), middle_name: truthValue(person, 'middle_name') || '', last_name: truthValue(person, 'last_name') };
+      if (cardName.first_name && cardName.last_name && !blank(f.values.last_name)) {
+        const cmp = compareNames(nameOf(f.values), cardName);
+        if (cmp === 'same') namesHandled = true;
+        if (cmp === 'split') { namesHandled = true; splitConfirm(person.role, f.values.last_name, cardName, f.form); }
+      }
       for (const field of [...REFERENCE_FIELDS, 'ssn']) {
         const value = f.values[field];
         if (value == null || !formHasField(f.form, field)) continue; // the form has no such field
+        if (namesHandled && NAME_FIELDS.includes(field)) continue;
         const truth = field === 'ssn'
           ? (cardSsn.get(person.id) && cardSsn.get(person.id) !== 'unknown' ? cardSsn.get(person.id) : null)
           : truthValue(person, field);
@@ -314,6 +404,10 @@ export function evaluateRun(input) {
             needsInfo.get(key).forms.push(f.form);
           }
           continue;
+        }
+        if (PLACE_FIELDS.has(field) && !blank(value)) {
+          if (!placeCompared(field, [truth, value], [truthValue(person, 'country_of_birth'), f.values.country_of_birth].filter((x) => field === 'city_of_birth' && x))) continue;
+          if (namesCounty(truth) && !namesCounty(value)) { countyConfirm(person.role, field, truth, f.form); continue; }
         }
         if (field === 'ssn' ? ssnDigits(value) === truth : sameValue(field, truth, value)) continue;
         if (isPending(person, field, value)) continue;
@@ -355,11 +449,18 @@ export function evaluateRun(input) {
       const v = f.values;
       const strong = (field) => truthValue(person, field);
       if (!blank(v.last_name) && strong('last_name') && strong('first_name')) {
-        const scanned = { first_name: v.first_name, middle_name: v.middle_name, last_name: v.last_name };
-        if (!sameName(scanned, person)) add(person, 'name', formatName(scanned), formatName(person), f.form);
+        const scanned = nameOf(v);
+        const card = { first_name: strong('first_name'), middle_name: strong('middle_name') || '', last_name: strong('last_name') };
+        const cmp = compareNames(scanned, card, { lenientMiddle: true });
+        if (cmp === 'split') splitConfirm(person.role, v.last_name, card, f.form);
+        else if (cmp !== 'same') add(person, 'name', formatName(scanned), formatName(person), f.form);
       }
       for (const field of ['a_number', 'date_of_birth', 'ead_expiration', 'phone', 'email', ...EXTRA_FIELDS]) {
         if (blank(v[field]) || strong(field) == null) continue;
+        if (PLACE_FIELDS.has(field)) {
+          if (!placeCompared(field, [strong(field), v[field]], [strong('country_of_birth'), v.country_of_birth].filter((x) => field === 'city_of_birth' && x))) continue;
+          if (namesCounty(strong(field)) && !namesCounty(v[field])) { countyConfirm(person.role, field, strong(field), f.form); continue; }
+        }
         if (!sameValue(field, strong(field), v[field])) add(person, field, displayValue(field, v[field]), displayValue(field, strong(field)), f.form);
       }
       const have = cardSsn.get(person.id);
@@ -386,30 +487,67 @@ export function evaluateRun(input) {
   const unclearOwners = [];
   const roleOf = (pid) => virtual.find((p) => p.id === pid)?.role;
   // Evidence read reliably: the Evidence Zero cards and the documents in these files.
+  // D-117: each piece of evidence carries the date order of its own country.
+  // D-121: and its actual name, and where it is.
   const evidence = [
     ...documents.filter((d) => d.status === 'current' && (d.owner_ids || []).length)
-      .map((d) => ({ doc_type: d.doc_type, label: DOC_TYPE_LABELS[d.doc_type], roles: d.owner_ids.map(roleOf).filter(Boolean), facts: d.facts || {}, source: 'evidence_zero', where: d.filename || '' })),
+      .map((d) => ({
+        doc_type: d.doc_type, label: evidenceLabel(d.doc_type, d.facts?.doc_title), roles: d.owner_ids.map(roleOf).filter(Boolean),
+        facts: d.facts || {}, source: 'evidence_zero', where: d.filename || '', country: d.facts?.issuing_country || null,
+        order: dateOrderFor(d.facts?.issuing_country, d.facts?.language),
+      })),
     ...obs.evidence_found.filter((e) => {
       if (!e.owner_roles.length && general) { unclearOwners.push(e); return false; }
       return e.read_quality === 'clear'; // D-54: an unreliable read never makes a difference
-    }).map((e) => ({ doc_type: e.doc_type, label: DOC_TYPE_LABELS[e.doc_type], roles: e.owner_roles, facts: e.facts, source: 'package', where: `${e.file}, pages ${e.pages}` })),
+    }).map((e) => ({
+      doc_type: e.doc_type, label: evidenceLabel(e.doc_type, e.doc_title), roles: e.owner_roles, facts: e.facts, source: 'package',
+      where: [e.file, pagesText(e.pages)].filter(Boolean).join(', '), country: e.issuing_country || null, order: dateOrderFor(e.issuing_country, e.language),
+    })),
   ];
+  const formWhere = (f) => [f.file, pagesText(f.pages)].filter(Boolean).join(', ');
   if (evidenceRule) {
     for (const ev of evidence) {
       const owners = caseType === 'daca_renewal' ? [mainPerson(virtual)?.role] : ev.roles;
-      for (const field of EVIDENCE_FIELDS) {
-        const evValue = ev.facts[field];
-        if (blank(evValue)) continue;
-        for (const f of forms) {
-          const person = personFor(f.person_role);
-          if (!person || !owners.includes(person.role)) continue;
+      const row = (field, f, person, evValue, fv, ok) => evidenceRows.push({
+        evidence: ev.label, doc_type: ev.doc_type, source: ev.source, owner_roles: owners, field, form: f.form,
+        evidence_value: displayValue(field, evValue), form_value: blank(fv) ? '' : displayValue(field, fv),
+        ok, person_role: person.role, evidence_where: ev.where, form_where: formWhere(f),
+      });
+      for (const f of forms) {
+        const person = personFor(f.person_role);
+        if (!person || !owners.includes(person.role)) continue;
+        // D-112, D-120: the name as a whole first, as a person reads it.
+        let namesHandled = false;
+        if (!blank(ev.facts.last_name) && !blank(f.values.last_name)) {
+          const cmp = compareNames(nameOf(ev.facts), nameOf(f.values), { lenientMiddle: true });
+          if (cmp !== 'different') {
+            namesHandled = true;
+            for (const field of ['first_name', 'last_name']) {
+              if (!blank(ev.facts[field]) && !blank(f.values[field])) row(field, f, person, ev.facts[field], f.values[field], true);
+            }
+            if (cmp === 'split') {
+              splitConfirm(person.role, f.values.last_name, { ...nameOf(ev.facts), middle_name: ev.facts.middle_name || '' }, f.form);
+            }
+          }
+        }
+        for (const field of EVIDENCE_FIELDS) {
+          if (namesHandled && NAME_FIELDS.includes(field)) continue;
+          const evValue = ev.facts[field];
+          if (blank(evValue)) continue;
           const fv = f.values[field];
+          // Q-53: an employer the evidence shows but the form leaves out is
+          // caught; any other blank on the form is not compared here.
+          if (field === 'employer' && fv === '' && formHasField(f.form, field)) { row(field, f, person, evValue, '', false); continue; }
           if (blank(fv)) continue;
-          evidenceRows.push({
-            evidence: ev.label, source: ev.source, owner_roles: owners, field, form: f.form,
-            evidence_value: displayValue(field, evValue), form_value: displayValue(field, fv),
-            ok: sameValue(field, evValue, fv), person_role: person.role,
-          });
+          if (PLACE_FIELDS.has(field)) {
+            const countries = field === 'city_of_birth'
+              ? [ev.facts.country_of_birth, f.values.country_of_birth, ev.doc_type === 'birth_certificate' ? ev.country : null]
+              : [ev.doc_type === 'marriage_certificate' ? ev.country : null];
+            if (!placeCompared(field, [evValue, fv], countries.filter(Boolean))) continue;
+            // D-116: a county against a city is always a gentle confirm, never counted.
+            if (namesCounty(evValue) && !namesCounty(fv)) { countyConfirm(person.role, field, evValue, f.form); row(field, f, person, evValue, fv, true); continue; }
+          }
+          row(field, f, person, evValue, fv, sameValue(field, evValue, fv, { aOrder: ev.order, bOrder: 'mdy' }));
         }
       }
     }
@@ -419,10 +557,16 @@ export function evaluateRun(input) {
     || cardDiffs.some((d) => d.person_role === row.person_role && (d.field === row.field || (d.field === 'name' && NAME_FIELDS.includes(row.field))) && d.forms.some((x) => formKey(x) === formKey(row.form)));
   const evidenceDiffs = evidenceRows.filter((r) => !r.ok && !alreadyReported(r)).map((r) => {
     const owner = r.owner_roles.map(roleText).filter(Boolean).join(' and ');
+    const vars = {
+      owner: owner ? `${owner}'s ` : '', doc: r.evidence.toLowerCase(), doc_where: redactSsn(r.evidence_where) || '',
+      field: FIELD_LABELS[r.field], evidence_value: r.evidence_value, form: r.form, form_where: redactSsn(r.form_where) || '',
+      form_value: r.form_value,
+    };
     return {
       kind: 'evidence_difference', key: `evidence:${r.evidence}:${r.field}:${formKey(r.form)}:${r.person_role}`,
-      person_role: r.person_role, field: r.field, form: r.form,
-      title: `The ${owner ? `${owner}'s ` : ''}${r.evidence.toLowerCase()} shows ${FIELD_LABELS[r.field]} ${r.evidence_value}. The ${r.form} shows ${r.form_value}.`,
+      person_role: r.person_role, field: r.field, form: r.form, doc_type: r.doc_type,
+      evidence_where: r.evidence_where, form_where: r.form_where,
+      title: copyText(r.form_value === '' ? 'v202.evidence_diff_blank' : 'v202.evidence_diff', vars),
     };
   });
   if (evidenceRule) {
@@ -458,6 +602,8 @@ export function evaluateRun(input) {
       for (const field of SHARED_FACTS) {
         const seen = list.filter((f) => !blank(f.values[field]) && formHasField(f.form, field));
         if (seen.length < 2) continue;
+        if (PLACE_FIELDS.has(field) && !placeCompared(field, seen.map((f) => f.values[field]),
+          field === 'city_of_birth' ? seen.map((f) => f.values.country_of_birth).filter(Boolean) : [])) continue;
         sharedCompared += 1;
         const groups = [];
         for (const f of seen) {
@@ -489,14 +635,16 @@ export function evaluateRun(input) {
   const translationRule = selection.server.find((r) => r.rule_id === TRANSLATION_RULE);
   const translationState = translationRule?.stages?.[stage]?.state;
   if (translationRule && !(translationState === 'if_evidence' && !obs.evidence_found.length)) {
-    const readable = obs.evidence_found.filter((e) => e.read_quality !== 'unreadable');
+    const readable = obs.evidence_found.filter((e) => e.read_quality !== 'unreadable' && e.doc_type !== 'passport');
     for (const e of readable) {
       if (isEnglish(e.language) || e.has_english_translation) continue;
+      // D-124: a passport usually carries its own translation; PS-306 does not apply to it.
+      if (e.doc_type === 'passport') continue;
       const owner = e.owner_roles.map(roleText).filter(Boolean).join(' and ');
       translationItems.push({
         kind: 'translation', key: `translation:${e.file}:${e.pages}`, person_role: e.owner_roles[0] || null,
         where: `${e.file}, pages ${e.pages}`,
-        title: `The ${owner ? `${owner}'s ` : ''}${DOC_TYPE_LABELS[e.doc_type].toLowerCase()} is in ${redactSsn(e.language)}. There is no English translation of it in the package.`,
+        title: `The ${owner ? `${owner}'s ` : ''}${evidenceLabel(e.doc_type, e.doc_title).toLowerCase()} is in ${redactSsn(e.language)}. There is no English translation of it in the package.`,
       });
     }
     checks.push({
@@ -553,9 +701,44 @@ export function evaluateRun(input) {
     }
   }
 
+  // ── v2.0.2: gentle confirms about the forms themselves ──
+  // Q-48: last names and countries on a form are in capitals (firm rule, D-112).
+  // Q-54: one first name; a second word is almost always a middle name in the
+  // wrong field. Both gentle, never counted.
+  const lastNoCaps = [];
+  const countryNoCaps = [];
+  const firstTwo = [];
+  for (const f of printedForms) {
+    if (notInCaps(f.values.last_name) && formHasField(f.form, 'last_name')) lastNoCaps.push(f.form);
+    if ([...COUNTRY_FIELDS].some((k) => notInCaps(f.values[k]) && formHasField(f.form, k))) countryNoCaps.push(f.form);
+    if (twoWordFirstName(f.values.first_name)) firstTwo.push(f.form);
+  }
+  const listOf = (xs) => [...new Set(xs)].join(', ');
+  if (lastNoCaps.length) confirm('caps:last_name', 'v202.confirm.caps_last_name', { forms: listOf(lastNoCaps) });
+  if (countryNoCaps.length) confirm('caps:country', 'v202.confirm.caps_country', { forms: listOf(countryNoCaps) });
+  if (firstTwo.length) confirm('first_name_words', 'v202.confirm.first_name_words', { forms: listOf(firstTwo) });
+
+  // Q-49, Q-50: Draft Review and Pre-flight never wait for the EAD. When there
+  // is none anywhere (not in Evidence Zero, not in these files), they ask for it
+  // gently. "No evidence for this case", marked on purpose, is not asked again.
+  if (caseType === 'daca_renewal' && (stage === 'draft_review' || stage === 'preflight')) {
+    const main = mainPerson(people);
+    const onFile = documents.some((d) => d.status === 'current' && d.doc_type === 'ead');
+    const inFiles = obs.evidence_found.some((e) => e.doc_type === 'ead' && e.read_quality !== 'unreadable');
+    if (!onFile && !inFiles && !main?.no_evidence) confirm('ead_missing', 'v202.confirm.no_ead');
+  }
+
+  // D-127: USCIS posted a notice about a form's editions that could not be
+  // read with certainty. A person checks it; the checker never guesses.
+  const alertForms = new Set(editionAlerts.map(formKey));
+  for (const f of printedForms) {
+    if (alertForms.has(formKey(f.form))) confirm(`edition_alert:${formKey(f.form)}`, 'v202.confirm.edition_alert', { form: f.form });
+  }
+  checks.push(...confirms.values());
+
   // ── Counting (D-23, D-36) ──
   const checkAttention = checks.filter((c) => c.status === 'needs_attention' && !c.counted_by_items);
-  for (const c of checkAttention) attention.push({ kind: 'check', key: `rule:${c.rule_id}`, rule_id: c.rule_id, form: c.form, title: c.title });
+  for (const c of checkAttention) attention.push({ kind: 'check', key: `rule:${c.rule_id}`, rule_id: c.rule_id, form: c.form, rule_title: c.rule_title || null, title: c.title });
   attention.push(...differences, ...cardDiffs, ...evidenceDiffs, ...formDiffs, ...translationItems, ...correctionAttention);
   const notChecked = checks.filter((c) => c.status === 'not_checked').length + unreadableItems.length;
   const state = reportState(attention.length, notChecked);
@@ -564,14 +747,35 @@ export function evaluateRun(input) {
   // D-105 (v2.0.1): the "no reference value" light note is gone too.
 
   // ── Possible issues: their own list, never counted, never emailed (D-36, D-86) ──
-  const suppressedSet = new Set(suppressedKeys);
+  // D-125, Q-57: what can leave this case (a suggested rule, a suppression)
+  // is general: the reasoning key keeps only its general words, and the
+  // suggested rule wording is dropped if it carries any of this case's details.
+  const words = caseWords(people, forms, evidence);
+  const suppressedSet = new Set([...suppressedKeys].filter((k) => !RESERVED_REASONING_KEYS.has(k)));
   const possibleIssues = obs.possible_issues
-    .map((p) => ({ ...p, reasoning_key: normalizeReasoningKey(p.reasoning_key || p.title) }))
-    .filter((p) => !suppressedSet.has(p.reasoning_key))
+    .map((p) => ({ ...p, reasoning_key: generalKey(p.reasoning_key || p.title, words) }))
+    .filter((p) => !suppressedSet.has(p.reasoning_key) && !RESERVED_REASONING_KEYS.has(p.reasoning_key))
     .map((p) => ({
       title: redactSsn(p.title), description: redactSsn(p.description), evidence: redactSsn(p.evidence),
       why_it_matters: redactSsn(p.why_it_matters), uncertainty: redactSsn(p.uncertainty), reasoning_key: p.reasoning_key,
+      general_rule: p.general_rule && !carriesCase(p.general_rule, words) ? String(p.general_rule).trim().slice(0, 500) : null,
     }));
+
+  // D-123, Q-55: blank or duplicate pages, from the model's page observations,
+  // when PS-103 is no longer a counted check in this rule set.
+  const pageProblems = obs.page_problems || [];
+  if (pageProblems.length && !selection.ask.some((r) => r.rule_id === PAGES_RULE)) {
+    const where = pageProblems.map((pp) => copyText(`v202.pi.pages.${pp.kind}`, { file: redactSsn(pp.file), pages: redactSsn(pp.pages) })).join('\n');
+    possibleIssues.push({
+      title: copyText('v202.pi.pages.title'),
+      description: copyText('v202.pi.pages.description'),
+      evidence: where,
+      why_it_matters: copyText('v202.pi.pages.why'),
+      uncertainty: copyText('v202.pi.pages.uncertainty'),
+      reasoning_key: PAGES_REASONING_KEY,
+      general_rule: null,
+    });
+  }
   // D-100 #5: evidence whose own expiration date has passed is a Possible issue,
   // never counted. An EAD on a DACA renewal is expected to be expiring: that is
   // what the renewal is for, so it is not raised.
@@ -581,7 +785,7 @@ export function evaluateRun(input) {
     if (ev.doc_type === 'ead' && caseType === 'daca_renewal') continue;
     const expiry = normalizeDate(ev.facts.expiration_date) || (ev.doc_type === 'ead' ? normalizeDate(ev.facts.ead_expiration) : null);
     if (!expiry || expiry >= today || suppressedSet.has('expired_evidence')) continue;
-    const label = DOC_TYPE_LABELS[ev.doc_type];
+    const label = ev.label;
     const owner = (caseType === 'daca_renewal' ? [mainPerson(virtual)?.role] : ev.roles).map(roleText).filter(Boolean).join(' and ');
     const key = `${ev.doc_type}|${ev.roles.join(',')}|${expiry}`;
     if (expiredSeen.has(key)) continue;
@@ -593,6 +797,7 @@ export function evaluateRun(input) {
       why_it_matters: 'An expired document may need to be replaced or explained, depending on what it is filed to show.',
       uncertainty: 'An expired document can still be the right evidence, for example to show a past entry or identity.',
       reasoning_key: 'expired_evidence',
+      general_rule: null,
     });
   }
 
@@ -600,12 +805,13 @@ export function evaluateRun(input) {
   for (const e of unclearOwners) {
     if (suppressedSet.has('evidence_owner_unclear')) break;
     possibleIssues.push({
-      title: `Whose ${DOC_TYPE_LABELS[e.doc_type].toLowerCase()} is this?`,
-      description: `A ${DOC_TYPE_LABELS[e.doc_type].toLowerCase()} in ${e.file} could not be matched to a person on the case, so it was not compared with the forms.`,
+      title: `Whose ${evidenceLabel(e.doc_type, e.doc_title).toLowerCase()} is this?`,
+      description: `A ${evidenceLabel(e.doc_type, e.doc_title).toLowerCase()} in ${e.file} could not be matched to a person on the case, so it was not compared with the forms.`,
       evidence: `${e.file}, pages ${e.pages}`,
       why_it_matters: 'Evidence is checked against the forms of the person it belongs to.',
       uncertainty: 'The document may belong to someone who has no case card yet.',
       reasoning_key: 'evidence_owner_unclear',
+      general_rule: null,
     });
   }
 
@@ -630,7 +836,7 @@ export function evaluateRun(input) {
     later: selection.later.map((r) => ({ rule_id: r.rule_id, title: r.title, form: r.form || null })),
     not_this_stage_count: selection.notThisStage.length + suppressed.length,
     notes,
-    forms_found: forms.map((f) => ({
+    forms_found: printedForms.map((f) => ({
       form: f.form, file: f.file, pages: f.pages, person_role: f.person_role,
       values: Object.fromEntries(Object.entries(f.values).filter(([, v]) => v != null)
         .map(([k, v]) => [k, k === 'ssn' ? (blank(v) ? '' : maskSsn(digits(v).slice(-4))) : k === 'a_number' ? v : redactSsn(v)])),

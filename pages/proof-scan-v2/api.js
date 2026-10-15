@@ -150,6 +150,9 @@ export function createApi({
     addRule: (body) => call('POST', '/api/proof-scan-v2-rules', { body }),
     editRule: (body) => call('PATCH', '/api/proof-scan-v2-rules', { body }),
     suppressions: () => call('GET', '/api/proof-scan-v2-suppressions'),
+
+    // USCIS editions, checked now (D-128)
+    checkEditions: () => call('POST', '/api/proof-scan-v2-editions', { body: {} }),
   };
 }
 
