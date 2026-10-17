@@ -37,7 +37,8 @@ import { onRequest as uploadRoute } from '../../functions/api/proof-scan-upload.
 
 import { mountProofScanV2 } from '../../pages/proof-scan-v2/app.js';
 import { createApi } from '../../pages/proof-scan-v2/api.js';
-import { renderReviewResult, renderPhysicalScanResult } from '../../pages/proof-scan-v2/results.js';
+import { renderReviewResult, renderPhysicalScanResult, renderStageResult } from '../../pages/proof-scan-v2/results.js';
+import { reportView } from '../../functions/api/_proof-scan-v2-view.js';
 import { renderPossibleIssues } from '../../pages/proof-scan-v2/possible-issues.js';
 import {
   checkFiles, LIMITS, EVIDENCE_LIMITS, reviewModel, physicalScanReport, stepState, mediaTypeOf,
@@ -183,18 +184,22 @@ describe('stored results drive every block', () => {
     expect(oneByClass(card, 'psr-verdict').textContent).toBe(stored.primary_report_language);
     expect(stored.attention_count).toBe(3);
 
-    // Our errors: the consistency check and the difference from the case card.
-    const our = oneByClass(card, 'v2-our-errors');
-    expect(oneByClass(our, 'psr-count').textContent).toBe('2');
-    expect(flatText(our)).toContain('The I-765 shows A-Number A-123456798. The case card has A-123456789.');
-    // D-98: evidence against the forms.
-    const match = oneByClass(card, 'v2-match');
-    expect(textOf(match)).toContain("The applicant's EAD");
-    expect(byClass(match, 'v2-match-row--bad')).toHaveLength(1);
-    // Checklist: the missing form, then one fold per form.
-    const checklist = oneByClass(card, 'v2-checklist');
-    expect(textOf(checklist)).toContain('The I-765WS is missing from the package.');
-    expect(byClass(checklist, 'psr-fold-form').map((n) => n.textContent)).toEqual(expect.arrayContaining(['G-1450', 'G-28', 'I-821D', 'I-765']));
+    // v2.1 (D-135, D-136): one Needs attention list of cards, every stage.
+    const attn = oneByClass(card, 'v2-needs-attention');
+    expect(oneByClass(attn, 'psr-count').textContent).toBe('3');
+    const titles = byClass(attn, 'ps2-issue-title').map((n) => n.textContent);
+    expect(titles).toHaveLength(3);
+    // The wrong A-Number is one item naming the case card and the EAD together.
+    expect(titles).toContain("The applicant's A-Number does not match");
+    expect(titles).toContain('The I-765WS is missing from the package');
+    // The summary strip (approved 10-16) under the header.
+    expect(textOf(oneByClass(card, 'ps2-strip'))).toMatch(/3\s*to fix/);
+    // Checks: one fold per form; Evidence Match inside "Whole package" (D-140, D-145).
+    const checks = oneByClass(card, 'v2-checks');
+    expect(byClass(checks, 'psr-fold-form').map((n) => n.textContent)).toEqual(expect.arrayContaining(['G-1450', 'G-28', 'I-821D', 'I-765', 'Whole package']));
+    expect(textOf(oneByClass(checks, 'v2-ev-check-head'))).toBe('Evidence Match');
+    expect(textOf(checks)).toContain("The applicant's EAD does not match the forms. The differences are in Needs attention.");
+    expect(byClass(card, 'v2-match')).toHaveLength(0); // no separate Evidence Match section
     // Never counted: please confirm (D-47, D-70). D-107: office delivery is a gentle confirm.
     const confirm = textOf(oneByClass(card, 'v2-confirm'));
     expect(confirm).toContain('The I-821D English question is answered NO.'); // D-109: the finding, not the rule name
@@ -207,9 +212,11 @@ describe('stored results drive every block', () => {
     const pi = oneByClass(card, 'ps-explore');
     expect(oneByClass(pi, 'ps-explore-count').textContent).toBe('1');
     expect(textOf(pi)).toContain('Phone number written two ways');
-    // Every attention item the server stored is drawn as a finding.
-    const findings = byClass(card, 'psr-notice--needs_attention').map((n) => textOf(n)).join('\n');
-    for (const a of stored.attention) expect(findings).toContain(a.title.split('. ')[0]);
+    // Every attention item the server stored is drawn as one card, with Clear.
+    expect(byClass(attn, 'ps2-issue')).toHaveLength(stored.attention.length);
+    expect(byClass(attn, 'ps2-clear')).toHaveLength(stored.attention.length);
+    // D-142: no severity label anywhere.
+    expect(byClass(card, 'psr-sev')).toHaveLength(0);
   });
 
   it('Pre-flight: client corrections from the uploaded markups and corrected pages', async () => {
@@ -243,9 +250,10 @@ describe('stored results drive every block', () => {
     const card = oneByClass(root, 'v2-result');
     expect(byClass(card, 'psr-summary-strip')).toHaveLength(0); // D-89
     expect(byClass(card, 'psr-client-details')).toHaveLength(0);
-    const first = byClass(card, 'psr-notice--needs_attention')[0];
-    expect(flatText(first)).toContain('The package shows the phone as (602) 555-0199.');
-    expect(byClass(card, 'psr-table')).toHaveLength(1); // Included in the scan only (D-106: no forms-found list)
+    const first = byClass(card, 'ps2-issue')[0];
+    expect(textOf(oneByClass(first, 'ps2-issue-title'))).toBe("The applicant's phone does not match");
+    expect(flatText(first)).toContain('(602) 555-0199');
+    expect(byClass(card, 'psr-table')).toHaveLength(0); // D-133: no "Included in the scan"
     expect(byClass(card, 'v2-forms-found')).toHaveLength(0);
     // The suppressed reasoning never comes back (D-59); the other suggestion does.
     const pi = oneByClass(card, 'ps-explore');
@@ -266,13 +274,17 @@ describe('stored results drive every block', () => {
     const people = oneByClass(root, 'v2-ps-people');
     expect(byClass(people, 'v2-ps-person')).toHaveLength(2);
     const result = oneByClass(root, 'v2-result');
-    const attention = byClass(result, 'psr-notice--needs_attention');
-    const titles = attention.map((n) => flatText(n));
-    expect(titles).toHaveLength(3);
-    expect(titles[0]).toContain("The beneficiary's birth certificate (aos-package-scan.pdf, pages 101-102) shows date of birth 09/30/1993. The I-485 (aos-package-scan.pdf, pages 19-38) shows 09/03/1993.");
-    // D-100 #1, #6: a cross-form difference and an untranslated Spanish document, both counted.
-    expect(titles[1]).toContain("The forms disagree on the beneficiary's country of birth. It is MEXICO on the I-130A and the I-485, but GUATEMALA on the I-765.");
-    expect(titles[2]).toContain("The beneficiary's birth certificate is in Spanish. There is no English translation of it in the package.");
+    const attention = byClass(result, 'ps2-issue');
+    const titles = attention.map((n) => textOf(oneByClass(n, 'ps2-issue-title')));
+    expect(titles).toEqual([
+      "The beneficiary's date of birth does not match",
+      // D-100 #1, #6: a cross-form difference and an untranslated Spanish document, both counted.
+      "The forms disagree on the beneficiary's country of birth",
+      "The beneficiary's birth certificate is in Spanish",
+    ]);
+    expect(flatText(attention[0])).toContain('09/03/1993');
+    expect(flatText(attention[0])).toContain('09/30/1993');
+    expect(flatText(attention[1])).toContain('GUATEMALA');
     expect(oneByClass(result, 'psr-verdict').textContent).toBe('3 items need attention');
     // D-100 #5: the expired passport is a Possible issue, never counted.
     expect(textOf(oneByClass(result, 'ps-explore'))).toContain("The beneficiary's passport expired on 03/14/2024.");
@@ -313,7 +325,7 @@ describe('stored results drive every block', () => {
       package_items: [], later: [], notes: [], forms_found: [], evidence_matches: [], scan: { files: [{ filename: 'a.pdf' }] },
     };
     const mountNode = document.createElement('div');
-    renderReviewResult(result, mountNode);
+    renderStageResult(result, reportView(result), mountNode);
     expect(oneByClass(mountNode, 'psr-verdict').textContent).toBe('SERVER WORDING 7');
     expect(oneByClass(mountNode, 'psr-verdict').className).toContain('psr-verdict--attention');
     expect(reviewModel(result).attention_count).toBe(7);
@@ -330,7 +342,7 @@ describe('stored results drive every block', () => {
       package_items: [], later: [], notes: [], forms_found: [], evidence_matches: [], scan: { files: [{ filename: 'a.pdf' }] },
     };
     const node = document.createElement('div');
-    renderPhysicalScanResult(result, node);
+    renderStageResult(result, reportView(result), node);
     const confirm = oneByClass(node, 'v2-confirm');
     expect(oneByClass(confirm, 'psr-count').textContent).toBe('2');
     const rows = byClass(confirm, 'v2-info-row').map((r) => flatText(r));
@@ -359,7 +371,8 @@ describe('text only', () => {
     };
     for (const render of [renderReviewResult, renderPhysicalScanResult]) {
       const node = document.createElement('div');
-      render({ ...result, stage: render === renderReviewResult ? 'draft_review' : 'physical_scan' }, node);
+      const r = { ...result, stage: render === renderReviewResult ? 'draft_review' : 'physical_scan' };
+      render(r, node, { view: reportView(r) });
       renderPossibleIssues(node, [{ id: 'i1', title: HOSTILE, description: HOSTILE, evidence: HOSTILE, why_it_matters: HOSTILE, uncertainty: HOSTILE, status: 'open' }], { api });
       expect(textOf(node)).toContain(HOSTILE);
       expect(findAll(node, (n) => ['img', 'script', 'iframe'].includes(n.tagName))).toHaveLength(0);
@@ -592,7 +605,7 @@ describe('folder name', () => {
     expect(findAll(root, (n) => n.id === 'ps2-case-label')).toHaveLength(0);
     expect(findAll(oneByClass(root, 'v2-start'), (n) => n.tagName === 'input')).toHaveLength(0);
     await startCase(root, 'daca_renewal');
-    expect(api.createCase).toHaveBeenCalledWith('daca_renewal');
+    expect(api.createCase).toHaveBeenCalledWith('daca_renewal', null);
     expect(oneByClass(root, 'v2-case-type-v').textContent).toMatch(/^New case \d{2}\/\d{2}\/\d{4}$/);
     await pickFiles(root, [fakeFile('ead-ana-rivera.pdf')]);
     expect(oneByClass(root, 'v2-case-type-v').textContent).toBe('RIVERA, Ana');
@@ -618,5 +631,89 @@ describe('Possible issues', () => {
     await flush();
     expect(db.rows('proof_scan_rules').some((r) => r.title === 'Phone numbers use one format across the package.' && r.origin === 'possible_issue')).toBe(true);
     expect(oneByClass(root, 'psr-verdict').textContent).toBe(verdict);
+  });
+});
+
+// ── v2.1 UI pass (D-132, D-136, D-141, D-143) ────────────────────────────────
+
+describe('v2.1 issue cards and clears', () => {
+  const result = {
+    schema_version: 3, case_type: 'aos', case_type_label: 'Adjustment of Status · Spousal', stage: 'physical_scan', stage_label: 'Physical Scan',
+    report_state: 'items_need_attention', primary_report_language: '2 items need attention', attention_count: 2,
+    attention: [
+      { kind: 'fact', key: 'fact:beneficiary:address:aaaa0000', person_role: 'beneficiary', field: 'address', title: "The beneficiary's address does not match",
+        on_forms: [{ value: '2207 N 16th St, Apt. 4, Phoenix, AZ 85006', forms: [{ form: 'I-485', n: 1 }] }],
+        sources: [{ value: '2207 N 16th St, Apt. 5, Phoenix, AZ 85006', labels: ['the case card'] }], fix_on: [{ form: 'I-485', n: 1 }], forms: ['I-485'], source_docs: [], parts: [] },
+      { kind: 'check', key: 'rule:AOS-ASM-001', rule_id: 'AOS-ASM-001', form: null, title: 'Page 3 of the I-485 is out of order. It is after page 4.' },
+    ],
+    checks: [{ rule_id: 'AOS-ASM-001', status: 'needs_attention', title: 'Page 3 of the I-485 is out of order. It is after page 4.', form: null, where: '', locations: [] }],
+    package_items: [], later: [], notes: [], forms_found: [], evidence_matches: [], scan: { files: [{ filename: 'p.pdf' }] },
+  };
+
+  it('Clear sits beside the card\'s open/close control, never inside it; the title is only what is wrong', async () => {
+    const node = document.createElement('div');
+    const onClear = vi.fn(async () => {});
+    renderStageResult(result, reportView(result), node, { onClear, open: new Set() });
+    const cards = byClass(node, 'ps2-issue');
+    expect(cards).toHaveLength(2);
+    for (const c of cards) {
+      const toggle = oneByClass(c, 'ps2-issue-toggle');
+      expect(byClass(toggle, 'ps2-clear')).toHaveLength(0);
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(byClass(oneByClass(c, 'ps2-issue-bar'), 'ps2-clear')).toHaveLength(1);
+    }
+    // D-136: the first sentence is the title; the rest is the detail.
+    expect(textOf(oneByClass(cards[1], 'ps2-issue-title'))).toBe('Page 3 of the I-485 is out of order');
+    expect(textOf(cards[1])).toContain('It is after page 4.');
+    // Headlines never break at "Apt." (v2 only).
+    expect(textOf(cards[0])).toContain('Apt. 4, Phoenix');
+    await click(oneByClass(cards[1], 'ps2-clear'));
+    expect(onClear).toHaveBeenCalledWith('rule:AOS-ASM-001', true);
+    // D-142: no severity label.
+    expect(byClass(node, 'psr-sev')).toHaveLength(0);
+  });
+
+  it('a cleared card reads "Cleared" with Undo, folds, and still opens with all its details (D-143)', async () => {
+    const node = document.createElement('div');
+    renderStageResult(result, reportView(result, [{ item_key: 'fact:beneficiary:address:aaaa0000', via: 'hand' }]), node, { onClear: vi.fn(), open: new Set() });
+    const card = byClass(node, 'ps2-issue')[0];
+    expect(card.className).toContain('is-cleared');
+    expect(textOf(oneByClass(card, 'ps2-cleared-tag'))).toBe('Cleared');
+    expect(textOf(oneByClass(card, 'ps2-clear'))).toBe('Undo');
+    expect(oneByClass(card, 'ps2-issue-body').hidden).toBe(true);
+    await click(oneByClass(card, 'ps2-issue-bar'));
+    expect(oneByClass(card, 'ps2-issue-body').hidden).toBe(false);
+    expect(textOf(card)).toContain('Apt. 5');
+    expect(textOf(oneByClass(node, 'psr-verdict'))).toBe('1 item needs attention');
+    expect(textOf(oneByClass(node, 'ps2-cleared-note'))).toBe('1 of 2 cleared');
+  });
+
+  it('opens and closes with no animation when reduced motion is asked for (D-141)', async () => {
+    const saved = globalThis.matchMedia;
+    globalThis.matchMedia = () => ({ matches: true });
+    try {
+      const node = document.createElement('div');
+      renderStageResult(result, reportView(result), node, { open: new Set() });
+      const card = byClass(node, 'ps2-issue')[1];
+      const body = oneByClass(card, 'ps2-issue-body');
+      body.animate = vi.fn();
+      await click(oneByClass(card, 'ps2-issue-bar'));
+      expect(body.hidden).toBe(false);
+      expect(oneByClass(card, 'ps2-issue-toggle').getAttribute('aria-expanded')).toBe('true');
+      await click(oneByClass(card, 'ps2-issue-bar'));
+      expect(body.hidden).toBe(true);
+      expect(body.animate).not.toHaveBeenCalled();
+    } finally { globalThis.matchMedia = saved; }
+  });
+
+  it('the summary strip shows what is left and turns to "All cleared" with the review button', () => {
+    const node = document.createElement('div');
+    renderStageResult(result, reportView(result), node, {});
+    expect(textOf(oneByClass(node, 'ps2-strip'))).toMatch(/2\s*to fix/);
+    const done = document.createElement('div');
+    renderStageResult(result, reportView(result, result.attention.map((a) => ({ item_key: a.key, via: 'hand' }))), done, {});
+    expect(textOf(oneByClass(done, 'ps2-strip'))).toContain('All cleared');
+    expect(textOf(oneByClass(done, 'ps2-strip'))).toContain('Mark this stage reviewed');
+    expect(textOf(oneByClass(done, 'psr-verdict'))).toBe('2 of 2 cleared, no item needs attention');
   });
 });

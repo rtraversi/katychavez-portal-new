@@ -43,6 +43,11 @@ const { modelAnswer, SAMPLES, samplePdf } = await import('./scenarios.mjs');
 const db = createFakeSupabase();
 globalThis.__PS2_PREVIEW_DB__ = db;
 const seed = JSON.parse(readFileSync(join(repo, 'functions/api/proof-scan-profiles/v2-seed.json'), 'utf8'));
+// v2.1: the AOS rule set, built the way migration 2006 builds it (General's
+// firm-wide checks, then the AOS checks and package items).
+const { buildAosRuleSet } = await import('../../../scripts/proof-scan-v2-aos-seed.mjs');
+const aosSeed = JSON.parse(readFileSync(join(repo, 'functions/api/proof-scan-profiles/v2-aos-seed.json'), 'utf8'));
+seed.rule_sets.push(buildAosRuleSet(seed.rule_sets.find((rs) => rs.case_type === 'general'), aosSeed));
 for (const rs of seed.rule_sets) {
   const setId = `rs-${rs.case_type}-1`;
   db.rows('proof_scan_rule_sets').push({ id: setId, case_type: rs.case_type, version: rs.version, is_current: true, label: rs.label, source_note: rs.source_note, created_by: null, created_at: '2026-10-07T00:00:00Z' });
@@ -58,6 +63,13 @@ for (const rs of seed.rule_sets) {
 }
 db.rows('proof_scan_suppressions').push({ id: 'sup-r1', reasoning_key: 'signature_date_order', label: 'Signature date order, for example an attorney signing before the applicant. Not a requirement at this firm.', origin: 'firm_decision', created_by: null, created_at: '2026-10-07T00:00:00Z' });
 db.rows('proof_scan_config').push({ id: 'cfg', notify_email: 'alerts@example.test' });
+// D-138: answer counts from earlier (synthetic) scans, so the Rulebook shows a
+// suggestion once the seeded AOS Physical Scans add theirs. Counts only.
+for (const [form, item, topic, no, yes] of [
+  ['I-485', '53.b', 'ever committed genocide', 1, 0],
+  ['I-485', '53.a', 'ever committed torture', 1, 0],
+  ['I-485', '23', 'ever committed a crime of any kind', 3, 2],
+]) db.rows('proof_scan_answer_tally').push({ id: `tally-${item}`, case_type: 'aos', form, item, topic, no_count: no, yes_count: yes, state: 'watching', approved_rule_id: null, decided_by: null, decided_at: null, updated_at: '2026-10-10T00:00:00Z' });
 // D-127, D-128: one form edition row, so "Check USCIS editions now" has something to check.
 db.rows('form_editions').push({ id: 'fe-g28', form_number: 'G-28', pages: 4, edition_date: '09/17/18', upstream_edition: '09/17/18', check_status: 'current', last_checked_at: null });
 
@@ -104,7 +116,7 @@ const ENV = {
 };
 
 const ROUTES = {};
-for (const name of ['case', 'cases', 'person', 'suggestion', 'ssn', 'evidence', 'run', 'signoff', 'rules', 'suppressions', 'possible-issue', 'process', 'editions']) {
+for (const name of ['case', 'cases', 'person', 'suggestion', 'ssn', 'evidence', 'run', 'signoff', 'rules', 'suppressions', 'possible-issue', 'process', 'editions', 'clear', 'patterns']) {
   ROUTES[`/api/proof-scan-v2-${name}`] = (await import(`../../../functions/api/proof-scan-v2-${name}.js`)).onRequest;
 }
 ROUTES['/api/proof-scan-upload'] = (await import('../../../functions/api/proof-scan-upload.js')).onRequest;
@@ -145,6 +157,29 @@ async function seedCases() {
   for (const name of ['ead-luis-garcia.pdf', 'intake-luis-garcia.pdf', 'ead-newer-luis-garcia.pdf', 'intake-updated-luis-garcia.pdf', 'ead-damaged-luis-garcia.pdf']) {
     must(await call('/api/proof-scan-v2-evidence', 'POST', { case_id: v.case.id, ...file(name) }), name);
   }
+
+  // 4 to 7 (v2.1): the four AOS cases of the approved mockup, each through the
+  // real routes and the real engine (aos-scenarios.mjs answers the model).
+  // SANTOS & VEGA, spousal: Evidence Zero, then every stage.
+  v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'aos', aos_kind: 'spousal' }), 'AOS Santos');
+  const santos = v.case.id;
+  for (const name of ['santos-birth-certificate-elena.pdf', 'santos-birth-certificate-marco.pdf', 'santos-marriage-certificate.pdf',
+    'santos-passport-elena.pdf', 'santos-i94-elena.pdf', 'santos-naturalization-rosa.pdf']) {
+    must(await call('/api/proof-scan-v2-evidence', 'POST', { case_id: santos, ...file(name) }), name);
+  }
+  must(await call('/api/proof-scan-v2-run', 'POST', { case_id: santos, stage: 'draft_review', scope: 'whole', files: [file('santos-drafts.pdf')] }), 'Santos DR');
+  must(await call('/api/proof-scan-v2-run', 'POST', { case_id: santos, stage: 'preflight', scope: 'whole',
+    files: [file('santos-preflight-forms.pdf'), file('santos-client-markups.pdf', 'marked'), file('santos-corrected-pages.pdf', 'corrected')] }), 'Santos PF');
+  must(await call('/api/proof-scan-v2-run', 'POST', { case_id: santos, stage: 'physical_scan', files: [file('santos-final-package.pdf')] }), 'Santos PS');
+  // REYES (Miguel & Carmen), child to parent: clean, one Possible issue.
+  v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'aos', aos_kind: 'child_to_parent' }), 'AOS Reyes');
+  must(await call('/api/proof-scan-v2-run', 'POST', { case_id: v.case.id, stage: 'physical_scan', files: [file('reyes-final-package.pdf')] }), 'Reyes PS');
+  // NGUYEN & TRAN, parent to child, applicant under 14.
+  v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'aos', aos_kind: 'parent_to_child' }), 'AOS Nguyen');
+  must(await call('/api/proof-scan-v2-run', 'POST', { case_id: v.case.id, stage: 'physical_scan', files: [file('nguyen-tran-final-package.pdf')] }), 'Nguyen PS');
+  // OKAFOR & BELLO, spousal, applicant turning 79.
+  v = must(await call('/api/proof-scan-v2-case', 'POST', { case_type: 'aos', aos_kind: 'spousal' }), 'AOS Okafor');
+  must(await call('/api/proof-scan-v2-run', 'POST', { case_id: v.case.id, stage: 'physical_scan', files: [file('okafor-bello-final-package.pdf')] }), 'Okafor PS');
 }
 await seedCases();
 

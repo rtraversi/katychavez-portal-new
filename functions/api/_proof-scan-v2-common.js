@@ -7,8 +7,16 @@
 
 import { COUNTRIES, US_STATES, CBP_PORTS } from './_proof-scan-v2-places.js';
 
-export const CASE_TYPES = ['daca_renewal', 'general'];
-export const CASE_TYPE_LABELS = { daca_renewal: 'DACA renewal', general: 'General' };
+export const CASE_TYPES = ['daca_renewal', 'general', 'aos'];
+export const CASE_TYPE_LABELS = { daca_renewal: 'DACA renewal', general: 'General', aos: 'Adjustment of Status' };
+// v2.1, D-131: an AOS case is started as one of three kinds, picked by staff.
+// The kind only switches the spousal-only items on or off (Q-59): the I-130A
+// and the marriage certificate. Labels are Max's to finalise (D-87).
+export const AOS_KINDS = ['spousal', 'child_to_parent', 'parent_to_child'];
+export const AOS_KIND_LABELS = { spousal: 'Spousal', child_to_parent: 'Child to parent', parent_to_child: 'Parent to child' };
+// AOS uses General's multi-person case cards (D-131): one card per person,
+// filled from forms and evidence. Only DACA is one person (D-94).
+export const isMultiPerson = (caseType) => caseType !== 'daca_renewal';
 
 // Evidence Zero is a workspace, not a check stage (D-53); runs happen in these.
 export const REVIEW_STAGES = ['draft_review', 'preflight', 'physical_scan'];
@@ -42,6 +50,9 @@ export const EXTRA_FIELDS = [
   'employer', 'marriage_date', 'marriage_place',
   // v2.0.2, Q-56: carried on the card always, compared only for a US birth.
   'city_of_birth',
+  // v2.1, Q-61: the beneficiary's passport is evidence, not truth; only its
+  // number and expiration date are checked against the forms.
+  'passport_number', 'passport_expiration',
 ];
 export const REFERENCE_FIELDS = [
   'first_name', 'middle_name', 'last_name',
@@ -56,7 +67,7 @@ export const OPTIONAL_FIELDS = new Set(['in_care_of', 'province', 'postal_code',
 export const NAME_FIELDS = ['first_name', 'middle_name', 'last_name'];
 export const ADDRESS_FIELDS = ['street', 'apt_type', 'apt_number', 'city', 'state', 'zip',
   'in_care_of', 'province', 'postal_code', 'country'];
-export const DATE_FIELDS = new Set(['date_of_birth', 'ead_expiration', 'marriage_date', 'i94_expiration', 'last_entry_date', 'expiration_date']);
+export const DATE_FIELDS = new Set(['date_of_birth', 'ead_expiration', 'marriage_date', 'i94_expiration', 'last_entry_date', 'expiration_date', 'passport_expiration']);
 export const APT_TYPES = ['Apt.', 'Ste.', 'Flr.'];
 
 export const FIELD_LABELS = {
@@ -70,6 +81,7 @@ export const FIELD_LABELS = {
   country_of_citizenship: 'country of citizenship', i94_number: 'I-94 number', i94_expiration: 'I-94 expiration date',
   last_entry_date: 'last entry date', port_of_entry: 'port of entry', employer: 'employer',
   marriage_place: 'place of marriage', expiration_date: 'expiration date', city_of_birth: 'city of birth',
+  passport_number: 'passport number', passport_expiration: 'passport expiration date',
 };
 
 // Document types Evidence Zero may identify. Only the Lab's own set; no new
@@ -181,7 +193,7 @@ export function dateParts(value, order = 'mdy') {
 //     to fill in, exactly as before.
 // Comparing never needs the century: 01/29/25 and 01/29/2025 are the same date
 // either way (sameDate).
-export const FUTURE_DATE_FIELDS = new Set(['ead_expiration', 'i94_expiration', 'expiration_date']);
+export const FUTURE_DATE_FIELDS = new Set(['ead_expiration', 'i94_expiration', 'expiration_date', 'passport_expiration']);
 export function centuryFor(field, yy) {
   return FUTURE_DATE_FIELDS.has(field) ? 2000 + yy : null;
 }
@@ -553,10 +565,19 @@ export const GATE_MESSAGES = {
   address: 'Fill in the address: street, city, state and ZIP code.',
   approve: 'Approve the reference record.',
   no_person: 'Add the person this case is about.',
+  aos_evidence: 'Add the birth certificates and the other evidence in Evidence Zero, or mark that there is no evidence for this case.',
 };
 
 export function evidenceRequirement(caseType, people, documents) {
   if (caseType === 'general') return { ready: true, missing: [] };
+  // v2.1, Q-60: AOS starts in Evidence Zero, as DACA, but it never locks a
+  // stage (D-103, D-113). It is "done" once a document is read or staff mark
+  // that there is no evidence for this case.
+  if (caseType === 'aos') {
+    const main = mainPerson(people);
+    const any = documents.some((d) => d.status === 'current') || Boolean(main?.no_evidence);
+    return { ready: any, missing: any ? [] : ['aos_evidence'] };
+  }
   const main = mainPerson(people);
   if (!main) return { ready: false, missing: ['no_person'] };
   const missing = [];
@@ -604,6 +625,12 @@ export function caseLabel(caseType, people, createdAt) {
       || LABEL_ROLE_ORDER.indexOf(a.role) - LABEL_ROLE_ORDER.indexOf(b.role));
     const top = ordered.slice(0, 2).sort((a, b) => LABEL_ROLE_ORDER.indexOf(a.role) - LABEL_ROLE_ORDER.indexOf(b.role));
     const names = [...new Set(top.map((p) => String(p.last_name).trim().toUpperCase()))];
+    // v2.1, D-144: two people with the same last name read "REYES, Miguel &
+    // Carmen" (last name once, both first names), so cases can be told apart.
+    if (names.length === 1 && top.length === 2) {
+      const firsts = top.map((p) => (isBlank(p.first_name) ? '' : titleCase(String(p.first_name).trim()))).filter(Boolean);
+      if (firsts.length === 2) return `${names[0]}, ${firsts.join(' & ')}`.slice(0, 200);
+    }
     return names.join(' & ').slice(0, 200);
   }
   return `New case ${formatDate(String(createdAt || '').slice(0, 10)) || ''}`.trim();

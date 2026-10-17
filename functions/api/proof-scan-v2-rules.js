@@ -1,6 +1,6 @@
 // proof-scan-v2-rules.js: the rulebook (D-61, D-65, D-76).
 //
-//   GET   ?case_type=daca_renewal|general   the current version, firm-wide and
+//   GET   ?case_type=daca_renewal|general|aos   the current version, firm-wide and
 //                                           case-type rules apart, each with its
 //                                           scope, origin and stage settings
 //   POST  { scope, case_type?, title, form?, page?, item?, expected?, note?, severity?, stages? }
@@ -16,7 +16,7 @@ import { requireStaff, readJson, json, guarded, methodNotAllowed, HttpError } fr
 import { validate } from './_schemas.js';
 import * as store from './_proof-scan-v2-store.js';
 import { CASE_TYPES } from './_proof-scan-v2-common.js';
-import { STAGE_STATES, nextRuleId, withRuleAdded, withRuleEdited, rulebookView } from './_proof-scan-v2-rulebook.js';
+import { STAGE_STATES, nextRuleId, withRuleAdded, withRuleEdited, rulebookView, addPrefix } from './_proof-scan-v2-rulebook.js';
 
 const text = (max) => z.string().trim().min(1).max(max);
 const optional = (max) => z.string().trim().max(max).nullable().optional();
@@ -79,7 +79,7 @@ async function writeVersions(admin, caseTypes, change, userId, possibleIssueId =
 export async function createRule(admin, rule, { userId, origin, possibleIssueId = null }) {
   if (rule.scope === 'case_type' && !rule.case_type) throw new HttpError(400, 'Choose the case type for a case-type rule.');
   const caseTypes = rule.scope === 'firm' ? CASE_TYPES : [rule.case_type];
-  const prefixIds = await store.ruleIdsWithPrefix(admin, rule.scope === 'firm' ? 'FIRM-ADD-' : rule.case_type === 'general' ? 'GEN-ADD-' : 'DACA-ADD-');
+  const prefixIds = await store.ruleIdsWithPrefix(admin, addPrefix(rule.scope, rule.case_type));
   const ruleId = nextRuleId(rule.scope, rule.case_type, prefixIds);
   const versions = await writeVersions(admin, caseTypes,
     (current) => withRuleAdded(current, { ...rule, rule_id: ruleId, origin }), userId, possibleIssueId);
@@ -94,7 +94,12 @@ export const onRequest = guarded('proof-scan-v2-rules', async ({ request, env })
     if (!CASE_TYPES.includes(caseType)) return json(400, { error: `case_type must be one of: ${CASE_TYPES.join(', ')}` });
     const current = await store.loadCurrentRuleSet(gate.admin, caseType);
     if (!current) throw new HttpError(503, 'No rule set is configured for this case type. Apply migration 2003.');
-    return json(200, { ...rulebookView(current), suppressions: await store.listSuppressions(gate.admin) });
+    // v2.1, D-138: AOS answer patterns staff can approve or decline (counts only).
+    const patterns = caseType === 'aos'
+      ? (await store.listTally(gate.admin, caseType)).filter((r) => r.state !== 'watching' || r.yes_count > 0)
+        .map(({ id, form, item, topic, no_count, yes_count, state, approved_rule_id }) => ({ id, form, item, topic, no_count, yes_count, state, approved_rule_id }))
+      : [];
+    return json(200, { ...rulebookView(current), suppressions: await store.listSuppressions(gate.admin), patterns });
   }
 
   if (request.method !== 'POST' && request.method !== 'PATCH') return methodNotAllowed();

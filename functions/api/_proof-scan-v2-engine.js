@@ -17,16 +17,23 @@ import {
   displayValue, formatName, formatAddress, truthValue, mainPerson, redactSsn, ssnDigits, maskSsn, normalizeDate,
   reportState, reportStateLanguage, STAFF_REVIEW_REMINDER,
   compareNames, isNotApplicable, placeParts, namesCounty, usCountry, dateOrderFor, notInCaps, twoWordFirstName,
-  COUNTRY_FIELDS, pagesText,
+  COUNTRY_FIELDS, pagesText, isMultiPerson, ADDRESS_FIELDS as ADDRESS_PARTS, DATE_FIELDS as DATE_FIELDS_SET,
 } from './_proof-scan-v2-common.js';
 import { copyText } from './_proof-scan-v2-copy.js';
+import {
+  AOS_SERVER_RULES, RELATIONSHIP_REASONING_KEY, EMPTY_AOS, aosConditions, relationshipMismatch, BOX_LABELS,
+  feeDecision, contactCheck, contactProblemText, languageDecision, misspeltCardholder, tallyRows,
+} from './_proof-scan-v2-aos.js';
+import { mergeFacts, groupOf, docWord, valueHash as valueHashOf } from './_proof-scan-v2-merge.js';
 
-export const RESULT_SCHEMA_VERSION = 2;
+// v2.1: 3. Attention items are merged per wrong fact (kind 'fact', D-135) and
+// every item has a stable key for clears (D-132).
+export const RESULT_SCHEMA_VERSION = 3;
 export const CONSISTENCY = new Set(['PS-301', 'PS-302', 'PS-303', 'PS-305']); // D-47 "our errors"
 export const EVIDENCE_RULE = 'PS-304';                                // D-98, server-computed
 export const SHARED_FACTS_RULE = 'PS-305';                            // D-100 #1, server-computed
 export const TRANSLATION_RULE = 'PS-306';                             // D-100 #6, server-computed
-const SERVER_RULES = new Set([EVIDENCE_RULE, SHARED_FACTS_RULE, TRANSLATION_RULE]);
+const SERVER_RULES = new Set([EVIDENCE_RULE, SHARED_FACTS_RULE, TRANSLATION_RULE, ...AOS_SERVER_RULES]);
 
 // D-81: a form is compared only on the address parts it has. Known DACA forms;
 // any other form is compared on whatever it shows.
@@ -59,13 +66,20 @@ const FIELD_RULE = {
 
 // Returns the rules sent to the model, the server-computed rules, the rules
 // waiting for a later stage, and the package items to look for.
-export function selectRules({ ruleSet, stage, scope, form, hasMarkedFiles }) {
+// v2.1, D-131 / Q-59: an AOS case's kind switches the spousal-only rules and
+// items before anything is asked; the other "if needed" conditions (Q-72) are
+// read from the package after the call.
+const kindAllows = (x, aosKind) => x.applies_when !== 'spousal' || aosKind === 'spousal';
+
+export function selectRules({ ruleSet, stage, scope, form, hasMarkedFiles, aosKind = null }) {
   const filed = new Set(ruleSet.package_items.map((i) => formKey(i.form)));
   const out = { ask: [], server: [], later: [], notThisStage: [], conditional: [] };
   for (const rule of ruleSet.rules) {
     if (rule.retired) continue;
-    // Never a rule for a form this case type does not file.
-    if (rule.form && filed.size && !filed.has(formKey(rule.form))) continue;
+    if (!kindAllows(rule, aosKind)) continue;
+    // Never a rule for a form this case type does not file. A rule that applies
+    // only when its form is in the package (an I-864A, an I-131) is kept.
+    if (rule.form && filed.size && !filed.has(formKey(rule.form)) && !rule.applies_when) continue;
     // D-56: an individual review ignores the rest of the package, so the
     // across-the-package consistency checks do not apply to it.
     if (scope === 'individual') {
@@ -93,8 +107,9 @@ export function selectRules({ ruleSet, stage, scope, form, hasMarkedFiles }) {
   // D-56, D-58, D-66, D-73: forms are expected in a whole Draft Review; forms and
   // evidence at Physical Scan; nothing at Pre-flight or in an individual review.
   let items = [];
-  if (stage === 'physical_scan') items = ruleSet.package_items;
-  else if (stage === 'draft_review' && scope === 'whole') items = ruleSet.package_items.filter((i) => (i.kind || 'form') === 'form');
+  const packageItems = ruleSet.package_items.filter((i) => kindAllows(i, aosKind));
+  if (stage === 'physical_scan') items = packageItems;
+  else if (stage === 'draft_review' && scope === 'whole') items = packageItems.filter((i) => (i.kind || 'form') === 'form');
   return { ...out, items };
 }
 
@@ -129,6 +144,8 @@ function problemTitle(rule, setting, summary) {
 // EAD delivery boxes: blank means home.
 const CONFIRM_RULES = new Map([
   ['DACA-G28-003', { blankIsClear: true, confirmTitle: 'The EAD will be delivered to the office, not home.' }],
+  // v2.1, Q-65: D-107 applies to the AOS applicant's G-28 as in DACA.
+  ['AOS-G28A-003', { blankIsClear: true, confirmTitle: 'The card will be delivered to the office, not home.' }],
 ]);
 
 function whereOf(rule) {
@@ -147,7 +164,7 @@ const EVIDENCE_FIELDS = ['first_name', 'last_name', 'date_of_birth', 'a_number',
 // key, which can never be suppressed firm-wide: dismissing it is per case only,
 // so one "never suggest this" cannot silence it for every package for good.
 export const PAGES_REASONING_KEY = 'blank_or_duplicate_pages';
-export const RESERVED_REASONING_KEYS = new Set([PAGES_REASONING_KEY]);
+export const RESERVED_REASONING_KEYS = new Set([PAGES_REASONING_KEY, RELATIONSHIP_REASONING_KEY]);
 export const PAGES_RULE = 'PS-103';
 
 // D-121: the actual document, by its type, or by its own printed title when
@@ -201,9 +218,12 @@ export function evaluateRun(input) {
   const {
     caseType, stage, scope = null, form = null, ruleSet, selection, people, documents = [],
     openSuggestions = [], cardSsn = new Map(), obs, hasMarkedFiles = false, suppressedKeys = [],
-    files = [], scannedAt, editionAlerts = [],
+    files = [], scannedAt, editionAlerts = [], aosKind = null,
   } = input;
-  const general = caseType === 'general';
+  // General and AOS have one card per person (D-94, D-131); DACA has one person.
+  const general = isMultiPerson(caseType);
+  const aos = caseType === 'aos';
+  const aosObs = aos ? { ...EMPTY_AOS, ...(obs.aos || {}) } : EMPTY_AOS;
   // D-126: "(none)" or "N/A" printed on a form means the field does not apply,
   // which is a blank field, never a value. The stored result keeps what was printed.
   const printedForms = obs.forms_found;
@@ -264,6 +284,43 @@ export function evaluateRun(input) {
   }
   const personFor = (role) => resolvePerson(caseType, virtual, role);
 
+  // ── v2.1: AOS conditions (Q-59, Q-70, Q-72) and married names (Q-62) ──
+  const conditions = aos ? aosConditions({ aosKind, forms, aos: aosObs }) : {};
+  const applies = (x) => !x?.applies_when || (aos && Boolean(conditions[x.applies_when]));
+  // Q-62: a married name on the forms against the maiden name on the birth
+  // certificate is not a mistake when a marriage certificate backs it up: the
+  // spouse's last name, or both names together. A gentle confirm asks staff to
+  // check the client wants the married name. Spousal AOS cases only.
+  const SPOUSE = { petitioner: 'beneficiary', beneficiary: 'petitioner' };
+  const marriageCertificate = aos && aosKind === 'spousal' && (
+    documents.some((d) => d.status === 'current' && d.doc_type === 'marriage_certificate')
+    || obs.evidence_found.some((e) => e.doc_type === 'marriage_certificate' && e.read_quality !== 'unreadable'));
+  const spouseLastNames = (role) => {
+    const sp = SPOUSE[role];
+    const names = new Set();
+    const add = (v) => { if (!blank(v)) names.add(normText(v)); };
+    for (const p of virtual.filter((x) => x.role === sp)) add(p.last_name);
+    for (const f of forms.filter((x) => x.person_role === sp)) add(f.values.last_name);
+    return [...names];
+  };
+  const marriedName = (role, shown, truth) => {
+    if (!marriageCertificate || !SPOUSE[role]) return false;
+    const first = (n) => normText(n.first_name).split(' ')[0];
+    if (!first(shown) || first(shown) !== first(truth)) return false;
+    const formLast = normText(shown.last_name);
+    const birthLast = normText(truth.last_name);
+    if (!formLast || formLast === birthLast) return false;
+    return spouseLastNames(role).some((sp) => [sp, `${birthLast} ${sp}`, `${sp} ${birthLast}`].includes(formLast));
+  };
+  const i94Gentle = (person, field) => aos && (field === 'last_entry_date' || field === 'port_of_entry')
+    && person?.field_sources?.[field]?.label === 'I-94';
+  const i94Confirm = (field, truth, value, form) => confirm(`i94:${field}:${formKey(form)}`, 'v21.confirm.i94', {
+    field: FIELD_LABELS[field], ev_value: redactSsn(displayValue(field, truth)), form, form_value: redactSsn(displayValue(field, value)),
+  });
+  const marriedConfirm = (role, shownLast, birthLast) => confirm(`married_name:${role}`, 'v21.confirm.married_name', {
+    who: whoOf(role), form_last: redactSsn(shownLast), birth_last: redactSsn(birthLast),
+  });
+
   // ── Pre-flight corrections (D-68, D-72, D-73) ──
   let corrections = null;
   const correctionSuggestions = [];
@@ -284,11 +341,17 @@ export function evaluateRun(input) {
     const carried = [];
     if (scope === 'whole') {
       for (const c of rows.filter((r) => r.status === 'fixed' && REFERENCE_FIELDS.includes(r.field))) {
+        // With several people on the case, a correction about one person only
+        // has to reach the forms about that same person (v2.1).
+        const whose = forms.find((f) => formKey(f.form) === formKey(c.form))?.person_role;
+        const seen = new Set();
         for (const other of forms) {
           if (formKey(other.form) === formKey(c.form)) continue;
+          if (general && whose && other.person_role && other.person_role !== whose) continue;
           const v = other.values[c.field];
           if (blank(v) || !formHasField(other.form, c.field)) continue;
-          if (!sameValue(c.field, v, c.corrected)) carried.push({ ...c, status: 'not_carried', other_form: other.form, other_value: v });
+          if (seen.has(formKey(other.form))) continue;
+          if (!sameValue(c.field, v, c.corrected)) { seen.add(formKey(other.form)); carried.push({ ...c, status: 'not_carried', other_form: other.form, other_value: v }); }
         }
       }
     }
@@ -313,7 +376,13 @@ export function evaluateRun(input) {
   // ── Checks reported by the model ──
   const obsByRule = new Map(obs.rule_results.map((r) => [r.rule_id, r]));
   const itemObs = new Map(obs.package_items.map((i) => [i.item_id, i]));
-  const missingItems = selection.items.filter((i) => itemObs.get(i.item_id)?.status === 'missing');
+  // Q-72: an "if needed" item counts only when the package says it is needed.
+  const missingAll = selection.items.filter((i) => itemObs.get(i.item_id)?.status === 'missing' && applies(i));
+  // Q-74: a missing US visa or I-94 is a gentle confirm, never counted.
+  const missingItems = missingAll.filter((i) => !i.missing_confirm);
+  for (const i of missingAll.filter((x) => x.missing_confirm)) {
+    confirm(`missing:${i.item_id}`, 'v21.confirm.missing_item', { item: String(i.label || i.form).replace(/^./, (c) => c.toLowerCase()) });
+  }
   const unreadableItems = selection.items.filter((i) => itemObs.get(i.item_id)?.status === 'unreadable');
   const missingItemIds = new Set(missingItems.map((i) => i.item_id));
 
@@ -325,13 +394,15 @@ export function evaluateRun(input) {
     // D-71: departures only when the client's markups show any.
     if (setting.state === 'if_marked' && !departuresMarked) { suppressed.push(rule.rule_id); continue; }
     if (setting.state === 'if_evidence' && !obs.evidence_found.length) { suppressed.push(rule.rule_id); continue; }
+    // Q-70, Q-72: a co-sponsor's, household member's or I-131 check only when that form is in the package.
+    if (!applies(rule)) { suppressed.push(rule.rule_id); continue; }
     // D-21: a missing form is one item; its own checks are not repeated.
     const dependsOnMissing = (rule.applies_to_item_ids || []).some((id) => missingItemIds.has(id));
     const formMissing = scope !== 'individual' && rule.form && !formsPresent.has(formKey(rule.form));
     if (dependsOnMissing || (formMissing && o.status === 'not_checked')) { suppressed.push(rule.rule_id); continue; }
 
     let status = o.status;
-    const confirmRule = caseType === 'daca_renewal' ? CONFIRM_RULES.get(rule.rule_id) : null;
+    const confirmRule = CONFIRM_RULES.get(rule.rule_id) || null;
     if (status === 'blank' && confirmRule?.blankIsClear) status = 'clear'; // D-107
     if (status === 'blank') status = setting.state === 'if_filled' ? 'needs_info' : 'needs_attention'; // D-70
     if (status === 'needs_attention' && confirmRule) status = 'please_confirm'; // D-107
@@ -358,12 +429,25 @@ export function evaluateRun(input) {
     item_id: i.item_id, form: i.form, instance: i.instance ?? null, label: i.label, kind: i.kind || 'form',
     status: itemObs.get(i.item_id)?.status, locations: (itemObs.get(i.item_id)?.locations || []).map(redactSsn),
   }));
+  // v2.1: an evidence item is named by its label; an "if needed" item says why
+  // it is needed (Q-72).
+  const WHY = {
+    spousal: 'It is needed in a spousal case.',
+    joint_sponsor: 'It is needed because there is a co-sponsor I-864.',
+    household_member: 'It is needed because there is an I-864A.',
+    i131: 'It is needed because an I-131 is filed.',
+    naturalized: 'It is needed because the I-130 says the petitioner naturalized.',
+    divorce: 'It is needed because the I-130 or I-130A lists an earlier marriage that ended in divorce.',
+  };
   for (const i of missingItems) {
-    const name = `${i.form}${i.instance ? ` (${i.instance})` : ''}`;
+    const evidenceItem = (i.kind || 'form') === 'evidence' && i.form === 'Evidence';
+    const name = evidenceItem
+      ? String(i.label).replace(/\s*\((?:when|spousal|physical)[^)]*\)\s*$/i, '').replace(/^./, (ch) => ch.toLowerCase())
+      : `${i.form}${i.instance ? ` (${i.instance})` : ''}`;
     attention.push({
-      kind: 'missing_item', key: `item:${i.item_id}`, form: i.form,
+      kind: 'missing_item', key: `item:${i.item_id}`, form: evidenceItem ? null : i.form,
       title: `The ${name} is missing from the package.`,
-      detail: `Expected for every ${CASE_TYPE_LABELS[caseType]} ${stage === 'physical_scan' ? 'final package' : 'draft set'}.`,
+      detail: i.applies_when ? WHY[i.applies_when] : `Expected for every ${CASE_TYPE_LABELS[caseType]} ${stage === 'physical_scan' ? 'final package' : 'draft set'}.`,
     });
   }
 
@@ -384,7 +468,17 @@ export function evaluateRun(input) {
         const cmp = compareNames(nameOf(f.values), cardName);
         if (cmp === 'same') namesHandled = true;
         if (cmp === 'split') { namesHandled = true; splitConfirm(person.role, f.values.last_name, cardName, f.form); }
+        if (cmp === 'different' && marriedName(person.role, nameOf(f.values), cardName)) {
+          namesHandled = true;
+          marriedConfirm(person.role, f.values.last_name, cardName.last_name);
+        }
       }
+      // D-135: the whole name and the whole address, for the merged item.
+      const formName = formatName(nameOf(f.values));
+      const cardFull = formatName(cardName);
+      const addrParts = ADDRESS_PARTS.filter((k) => formHasField(f.form, k) && !blank(f.values[k]));
+      const formAddress = formatAddress(Object.fromEntries(addrParts.map((k) => [k, f.values[k]])));
+      const cardAddress = formatAddress(Object.fromEntries(addrParts.map((k) => [k, truthValue(person, k)])));
       for (const field of [...REFERENCE_FIELDS, 'ssn']) {
         const value = f.values[field];
         if (value == null || !formHasField(f.form, field)) continue; // the form has no such field
@@ -411,10 +505,16 @@ export function evaluateRun(input) {
         }
         if (field === 'ssn' ? ssnDigits(value) === truth : sameValue(field, truth, value)) continue;
         if (isPending(person, field, value)) continue;
+        // Q-61 (AOS): the I-94's entry date and port are Katy's to fill; a form
+        // that differs from the I-94 on the card is a gentle nudge, never counted.
+        if (i94Gentle(person, field)) { i94Confirm(field, truth, value, f.form); continue; }
         const who = general ? `the ${roleText(person.role)}'s ` : '';
+        const grp = groupOf(field);
         differences.push({
           kind: 'reference_difference', key: `ref:${person.role}:${field}:${formKey(f.form)}`,
           person_role: person.role, field, form: f.form,
+          group_form_value: grp === 'name' ? formName : grp === 'address' ? formAddress : (field === 'ssn' ? maskSsn(digits(value).slice(-4)) : shown(field, value)),
+          group_card_value: grp === 'name' ? cardFull : grp === 'address' ? cardAddress : (field === 'ssn' ? maskSsn(truth.slice(-4)) : displayValue(field, truth)),
           form_value: field === 'ssn' ? maskSsn(digits(value).slice(-4)) : shown(field, value),
           card_value: field === 'ssn' ? maskSsn(truth.slice(-4)) : displayValue(field, truth),
           title: blank(value)
@@ -453,7 +553,8 @@ export function evaluateRun(input) {
         const card = { first_name: strong('first_name'), middle_name: strong('middle_name') || '', last_name: strong('last_name') };
         const cmp = compareNames(scanned, card, { lenientMiddle: true });
         if (cmp === 'split') splitConfirm(person.role, v.last_name, card, f.form);
-        else if (cmp !== 'same') add(person, 'name', formatName(scanned), formatName(person), f.form);
+        else if (cmp !== 'same' && marriedName(person.role, scanned, card)) marriedConfirm(person.role, v.last_name, card.last_name);
+        else if (cmp !== 'same') add(person, 'name', formatName(scanned), formatName(card), f.form);
       }
       for (const field of ['a_number', 'date_of_birth', 'ead_expiration', 'phone', 'email', ...EXTRA_FIELDS]) {
         if (blank(v[field]) || strong(field) == null) continue;
@@ -461,7 +562,10 @@ export function evaluateRun(input) {
           if (!placeCompared(field, [strong(field), v[field]], [strong('country_of_birth'), v.country_of_birth].filter((x) => field === 'city_of_birth' && x))) continue;
           if (namesCounty(strong(field)) && !namesCounty(v[field])) { countyConfirm(person.role, field, strong(field), f.form); continue; }
         }
-        if (!sameValue(field, strong(field), v[field])) add(person, field, displayValue(field, v[field]), displayValue(field, strong(field)), f.form);
+        if (!sameValue(field, strong(field), v[field])) {
+          if (i94Gentle(person, field)) i94Confirm(field, strong(field), v[field], f.form);
+          else add(person, field, displayValue(field, v[field]), displayValue(field, strong(field)), f.form);
+        }
       }
       const have = cardSsn.get(person.id);
       if (!blank(v.ssn) && have && have !== 'unknown' && ssnDigits(v.ssn) && ssnDigits(v.ssn) !== have) {
@@ -489,37 +593,79 @@ export function evaluateRun(input) {
   // Evidence read reliably: the Evidence Zero cards and the documents in these files.
   // D-117: each piece of evidence carries the date order of its own country.
   // D-121: and its actual name, and where it is.
-  const evidence = [
+  const baseEvidence = [
     ...documents.filter((d) => d.status === 'current' && (d.owner_ids || []).length)
       .map((d) => ({
         doc_type: d.doc_type, label: evidenceLabel(d.doc_type, d.facts?.doc_title), roles: d.owner_ids.map(roleOf).filter(Boolean),
-        facts: d.facts || {}, source: 'evidence_zero', where: d.filename || '', country: d.facts?.issuing_country || null,
+        facts: d.facts || {}, people: Array.isArray(d.facts?.people) ? d.facts.people : [],
+        source: 'evidence_zero', where: d.filename || '', country: d.facts?.issuing_country || null,
         order: dateOrderFor(d.facts?.issuing_country, d.facts?.language),
       })),
     ...obs.evidence_found.filter((e) => {
       if (!e.owner_roles.length && general) { unclearOwners.push(e); return false; }
       return e.read_quality === 'clear'; // D-54: an unreliable read never makes a difference
     }).map((e) => ({
-      doc_type: e.doc_type, label: evidenceLabel(e.doc_type, e.doc_title), roles: e.owner_roles, facts: e.facts, source: 'package',
-      where: [e.file, pagesText(e.pages)].filter(Boolean).join(', '), country: e.issuing_country || null, order: dateOrderFor(e.issuing_country, e.language),
+      doc_type: e.doc_type, label: evidenceLabel(e.doc_type, e.doc_title), roles: e.owner_roles, facts: e.facts, people: e.people || [],
+      source: 'package', where: [e.file, pagesText(e.pages)].filter(Boolean).join(', '), country: e.issuing_country || null,
+      order: dateOrderFor(e.issuing_country, e.language),
     })),
   ];
+  // v2.1: a document about two people (a marriage certificate) carries each
+  // person's own name and date of birth; each is checked as that person's.
+  // A passport's own expiry is its passport expiration (Q-61).
+  const PERSON_FACTS = ['first_name', 'middle_name', 'last_name', 'date_of_birth'];
+  const evidence = baseEvidence.flatMap((ev) => {
+    const facts = { ...ev.facts };
+    if (ev.doc_type === 'passport' && blank(facts.passport_expiration) && !blank(facts.expiration_date)) facts.passport_expiration = facts.expiration_date;
+    const people = (ev.people || []).filter((p) => ev.roles.includes(p.role) || !ev.roles.length);
+    if (!people.length) return [{ ...ev, facts }];
+    const shared = { ...facts };
+    for (const k of PERSON_FACTS) delete shared[k];
+    return [{ ...ev, facts: shared }, ...people.map((p) => ({
+      ...ev, roles: [p.role], facts: { ...shared, ...Object.fromEntries(PERSON_FACTS.map((k) => [k, p[k] ?? null])) },
+    }))];
+  });
   const formWhere = (f) => [f.file, pagesText(f.pages)].filter(Boolean).join(', ');
   if (evidenceRule) {
     for (const ev of evidence) {
       const owners = caseType === 'daca_renewal' ? [mainPerson(virtual)?.role] : ev.roles;
-      const row = (field, f, person, evValue, fv, ok) => evidenceRows.push({
-        evidence: ev.label, doc_type: ev.doc_type, source: ev.source, owner_roles: owners, field, form: f.form,
-        evidence_value: displayValue(field, evValue), form_value: blank(fv) ? '' : displayValue(field, fv),
-        ok, person_role: person.role, evidence_where: ev.where, form_where: formWhere(f),
-      });
+      // Q-61 (AOS): the passport is evidence, not truth; only its number and
+      // expiration date are checked against the forms.
+      const passportOnly = aos && ev.doc_type === 'passport';
+      // A date as the document's own country writes it, shown the USCIS way (D-117).
+      const evShown = (field, v) => {
+        const iso = DATE_FIELDS_SET.has(field) ? normalizeDate(v, { order: ev.order, field }) : null;
+        return iso ? displayValue(field, iso) : displayValue(field, v);
+      };
+      const row = (field, f, person, evValue, fv, ok) => {
+        const isName = NAME_FIELDS.includes(field);
+        // Q-61 (AOS): the I-94's entry date and port are Katy's to fill; a
+        // difference is a gentle nudge, never counted.
+        const gentle = !ok && aos && ev.doc_type === 'i94' && (field === 'last_entry_date' || field === 'port_of_entry');
+        if (gentle) {
+          confirm(`i94:${field}:${formKey(f.form)}`, 'v21.confirm.i94', {
+            field: FIELD_LABELS[field], ev_value: redactSsn(displayValue(field, evValue)), form: f.form, form_value: redactSsn(displayValue(field, fv)),
+          });
+        }
+        evidenceRows.push({
+          evidence: ev.label, doc_type: ev.doc_type, source: ev.source, owner_roles: owners, field, form: f.form,
+          evidence_value: evShown(field, evValue), form_value: blank(fv) ? '' : displayValue(field, fv),
+          ok, gentle, person_role: person.role, evidence_where: ev.where, form_where: formWhere(f),
+          evidence_group_value: isName ? formatName(nameOf(ev.facts)) : evShown(field, evValue),
+          form_group_value: isName ? formatName(nameOf(f.values)) : (blank(fv) ? 'blank' : displayValue(field, fv)),
+        });
+      };
       for (const f of forms) {
         const person = personFor(f.person_role);
         if (!person || !owners.includes(person.role)) continue;
         // D-112, D-120: the name as a whole first, as a person reads it.
-        let namesHandled = false;
-        if (!blank(ev.facts.last_name) && !blank(f.values.last_name)) {
+        let namesHandled = passportOnly;
+        if (!passportOnly && !blank(ev.facts.last_name) && !blank(f.values.last_name)) {
           const cmp = compareNames(nameOf(ev.facts), nameOf(f.values), { lenientMiddle: true });
+          if (cmp === 'different' && marriedName(person.role, nameOf(f.values), nameOf(ev.facts))) {
+            namesHandled = true;
+            marriedConfirm(person.role, f.values.last_name, ev.facts.last_name);
+          }
           if (cmp !== 'different') {
             namesHandled = true;
             for (const field of ['first_name', 'last_name']) {
@@ -530,7 +676,7 @@ export function evaluateRun(input) {
             }
           }
         }
-        for (const field of EVIDENCE_FIELDS) {
+        for (const field of passportOnly ? ['passport_number', 'passport_expiration'] : EVIDENCE_FIELDS) {
           if (namesHandled && NAME_FIELDS.includes(field)) continue;
           const evValue = ev.facts[field];
           if (blank(evValue)) continue;
@@ -552,10 +698,9 @@ export function evaluateRun(input) {
       }
     }
   }
-  // Already reported as a difference from the card: not counted twice.
-  const alreadyReported = (row) => differences.some((d) => d.person_role === row.person_role && d.field === row.field && formKey(d.form) === formKey(row.form))
-    || cardDiffs.some((d) => d.person_role === row.person_role && (d.field === row.field || (d.field === 'name' && NAME_FIELDS.includes(row.field))) && d.forms.some((x) => formKey(x) === formKey(row.form)));
-  const evidenceDiffs = evidenceRows.filter((r) => !r.ok && !alreadyReported(r)).map((r) => {
+  // D-135 (v2.1): every evidence difference goes into the merged fact it
+  // belongs to, beside the case card's, so none is dropped as already reported.
+  const evidenceDiffs = evidenceRows.filter((r) => !r.ok && !r.gentle).map((r) => {
     const owner = r.owner_roles.map(roleText).filter(Boolean).join(' and ');
     const vars = {
       owner: owner ? `${owner}'s ` : '', doc: r.evidence.toLowerCase(), doc_where: redactSsn(r.evidence_where) || '',
@@ -564,14 +709,15 @@ export function evaluateRun(input) {
     };
     return {
       kind: 'evidence_difference', key: `evidence:${r.evidence}:${r.field}:${formKey(r.form)}:${r.person_role}`,
-      person_role: r.person_role, field: r.field, form: r.form, doc_type: r.doc_type,
+      person_role: r.person_role, field: r.field, form: r.form, doc_type: r.doc_type, evidence: r.evidence,
+      evidence_group_value: r.evidence_group_value, form_group_value: r.form_group_value,
       evidence_where: r.evidence_where, form_where: r.form_where,
       title: copyText(r.form_value === '' ? 'v202.evidence_diff_blank' : 'v202.evidence_diff', vars),
     };
   });
   if (evidenceRule) {
     const setting = evidenceRule.stages?.[stage] || {};
-    const status = !evidenceRows.length ? 'nothing_to_compare' : evidenceRows.some((r) => !r.ok) ? 'needs_attention' : 'clear';
+    const status = !evidenceRows.length ? 'nothing_to_compare' : evidenceRows.some((r) => !r.ok && !r.gentle) ? 'needs_attention' : 'clear';
     checks.push({
       rule_id: EVIDENCE_RULE, status, severity: evidenceRule.severity, form: null, where: '',
       title: status === 'nothing_to_compare' ? 'No evidence to compare with the forms yet.' : checkTitle(evidenceRule, setting, status),
@@ -611,6 +757,8 @@ export function evaluateRun(input) {
           if (g) g.forms.push(f.form); else groups.push({ value: f.values[field], forms: [f.form] });
         }
         if (groups.length < 2 || reported(role, field)) continue;
+        // A correction that did not reach another form is already its own item (D-72).
+        if ((corrections || []).some((c) => c.status === 'not_carried' && c.field === field)) continue;
         const show = (v) => (field === 'ssn' ? maskSsn(digits(v).slice(-4)) : displayValue(field, v));
         const who = general ? `the ${roleText(role)}'s ` : '';
         const parts = groups.map((g) => `${show(g.value)} on the ${[...new Set(g.forms)].join(' and the ')}`);
@@ -642,7 +790,8 @@ export function evaluateRun(input) {
       if (e.doc_type === 'passport') continue;
       const owner = e.owner_roles.map(roleText).filter(Boolean).join(' and ');
       translationItems.push({
-        kind: 'translation', key: `translation:${e.file}:${e.pages}`, person_role: e.owner_roles[0] || null,
+        // A key without the file name, so a re-run with renamed files keeps a clear (D-132).
+        kind: 'translation', key: `translation:${e.doc_type}:${[...e.owner_roles].sort().join(',')}:${normText(e.language)}`, person_role: e.owner_roles[0] || null,
         where: `${e.file}, pages ${e.pages}`,
         title: `The ${owner ? `${owner}'s ` : ''}${evidenceLabel(e.doc_type, e.doc_title).toLowerCase()} is in ${redactSsn(e.language)}. There is no English translation of it in the package.`,
       });
@@ -734,12 +883,132 @@ export function evaluateRun(input) {
   for (const f of printedForms) {
     if (alertForms.has(formKey(f.form))) confirm(`edition_alert:${formKey(f.form)}`, 'v202.confirm.edition_alert', { form: f.form });
   }
+  // ── v2.1: AOS checks the server decides (Q-63, Q-64, Q-67, Q-79, D-134) ──
+  const documentDiffs = [];
+  if (aos) {
+    const roleCard = (role) => virtual.find((p) => p.role === role) || null;
+    // A person's name as a payment form should show it: the card, else the forms.
+    // Every way the person's name appears: the card and each of their forms,
+    // so a married name on the forms is still the person (Q-62).
+    const who = (role) => {
+      const card = roleCard(role);
+      return [card, ...forms.filter((x) => x.person_role === role).map((x) => nameOf(x.values))]
+        .filter((n) => n && !blank(n.first_name) && !blank(n.last_name));
+    };
+    // Q-64 guard 1: the age comes from the birth certificate or the case card
+    // only, and only when they agree.
+    const ben = roleCard('beneficiary');
+    const dobs = [truthValue(ben, 'date_of_birth'), ...evidence
+      .filter((e) => e.doc_type === 'birth_certificate' && e.roles.includes('beneficiary'))
+      .map((e) => normalizeDate(e.facts.date_of_birth, { order: e.order }))]
+      .filter(Boolean).map((v) => normalizeDate(v) || v);
+    const dob = { settled: dobs.length > 0 && dobs.every((d) => d === dobs[0]), iso: dobs[0] || null };
+    const scanDate = String(scannedAt || new Date().toISOString()).slice(0, 10);
+    const LANG_FORM = { 'AOS-130A-LANG': 'I-130A', 'AOS-485-LANG': 'I-485', 'AOS-765-LANG': 'I-765' };
+    const contactPeople = ['petitioner', 'beneficiary'].map((role) => ({
+      role,
+      phones: [roleCard(role)?.phone, ...forms.filter((f) => f.person_role === role).map((f) => f.values.phone)].filter((v) => !blank(v)),
+      emails: [roleCard(role)?.email, ...forms.filter((f) => f.person_role === role).map((f) => f.values.email)].filter((v) => !blank(v)),
+    }));
+    for (const rule of selection.server.filter((r) => AOS_SERVER_RULES.has(r.rule_id))) {
+      const setting = rule.stages?.[stage] || {};
+      if (!applies(rule) || (rule.applies_to_item_ids || []).some((id) => missingItemIds.has(id))) { suppressed.push(rule.rule_id); continue; }
+      let d;
+      if (rule.rule_id.startsWith('AOS-FEE-')) d = feeDecision(rule, { payments: aosObs.fee_payments, who, dob, scanDate });
+      else if (rule.rule_id === 'AOS-G1450-CONTACT') {
+        const c = contactCheck(aosObs.fee_payments, contactPeople);
+        d = c.status === 'clear' ? { status: 'clear', title: c.none ? 'No card payment (G-1450) in these files.' : null }
+          : { status: 'needs_attention', title: contactProblemText(c.problems[0]), reason: c.problems.slice(1).map(contactProblemText).join(' ') || null };
+      } else {
+        const form = LANG_FORM[rule.rule_id];
+        if (!formsPresent.has(formKey(form))) { suppressed.push(rule.rule_id); continue; }
+        d = languageDecision(aosObs.language_statements.find((x) => x.form === form), stage);
+      }
+      const status = d.status;
+      checks.push({
+        rule_id: rule.rule_id, status, severity: rule.severity, form: rule.form || null, where: whereOf(rule),
+        rule_title: checkTitle(rule, setting, 'needs_attention'),
+        title: status === 'clear' ? (d.title || checkTitle(rule, setting, 'clear')) : (d.title ? redactSsn(d.title) : problemTitle(rule, setting, null)),
+        expected: d.expected || setting.stage_expected || rule.expected || null,
+        consistency: false, summary: null, reason: d.reason ? redactSsn(d.reason) : null, evidence: null, locations: [],
+      });
+    }
+
+    // Q-63 as amended: USCIS no longer takes money orders; one in the package is a gentle confirm.
+    if (aosObs.fee_payments.some((p) => p.method === 'money_order')) confirm('money_order', 'v21.confirm.money_order');
+    // D-134 as amended: a cardholder that looks like a misspelling of someone on the case.
+    const named = virtual.filter((p) => !blank(p.first_name) && !blank(p.last_name));
+    for (const pay of aosObs.fee_payments) {
+      const like = blank(pay.cardholder_name) ? null : misspeltCardholder(pay.cardholder_name, named);
+      if (like) {
+        confirm(`cardholder:${normText(pay.cardholder_name).replace(/ /g, '_')}`, 'v21.confirm.cardholder', {
+          cardholder: redactSsn(pay.cardholder_name), person: redactSsn(formatName(like)), who: roleText(like.role),
+        });
+      }
+    }
+    // Q-60, as D-113: Draft Review and Pre-flight ask gently for evidence when there is none anywhere.
+    if ((stage === 'draft_review' || stage === 'preflight') && !documents.some((x) => x.status === 'current')
+      && !obs.evidence_found.length && !mainPerson(people)?.no_evidence) confirm('aos_no_evidence', 'v21.confirm.no_evidence');
+
+    // Q-61 follow-up (A): two documents that disagree about the same person are
+    // counted. The passport is not a source of truth and the I-94 is Katy's.
+    const TRUTH_DOCS = (e) => !['passport', 'i94', 'intake', 'ead'].includes(e.doc_type);
+    const seenDocDiff = new Set();
+    for (const role of [...new Set(evidence.flatMap((e) => e.roles))]) {
+      const docs = evidence.filter((e) => e.roles.length === 1 && e.roles[0] === role && TRUTH_DOCS(e));
+      for (let i = 0; i < docs.length; i += 1) {
+        for (let j = i + 1; j < docs.length; j += 1) {
+          const [a, b] = [docs[i], docs[j]];
+          if (a.label === b.label && a.source !== b.source) continue; // the same document on file and in the package
+          const diffs = [];
+          if (!blank(a.facts.last_name) && !blank(b.facts.last_name)
+            && compareNames(nameOf(a.facts), nameOf(b.facts), { lenientMiddle: true }) === 'different'
+            && !marriedName(role, nameOf(a.facts), nameOf(b.facts)) && !marriedName(role, nameOf(b.facts), nameOf(a.facts))) {
+            diffs.push(['name', formatName(nameOf(a.facts)), formatName(nameOf(b.facts))]);
+          }
+          if (!blank(a.facts.date_of_birth) && !blank(b.facts.date_of_birth)
+            && !sameValue('date_of_birth', a.facts.date_of_birth, b.facts.date_of_birth, { aOrder: a.order, bOrder: b.order })) {
+            diffs.push(['date_of_birth', displayValue('date_of_birth', normalizeDate(a.facts.date_of_birth, { order: a.order }) || a.facts.date_of_birth),
+              displayValue('date_of_birth', normalizeDate(b.facts.date_of_birth, { order: b.order }) || b.facts.date_of_birth)]);
+          }
+          for (const [field, av, bv] of diffs) {
+            const key = `docs:${role}:${field}:${[normText(av), normText(bv)].sort().join('|')}`;
+            if (seenDocDiff.has(key)) continue;
+            seenDocDiff.add(key);
+            documentDiffs.push({
+              kind: 'document_difference', key: `docs:${role}:${field}:${valueHashOf(key)}`, person_role: role, field,
+              documents: [{ label: a.label, value: redactSsn(av), where: a.where }, { label: b.label, value: redactSsn(bv), where: b.where }],
+              title: copyText('v21.document_difference', {
+                who: roleText(role), field: FIELD_LABELS[field], a: docWord(a.label), av: redactSsn(av), b: docWord(b.label), bv: redactSsn(bv),
+              }),
+            });
+          }
+        }
+      }
+    }
+  }
+
   checks.push(...confirms.values());
 
   // ── Counting (D-23, D-36) ──
   const checkAttention = checks.filter((c) => c.status === 'needs_attention' && !c.counted_by_items);
+  const missingAttention = attention.splice(0, attention.length);
   for (const c of checkAttention) attention.push({ kind: 'check', key: `rule:${c.rule_id}`, rule_id: c.rule_id, form: c.form, rule_title: c.rule_title || null, title: c.title });
-  attention.push(...differences, ...cardDiffs, ...evidenceDiffs, ...formDiffs, ...translationItems, ...correctionAttention);
+  const checkItems = attention.splice(0, attention.length);
+  // D-135: every wrong fact once, naming every source; then the failed checks,
+  // missing items, translations and corrections (Max 2026-10-16).
+  const facts = mergeFacts([
+    ...differences.map((d) => ({ role: d.person_role, group: groupOf(d.field), field: d.field, form: d.form,
+      forms_value: d.group_form_value, source: 'the case card', source_value: d.group_card_value, part: d })),
+    ...cardDiffs.map((d) => ({ role: d.person_role, group: d.field, field: d.field, forms: d.forms,
+      forms_value: d.package_value, source: 'the case card', source_value: d.card_value, part: d })),
+    ...evidenceDiffs.map((d) => ({ role: d.person_role, group: groupOf(d.field), field: d.field, form: d.form,
+      forms_value: d.form_group_value, source: `the ${docWord(d.evidence)}`, source_value: d.evidence_group_value, doc: d.evidence,
+      copy: d.evidence_where, part: d })),
+    ...formDiffs.flatMap((d) => d.values.map((v) => ({ role: d.person_role, group: d.field, field: d.field, forms: v.forms,
+      forms_value: v.value, source: null, part: d }))),
+  ]).map((f) => ({ ...f, parts: f.parts.filter((x, i, a) => a.indexOf(x) === i) }));
+  attention.push(...facts, ...documentDiffs, ...checkItems, ...missingAttention, ...translationItems, ...correctionAttention);
   const notChecked = checks.filter((c) => c.status === 'not_checked').length + unreadableItems.length;
   const state = reportState(attention.length, notChecked);
 
@@ -791,12 +1060,28 @@ export function evaluateRun(input) {
     if (expiredSeen.has(key)) continue;
     expiredSeen.add(key);
     possibleIssues.push({
-      title: `The ${owner ? `${owner}'s ` : ''}${label.toLowerCase()} expired on ${displayValue('expiration_date', expiry)}.`,
-      description: `The ${label.toLowerCase()} in the evidence has an expiration date that has passed.`,
+      title: `The ${owner ? `${owner}'s ` : ''}${docWord(label)} expired on ${displayValue('expiration_date', expiry)}.`,
+      description: `The ${docWord(label)} in the evidence has an expiration date that has passed.`,
       evidence: ev.where || label,
       why_it_matters: 'An expired document may need to be replaced or explained, depending on what it is filed to show.',
       uncertainty: 'An expired document can still be the right evidence, for example to show a past entry or identity.',
       reasoning_key: 'expired_evidence',
+      general_rule: null,
+    });
+  }
+
+  // D-131 follow-up: the I-130's relationship box against the kind picked at
+  // the start is a Possible issue, never counted. Its key is reserved (like the
+  // pages key) so one "never suggest" cannot silence it for every case.
+  const mismatch = aos ? relationshipMismatch(aosKind, aosObs.i130_relationship) : null;
+  if (mismatch) {
+    possibleIssues.push({
+      title: copyText('v21.pi.relationship.title', { box: BOX_LABELS[mismatch.box], kind: copyText(`v21.kind.${aosKind}`).toLowerCase() }),
+      description: copyText('v21.pi.relationship.description', { expected: BOX_LABELS[mismatch.expected] }),
+      evidence: copyText('v21.pi.relationship.evidence'),
+      why_it_matters: copyText('v21.pi.relationship.why'),
+      uncertainty: copyText('v21.pi.relationship.uncertainty'),
+      reasoning_key: RELATIONSHIP_REASONING_KEY,
       general_rule: null,
     });
   }
@@ -818,7 +1103,8 @@ export function evaluateRun(input) {
   const result = {
     schema_version: RESULT_SCHEMA_VERSION,
     case_type: caseType,
-    case_type_label: CASE_TYPE_LABELS[caseType],
+    case_type_label: aos && aosKind ? `${CASE_TYPE_LABELS[caseType]} · ${copyText(`v21.kind.${aosKind}`)}` : CASE_TYPE_LABELS[caseType],
+    ...(aos ? { aos_kind: aosKind } : {}),
     stage,
     stage_label: STAGE_LABELS[stage],
     scope,
@@ -855,6 +1141,8 @@ export function evaluateRun(input) {
     newPeople,
     cardFills,
     suggestions: correctionSuggestions,
+    // D-138: the yes/no answers, as counts to add (no case, no person).
+    answers: aos ? tallyRows(aosObs.yes_no_answers, words) : [],
   };
 }
 

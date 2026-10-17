@@ -15,6 +15,13 @@ export const SCOPED_STAGES = new Set(['draft_review', 'preflight']);
 export const CASE_TYPES = [
   { value: 'daca_renewal', label: 'DACA renewal' },
   { value: 'general', label: 'General' },
+  { value: 'aos', label: 'Adjustment of Status' },
+];
+// v2.1, D-131: an AOS case is started as one of three kinds (labels Max's, D-87).
+export const AOS_KINDS = [
+  { value: 'spousal', label: 'Spousal' },
+  { value: 'child_to_parent', label: 'Child to parent' },
+  { value: 'parent_to_child', label: 'Parent to child' },
 ];
 
 // ── Size limits and file types (D-95) ────────────────────────────────────────
@@ -77,6 +84,8 @@ export function latestRuns(runs = []) {
 export const isSignedOff = (view, stage) => (view?.signoffs || []).some((s) => s.stage === stage);
 export const gateReady = (view) => Boolean(view?.evidence_requirement?.ready);
 export const isGeneral = (view) => view?.case?.case_type === 'general';
+// v2.1: AOS uses General's multi-person case cards (D-131); DACA is one person.
+export const isMulti = (view) => isGeneral(view) || view?.case?.case_type === 'aos';
 export const mainPerson = (view) => (view?.people || []).find((p) => p.is_main) || view?.people?.[0] || null;
 
 // One step of the tracker: done / attention / locked / todo. Read off the
@@ -96,7 +105,8 @@ export function stepState(view, stage) {
   if (isSignedOff(view, stage)) return 'done';
   const run = latestRuns(view.runs)[stage];
   if (!run) return 'todo';
-  if (run.report_state === 'no_issues_found') return 'done';
+  // D-132: a stage whose items are all cleared counts as done (the server's effective state).
+  if ((run.effective_state || run.report_state) === 'no_issues_found') return 'done';
   return 'attention';
 }
 
@@ -116,9 +126,11 @@ export const ADDRESS_PARTS = ['street', 'apt_type', 'apt_number', 'city', 'state
 export const EXTRA_FIELDS = ['uscis_account_number', 'country_of_birth', 'country_of_citizenship', 'i94_number',
   'i94_expiration', 'last_entry_date', 'port_of_entry', 'employer', 'marriage_date', 'marriage_place',
   // v2.0.2, Q-56: carried always, compared only for a US birth.
-  'city_of_birth'];
+  'city_of_birth',
+  // v2.1, Q-61: the passport's number and expiry only.
+  'passport_number', 'passport_expiration'];
 export const OPTIONAL_FIELDS = new Set(['in_care_of', 'province', 'postal_code', 'country', ...EXTRA_FIELDS]);
-export const DATE_FIELDS = new Set(['date_of_birth', 'ead_expiration', 'marriage_date', 'i94_expiration', 'last_entry_date', 'expiration_date']);
+export const DATE_FIELDS = new Set(['date_of_birth', 'ead_expiration', 'marriage_date', 'i94_expiration', 'last_entry_date', 'expiration_date', 'passport_expiration']);
 
 // The reference record, in the Lab's groups and order (D-12, D-64, D-82).
 export const FIELD_GROUPS = [
@@ -126,7 +138,7 @@ export const FIELD_GROUPS = [
   ['address', ['street', 'apt_type', 'apt_number', 'city', 'state', 'zip', 'in_care_of', 'province', 'postal_code', 'country']],
   ['identity', ['date_of_birth', 'a_number', 'ead_expiration', 'ssn']],
   ['contact', ['phone', 'email']],
-  ['immigration', ['uscis_account_number', 'city_of_birth', 'country_of_birth', 'country_of_citizenship', 'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry']],
+  ['immigration', ['uscis_account_number', 'city_of_birth', 'country_of_birth', 'country_of_citizenship', 'i94_number', 'i94_expiration', 'last_entry_date', 'port_of_entry', 'passport_number', 'passport_expiration']],
   ['work', ['employer']],
   ['marriage', ['marriage_date', 'marriage_place']],
 ];
@@ -170,6 +182,8 @@ export const DOC_TYPE_SETS = {
     'naturalization_certificate', 'citizenship_certificate', 'tax_return', 'w2', 'pay_stub', 'employment_letter',
     'bank_statement', 'national_id', 'divorce_decree', 'death_certificate', 'other'],
 };
+// v2.1: AOS evidence is the same everyday set as General.
+DOC_TYPE_SETS.aos = DOC_TYPE_SETS.general;
 
 // Documents shown in the workspace. A replaced card has done its job (D-55).
 export const workspaceDocuments = (view) => (view?.documents || []).filter((d) => d.status !== 'replaced');

@@ -91,3 +91,24 @@ Apply the migration FIRST, then deploy. The code writes `general_rule`, `city_of
 - Rollback: 2005 only adds nullable columns and a new rule-set version. To undo the rules,
   set the new version's `is_current` to false, then the old version's to true (one current
   version per case type is enforced, so in that order).
+
+## v2.1 (branch `proof-scan-v2.1`, stacked on v2.0.2)
+
+Merge #4 (v2.0.2) first. Then apply the migrations **in this order: 2005, then 2006**, then
+deploy v2.1. The v2.1 code reads `aos_kind`, `proof_scan_clears` and the new rule columns;
+before 2006 a case or a report will not open.
+
+- [ ] `2005_proof_scan_v2_0_2.sql` applied (v2.0.2 steps above).
+- [ ] Apply `supabase/migrations/2006_proof_scan_v2_1.sql` to **dev**. It is idempotent.
+      **Never apply 2005 again after 2006**: 2005 rewrites the suggestion field list without the
+      passport fields. If it happens, apply 2006 again.
+- [ ] Check on dev:
+      `select case_type, version, is_current from proof_scan_rule_sets where case_type = 'aos';`
+      one row, version 1, current.
+      `select scope, count(*) from proof_scan_rules r join proof_scan_rule_sets s on s.id = r.rule_set_id where s.case_type = 'aos' group by 1;`
+      case_type 49, firm the same count as General's current firm-wide rules.
+      `\d proof_scan_clears` and `\d proof_scan_answer_tally` exist; the tally has no case column.
+- [ ] Apply 2006 to **production**. Update `applied-dev.txt` / `applied-prod.txt`.
+- [ ] Deploy (by hand, as before). In Proof Scan v2 start an AOS case: the kind is asked.
+- Rollback: 2006 adds nullable columns, two tables and a new rule set. To take AOS out, set the
+  AOS rule set's `is_current` to false; existing DACA and General cases are untouched.

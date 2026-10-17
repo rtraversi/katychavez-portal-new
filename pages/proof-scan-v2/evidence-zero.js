@@ -11,7 +11,7 @@ import {
 } from './ui.js';
 import {
   checkFiles, EVIDENCE_LIMITS, DATE_FIELDS, visibleFields, suggestionsFor, sourceKind,
-  workspaceDocuments, docFactKeys, docFactValue, docFactUnreadable, DOC_TYPE_SETS, isGeneral, mainPerson,
+  workspaceDocuments, docFactKeys, docFactValue, docFactUnreadable, DOC_TYPE_SETS, isGeneral, isMulti, mainPerson,
 } from './model.js';
 import { errorText } from './api.js';
 
@@ -33,7 +33,10 @@ const roleLabel = (role) => t(`role.${role}`);
 
 export function renderEvidenceZero(mount, ctx) {
   const view = ctx.view;
-  const general = isGeneral(view);
+  // General and AOS: one card per person (D-94, D-131). AOS still has an
+  // evidence requirement to show (Q-60), but it never locks a stage.
+  const general = isMulti(view);
+  const noGate = isGeneral(view);
   const local = ctx.ez || (ctx.ez = { note: '', landed: null, busy: null, error: '' });
   // The card that just arrived lands green once, then settles (Lab behaviour).
   const landedId = local.busy ? null : local.landed;
@@ -241,7 +244,7 @@ export function renderEvidenceZero(mount, ctx) {
   // The evidence requirement (D-74, D-91), as the server states it. General has
   // none (D-95), so nothing is drawn for it.
   function drawGate(body, person) {
-    if (general) return;
+    if (noGate) return;
     const gate = view.evidence_requirement || { ready: false, missing: [], messages: [] };
     const box = el('div', `v2-gate${gate.ready ? ' is-ready' : ''}`);
     box.appendChild(el('div', 'v2-gate-head', t('ref.gate.heading')));
@@ -250,7 +253,7 @@ export function renderEvidenceZero(mount, ctx) {
     body.appendChild(box);
 
     // The rare case with no evidence at all: a deliberate second step (D-74).
-    const evidenceMissing = (gate.missing || []).some((k) => k === 'ead_doc' || k === 'ead_facts');
+    const evidenceMissing = (gate.missing || []).some((k) => k === 'ead_doc' || k === 'ead_facts' || k === 'aos_evidence');
     if (person.no_evidence) {
       const on = el('div', 'v2-noead');
       on.appendChild(el('span', 'v2-tag v2-tag--review', t('ref.noead.on')));

@@ -94,6 +94,8 @@ import { onRequest as proofScanV2Suppressions }     from './functions/api/proof-
 import { onRequest as proofScanV2PossibleIssue }    from './functions/api/proof-scan-v2-possible-issue.js';
 import { onRequest as proofScanV2Process }          from './functions/api/proof-scan-v2-process.js';
 import { onRequest as proofScanV2Editions }         from './functions/api/proof-scan-v2-editions.js';
+import { onRequest as proofScanV2Clear }           from './functions/api/proof-scan-v2-clear.js';
+import { onRequest as proofScanV2Patterns }        from './functions/api/proof-scan-v2-patterns.js';
 import { runProofScanV2Sweep }                      from './functions/api/_proof-scan-v2-job.js';
 import { onRequest as translationStart, runTranslationTmpCleanup } from './functions/api/translation-start.js';
 import { onRequest as translationProcess }          from './functions/api/translation-process.js';
@@ -261,6 +263,8 @@ export const routes = {
   '/api/proof-scan-v2-possible-issue':   proofScanV2PossibleIssue,
   '/api/proof-scan-v2-process':          proofScanV2Process,
   '/api/proof-scan-v2-editions':         proofScanV2Editions,
+  '/api/proof-scan-v2-clear':            proofScanV2Clear,
+  '/api/proof-scan-v2-patterns':         proofScanV2Patterns,
   '/api/translation-start':             translationStart,
   '/api/translation-process':           translationProcess,
   '/api/translation-poll':              translationPoll,
