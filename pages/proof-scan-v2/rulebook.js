@@ -77,6 +77,35 @@ export async function renderRulebook(mount, ctx) {
 
   mount.appendChild(addRuleForm());
 
+  // ── v2.1, D-138: answer patterns become suggested rules (AOS) ──
+  // Counts only, never which client answered what. Staff approve or decline;
+  // nothing switches on by itself.
+  if (local.caseType === 'aos') {
+    const patterns = book.patterns || [];
+    const sg = section(t('v21.patterns.heading'), patterns.filter((p) => p.state === 'suggested').length);
+    sg.wrap.classList.add('v2-patterns');
+    sg.body.appendChild(el('p', 'v2-hint', t('v21.patterns.hint')));
+    if (!patterns.length) sg.body.appendChild(el('p', 'v2-block-empty', t('v21.patterns.none')));
+    for (const p of patterns) {
+      const row = el('div', `v2-rule ps2-pattern ps2-pattern--${p.state}`);
+      const main = el('div', 'v2-rule-main');
+      main.appendChild(el('div', 'v2-rule-title', `${p.form} item ${p.item}: ${p.topic}`));
+      const counts = t('v21.patterns.counts', { no: p.no_count, yes: p.yes_count });
+      main.appendChild(el('div', 'v2-rule-where', p.state === 'watching' && p.yes_count ? `${counts} ${t('v21.patterns.sometimes')}` : counts));
+      row.appendChild(main);
+      if (p.state === 'suggested') {
+        const acts = el('div', 'v2-proposal-actions');
+        acts.appendChild(button(t('v21.patterns.approve'), 'btn btn--primary v2-btn-sm', () => save(ctx.api.pattern(p.id, 'approve'))));
+        acts.appendChild(button(t('v21.patterns.decline'), 'btn v2-btn-sm', () => save(ctx.api.pattern(p.id, 'decline'))));
+        row.appendChild(acts);
+      } else if (p.state === 'approved' || p.state === 'declined') {
+        row.appendChild(el('span', 'v2-rule-origin', t(`v21.patterns.${p.state}`)));
+      }
+      sg.body.appendChild(row);
+    }
+    mount.appendChild(sg.wrap);
+  }
+
   // ── Firm-wide ──
   const firm = section(t('rulebook.firm'), book.firm.length);
   firm.body.appendChild(el('p', 'v2-hint', t('rulebook.firm.note')));

@@ -49,8 +49,16 @@ const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x))
 // read: validated model output. cardSsn: Map(person id -> 9 digits | null),
 // decrypted by the route for comparison only.
 export function planEvidenceZero({ caseType, people, documents, read, filename, cardSsn = new Map() }) {
+  const peopleById = (id) => people.find((p) => p.id === id) || {};
   const label = evidenceLabel(read.doc_type, read.doc_title);
   const clear = read.read_quality === 'clear';
+  // v2.1, Q-61: in an AOS case the passport is evidence, not truth. Only its
+  // number and expiration date are taken from it; its expiry is the passport
+  // expiration when the model gave it only as the document's own expiry.
+  const facts = { ...read.facts };
+  if (read.doc_type === 'passport' && !facts.passport_expiration && facts.expiration_date) facts.passport_expiration = facts.expiration_date;
+  const passportOnly = caseType === 'aos' && read.doc_type === 'passport';
+  read = { ...read, facts };
   // D-117: a document's all-number dates are read the way its own country
   // writes them (a Mexican birth certificate is day first).
   const order = dateOrderFor(read.issuing_country, read.language);
@@ -65,6 +73,11 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
     facts: storedFacts(read.facts),
     status: usable ? 'current' : 'source_review',
   };
+  // v2.1: a document about two people keeps each person's name and date of birth.
+  const docPeople = (read.people || []).map((p) => ({ role: p.role, ...storedFacts({
+    first_name: p.first_name, middle_name: p.middle_name, last_name: p.last_name, date_of_birth: p.date_of_birth,
+  }) })).filter((p) => Object.keys(p).length > 1);
+  if (docPeople.length) document.facts.people = docPeople;
   // v2.0.2: what the document is and where it is from travel with its facts,
   // so later stages read its dates the same way (D-117) and name it (D-121).
   for (const key of ['doc_title', 'issuing_country', 'language']) {
@@ -122,14 +135,31 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
   }
   if (read.issued_date) document.facts.issued_date = String(read.issued_date).slice(0, 40);
 
-  // A shared document fills nobody's card.
-  if (owners.length !== 1) return plan;
+  // A shared document fills nobody's card. v2.1: where it prints a person's
+  // own name or date of birth and the card already holds a different one, that
+  // is proposed to the card (D-55), as from any other document. A clear read only.
+  if (owners.length !== 1) {
+    if (clear) {
+      for (const entry of docPeople) {
+        const owner = owners.find((o) => o.id && peopleById(o.id).role === entry.role);
+        if (!owner) continue;
+        const person = peopleById(owner.id);
+        for (const field of ['first_name', 'middle_name', 'last_name', 'date_of_birth']) {
+          const c = toCardValue(field, entry[field], { order });
+          if (c.invalid || c.value == null) continue;
+          const current = truthValue(person, field);
+          if (current != null && !sameValue(field, current, c.value)) plan.suggestions.push({ owner, field, value: c.value, label });
+        }
+      }
+    }
+    return plan;
+  }
   const owner = owners[0];
   const person = owner.id ? people.find((p) => p.id === owner.id) : {};
   const unreadable = new Set(read.unreadable_fields);
   const source = { kind: 'document', label };
 
-  for (const field of REFERENCE_FIELDS) {
+  for (const field of passportOnly ? ['passport_number', 'passport_expiration'] : REFERENCE_FIELDS) {
     if (unreadable.has(field)) continue;
     const c = toCardValue(field, read.facts[field], { order });
     // Printed but not in a form the record can hold (a date it cannot parse):
@@ -147,7 +177,7 @@ export function planEvidenceZero({ caseType, people, documents, read, filename, 
     else if (clear && !sameValue(field, current, c.value)) plan.suggestions.push({ owner, field, value: c.value, label });
   }
 
-  if (!unreadable.has('ssn')) {
+  if (!unreadable.has('ssn') && !passportOnly) {
     const d = ssnDigits(read.facts.ssn);
     if (d) {
       const have = owner.id ? cardSsn.get(owner.id) : null;

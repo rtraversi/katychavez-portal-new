@@ -20,6 +20,7 @@ import { FACT_FIELDS, evidenceZeroSchema, stageRunSchema } from '../../functions
 import { REFERENCE_FIELDS, caseLabel } from '../../functions/api/_proof-scan-v2-common.js';
 import {
   seededDb, call, STAFF, pdfFile, mockModel, observations, formValues, evidenceFacts,
+  findings,
 } from '../support/proof-scan-v2-harness.js';
 
 let db;
@@ -44,7 +45,7 @@ const read = (facts = {}, top = {}) => ({
   doc_type: 'passport', read_quality: 'clear', unreadable_fields: [], issued_date: null, owner_roles: ['beneficiary'],
   facts: { ...Object.fromEntries(FACT_FIELDS.map((f) => [f, null])), ...facts }, ...top,
 });
-const kinds = (r) => r.body.result.attention.map((a) => a.kind);
+const kinds = (r) => findings(r.body.result).map((a) => a.kind);
 const check = (r, id) => r.body.result.checks.find((c) => c.rule_id === id);
 
 async function generalCase() {
@@ -108,7 +109,7 @@ describe('shared facts across forms (PS-305)', () => {
     ] })]);
     const r = await run({ case_id: kase.case.id, stage: 'physical_scan' });
     expect(kinds(r)).toEqual(['form_difference']);
-    const item = r.body.result.attention[0];
+    const item = findings(r.body.result)[0];
     expect(item).toMatchObject({ person_role: 'beneficiary', field: 'country_of_birth' });
     expect(item.title).toBe("The forms disagree on the beneficiary's country of birth. It is MEXICO on the I-485, but GUATEMALA on the I-765.");
     expect(check(r, 'PS-305')).toMatchObject({ status: 'needs_attention', counted_by_items: true, consistency: true });
@@ -124,7 +125,7 @@ describe('shared facts across forms (PS-305)', () => {
       form('I-864', { date_of_birth: '02/11/1990' }, 'petitioner'),
     ] })]);
     const r = await run({ case_id: kase.case.id, stage: 'physical_scan' });
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(check(r, 'PS-305').status).toBe('clear');
   });
 
@@ -162,7 +163,7 @@ describe('shared facts across forms (PS-305)', () => {
     expect(p.field_sources.country_of_birth.kind).toBe('forms');
     // A later run with one form is not checked against what the drafts filled.
     const r = await run({ case_id: kase.case.id, stage: 'draft_review', scope: 'whole' });
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
   });
 });
 
@@ -176,7 +177,7 @@ describe('evidence against forms, full list', () => {
       evidence: [ev('passport', ['beneficiary'], { country_of_citizenship: 'MEXICO' }), ev('i94', ['beneficiary'], { i94_number: '111' })],
     })]);
     const r = await run({ case_id: kase.case.id, stage: 'physical_scan' });
-    expect(r.body.result.attention.map((a) => a.title)).toEqual(["The beneficiary's passport (package.pdf, page 90) shows country of citizenship MEXICO. The I-485 (package.pdf, page 1) shows GUATEMALA."]);
+    expect(findings(r.body.result).map((a) => a.title)).toEqual(["The beneficiary's passport (package.pdf, page 90) shows country of citizenship MEXICO. The I-485 (package.pdf, page 1) shows GUATEMALA."]);
     expect(r.body.result.evidence_matches.filter((m) => m.ok).map((m) => m.field)).toEqual(['i94_number']);
   });
 });
@@ -201,7 +202,7 @@ describe('expired evidence', () => {
     const package_ = observations({ evidence: [ev('passport', ['beneficiary'], { expiration_date: '03/14/2024' }), ev('green_card', ['petitioner'], { expiration_date: '01/01/2031' })] });
     mockModel(vi, [package_, package_]);
     const r = await run({ case_id: kase.case.id, stage: 'physical_scan' });
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(r.body.possible_issues.map((p) => [p.reasoning_key, p.title])).toEqual([['expired_evidence', "The beneficiary's passport expired on 03/14/2024."]]);
     db.rows('proof_scan_suppressions').push({ id: 's2', reasoning_key: 'expired_evidence', label: 'Expired evidence', origin: 'staff' });
     expect((await run({ case_id: kase.case.id, stage: 'physical_scan' })).body.possible_issues).toEqual([]);
@@ -226,11 +227,11 @@ describe('translations (PS-306)', () => {
     mockModel(vi, [observations({ evidence: [spanish(false)] }), observations({ evidence: [spanish(true)] })]);
     let r = await run({ case_id: kase.case.id, stage: 'physical_scan' });
     expect(kinds(r)).toEqual(['translation']);
-    expect(r.body.result.attention[0].title).toBe("The beneficiary's birth certificate is in Spanish. There is no English translation of it in the package.");
+    expect(findings(r.body.result)[0].title).toBe("The beneficiary's birth certificate is in Spanish. There is no English translation of it in the package.");
     expect(check(r, 'PS-306')).toMatchObject({ status: 'needs_attention', counted_by_items: true });
     expect(r.body.result.report_state).toBe('items_need_attention');
     r = await run({ case_id: kase.case.id, stage: 'physical_scan' });
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(check(r, 'PS-306').status).toBe('clear');
   });
 
@@ -240,7 +241,7 @@ describe('translations (PS-306)', () => {
       observations({ forms: [form('I-485', {})] })]);
     let r = await run({ case_id: kase.case.id, stage: 'draft_review', scope: 'whole' });
     expect(check(r, 'PS-306')).toBeUndefined();
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     r = await run({ case_id: kase.case.id, stage: 'draft_review', scope: 'whole' });
     expect(kinds(r)).toEqual(['translation']);
     r = await run({ case_id: kase.case.id, stage: 'preflight', scope: 'whole' });

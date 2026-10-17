@@ -16,7 +16,7 @@ import {
   el, t, button, section, clear, icon, fmtDate, fmtANumber, fmtWhen, scrollTo, errorLine,
 } from './ui.js';
 import {
-  STAGES, CASE_TYPES, stepState, statusKey, gateReady, isGeneral, mainPerson, fullName, formatAddress,
+  STAGES, CASE_TYPES, AOS_KINDS, stepState, statusKey, gateReady, isGeneral, isMulti, mainPerson, fullName, formatAddress,
   EXTRA_FIELDS, DATE_FIELDS,
 } from './model.js';
 import { createSsnToggle } from './ssn.js';
@@ -113,6 +113,8 @@ export function mountProofScanV2({ root, api }) {
   function render(opts = {}) {
     if (ctx.mode !== 'scan') return;
     const active = globalThis.document?.activeElement?.id;
+    // A clear or a sign-off redraws the case where it is; the page stays put.
+    const keepY = opts.keepScroll ? globalThis.scrollY : null;
     clear(scanView);
     if (ctx.error) scanView.appendChild(errorLine(ctx.error));
     if (!ctx.view) {
@@ -131,6 +133,7 @@ export function mountProofScanV2({ root, api }) {
       if (opts.scrollToResult) scrollTo(mount.querySelector?.('.v2-result'));
     }
     if (active) globalThis.document?.getElementById?.(active)?.focus?.();
+    if (keepY != null) globalThis.scrollTo?.(0, keepY);
   }
 
   // ── Start, and finding a case (D-77, D-83) ─────────────────────────────────
@@ -149,21 +152,38 @@ export function mountProofScanV2({ root, api }) {
     sel.appendChild(ph);
     CASE_TYPES.forEach((c) => { const o = el('option', null, c.label); o.value = c.value; sel.appendChild(o); });
     sel.value = s.caseType;
+    // v2.1, D-131: an AOS case asks which kind before it starts; it is stored
+    // on the case and locked with the case type.
+    const kindWrap = el('div', 'v2-aos-kind');
+    const kindLabel = el('label', 'v2-start-label', t('v21.kind_label'));
+    kindLabel.htmlFor = 'ps2-aos-kind';
+    const kindSel = el('select', 'ps-select');
+    kindSel.id = 'ps2-aos-kind';
+    const kph = el('option', null, t('v21.kind_placeholder'));
+    kph.value = '';
+    kindSel.appendChild(kph);
+    AOS_KINDS.forEach((k) => { const o = el('option', null, t(`v21.kind.${k.value}`)); o.value = k.value; kindSel.appendChild(o); });
+    kindSel.value = s.aosKind || '';
+    kindWrap.append(kindLabel, kindSel, el('p', 'v2-hint', t('v21.kind_hint')));
+    kindWrap.hidden = s.caseType !== 'aos';
+    const ready = () => Boolean(sel.value) && (sel.value !== 'aos' || Boolean(kindSel.value));
     const go = button(t('entry.start'), 'btn btn--primary v2-start-btn', async () => {
       s.caseType = sel.value;
-      if (!s.caseType) return;
+      if (!ready()) return;
       go.disabled = true;
-      const res = await api.createCase(s.caseType);
+      const res = await api.createCase(s.caseType, s.caseType === 'aos' ? kindSel.value : null);
       go.disabled = false;
       if (!res.ok) { s.error = errorText(res); render(); return; }
       s.error = '';
       s.caseType = '';
+      s.aosKind = '';
       await caseOpened(res.data);
     });
-    go.disabled = !s.caseType;
-    sel.addEventListener('change', () => { s.caseType = sel.value; go.disabled = !sel.value; });
+    go.disabled = !ready();
+    sel.addEventListener('change', () => { s.caseType = sel.value; kindWrap.hidden = sel.value !== 'aos'; go.disabled = !ready(); });
+    kindSel.addEventListener('change', () => { s.aosKind = kindSel.value; go.disabled = !ready(); });
     row.append(sel, go);
-    b.append(label, row, el('p', 'v2-hint', t('entry.case_type_hint')), el('p', 'v2-hint', t('entry.folder_hint')));
+    b.append(label, row, kindWrap, el('p', 'v2-hint', t('entry.case_type_hint')), el('p', 'v2-hint', t('entry.folder_hint')));
     if (s.error) b.appendChild(errorLine(s.error));
     scanView.appendChild(start.wrap);
 
@@ -242,11 +262,11 @@ export function mountProofScanV2({ root, api }) {
     folder.appendChild(icon('folder'));
     type.appendChild(folder);
     type.appendChild(el('span', 'v2-case-type-v', view.case.label || t('case.folder_new')));
-    type.appendChild(el('span', 'v2-pill v2-pill--type', view.case.case_type_label || ''));
+    type.appendChild(el('span', 'v2-pill v2-pill--type', [view.case.case_type_label, view.case.aos_kind_label].filter(Boolean).join(' · ')));
     top.appendChild(type);
     const tags = el('div', 'v2-case-tags');
     const main = mainPerson(view);
-    if (main && (!isGeneral(view) || main.approved_at)) {
+    if (main && (!isMulti(view) || main.approved_at)) {
       const ok = main.approved_at && !main.changed_since_approval;
       const key = !main.approved_at ? 'summary.not_approved' : main.changed_since_approval ? 'summary.changed' : 'summary.approved';
       tags.appendChild(el('span', `v2-pill v2-pill--${ok ? 'ok' : 'muted'}`, t(key)));
@@ -316,10 +336,12 @@ export function mountProofScanV2({ root, api }) {
     const view = ctx.view;
     const summary = el('div', 'v2-summary');
     summary.setAttribute('aria-live', 'polite');
+    // Max 2026-10-16: the case card's title, "General summary".
+    summary.appendChild(el('h3', 'v2-summary-title', t('v21.summary_title')));
     const people = view.people || [];
     const anything = (p) => fullName(p) || p.a_number || p.date_of_birth || p.street || p.has_ssn || p.phone || p.email;
 
-    if (isGeneral(view)) {
+    if (isMulti(view)) {
       if (!people.some(anything) && people.length < 2) {
         summary.appendChild(el('p', 'v2-summary-empty', t('summary.empty_general')));
         return summary;

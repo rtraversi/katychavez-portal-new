@@ -7,9 +7,10 @@
 
 import * as store from './_proof-scan-v2-store.js';
 import {
-  publicPerson, publicSuggestion, evidenceRequirement, GATE_MESSAGES, CASE_TYPE_LABELS, caseLabel,
+  publicPerson, publicSuggestion, evidenceRequirement, GATE_MESSAGES, CASE_TYPE_LABELS, AOS_KIND_LABELS, caseLabel, REVIEW_STAGES,
 } from './_proof-scan-v2-common.js';
 import { HttpError } from './_proof-scan-v2-http.js';
+import { reportView } from './_proof-scan-v2-view.js';
 
 export async function loadCase(admin, caseId) {
   const kase = await store.getCase(admin, caseId);
@@ -49,12 +50,19 @@ async function syncLabel(admin, kase, people) {
 
 export async function publicCaseView(admin, snapshot) {
   snapshot = { ...snapshot, case: await syncLabel(admin, snapshot.case, snapshot.people) };
-  const [runs, signoffs] = await Promise.all([
+  const [listed, signoffs, clears] = await Promise.all([
     store.listRuns(admin, snapshot.case.id),
     store.listSignoffs(admin, snapshot.case.id),
+    store.listClears(admin, snapshot.case.id),
   ]);
+  const runs = await withClearedState(admin, listed, clears);
+  const kind = snapshot.case.aos_kind;
   return {
-    case: { ...snapshot.case, case_type_label: CASE_TYPE_LABELS[snapshot.case.case_type] },
+    case: {
+      ...snapshot.case,
+      case_type_label: CASE_TYPE_LABELS[snapshot.case.case_type],
+      ...(kind ? { aos_kind_label: AOS_KIND_LABELS[kind] } : {}),
+    },
     people: snapshot.people.map(publicPerson),
     documents: snapshot.documents,
     suggestions: snapshot.suggestions.map(publicSuggestion),
@@ -62,6 +70,28 @@ export async function publicCaseView(admin, snapshot) {
     signoffs,
     evidence_requirement: gateFor(snapshot),
   };
+}
+
+// D-132: the stage tracker reads each stage's latest run as the clears leave
+// it: a stage whose items are all cleared counts as done. The stored run keeps
+// the scan's own result; only effective_state and open_count are added.
+async function withClearedState(admin, runs, clears) {
+  if (!clears.length) return runs;
+  const latest = new Map();
+  for (const r of runs) if (r.stage && !latest.has(r.stage)) latest.set(r.stage, r);
+  const out = runs.map((r) => ({ ...r }));
+  for (const stage of REVIEW_STAGES) {
+    const r = latest.get(stage);
+    const mine = clears.filter((c) => c.stage === stage);
+    if (!r || !mine.length) continue;
+    const full = await store.getRun(admin, r.id);
+    if (!full?.result_json) continue;
+    const view = reportView(full.result_json, mine);
+    const row = out.find((x) => x.id === r.id);
+    row.effective_state = view.state;
+    row.open_count = view.attention.filter((a) => !a.cleared).length;
+  }
+  return out;
 }
 
 export async function personInCase(admin, personId) {

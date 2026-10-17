@@ -1306,6 +1306,584 @@ and not required in the other two (counted only if missing in spousal). Original
 CASE: Bona fides", "Spousal Petition only" I-130A). For child to parent and parent to child,
 which evidence changes?
 
+**Note for the portal copy (v2.1 build, 2026-10-17).** Copied from the master record in the lab, everything from "AOS ships as v2.2" to "Green light and version name" and the entries logged after it (Q-62, D-133 to D-136). D-147 renamed the release: everything written below as "v2.2" means v2.1. Max's words are quoted as he wrote them.
+
+**AOS ships as v2.2, once, complete.** Date: 2026-10-16 07:32. Max, verbatim: "Lets
+continue scoping, lets not leave any stone unturned i dont want to push v2.2 without it being
+ready. no 2.2.1,..3 updates." [Claude] The AOS case type is v2.2. Nothing is built until
+every question below is answered.
+
+**AOS question queue (v2.2), opened 2026-10-16.** One at a time, in this order.
+- **Q-60 Starting step.** Evidence Zero for AOS: none (as General), first (as DACA), or
+  optional with Draft Review gently asking when there is no evidence anywhere?
+- **Q-61 Truth per person.** Which documents are trusted for each person's facts
+  (beneficiary: passport, birth certificate, I-94; petitioner: birth certificate,
+  naturalization certificate, US passport; co-sponsor: proof of citizenship or residence)?
+- **Q-62 Married names.** Forms in the married name while the passport or birth certificate
+  shows the maiden name: how is that treated?
+- **Q-63 How each fee is paid.** The sheet says a money order for the I-130 but its forms
+  table has a G-1450 for $675, and it says "G-1650 OR g-1460" for the I-485 fee (G-1650 is
+  the ACH form). What does the checker expect for each fee?
+- **Q-64 I-485 fee by age.** The checker works out the age from the date of birth and checks
+  the amount. Amounts to verify against USCIS's current fees ("$1140, 79 or older").
+- **Q-65 G-28.** One G-28 for the I-485 and I-765 together, or one each? Does D-107 (all
+  boxes empty means home, fine) apply?
+- **Q-66 G-1145.** Name only, or email and phone too, as DACA?
+- **Q-67 Translator and interpreter.** "Translator needed?" (I-130A, I-485) and the I-765
+  interpreter signature: same as DACA's English questions (gentle at Draft Review, a normal
+  check later)?
+- **Q-68 I-485 answers.** Besides Question 61, any answers the firm always expects (as
+  DACA's criminal questions all NO)?
+- **Q-69 I-864 income.** Filled in only, matched to the tax return and W-2, and/or checked
+  against the poverty guideline?
+- **Q-70 I-131.** The sheet has its fee but no form rows. What is checked on the I-131?
+- **Q-71 Form order.** "All forms in order": what is the AOS package order?
+- **Q-72 "If needed" evidence from the forms.** Naturalization certificate when the I-130
+  says the petitioner naturalized; divorce certificate when prior marriages are listed;
+  co-sponsor documents when a co-sponsor I-864 is present; household member documents?
+- **Q-73 Bona fides.** What counts, and is it presence only?
+- **Q-74 Evidence that can be absent.** US visa, I-94 and similar: counted or gentle when
+  missing?
+- **Q-75 Photos.** The mailing list keeps copies of photos: should the scan expect them?
+- **Q-76 Cross-form matching.** General's "every shared fact must match, per person"
+  (PS-305) applies to AOS as is?
+- **Q-77 Pre-flight corrections.** Same as DACA (D-72)?
+Terminal tasks before build, not questions: find I-485 Question 61 and every page number in
+the current editions (I-485 09/18/26, I-864 08/24/26 and the rest).
+
+**Q-60 ANSWERED 2026-10-16 07:49.** Max, verbatim: "Just like with DACA evidence zero is
+always there, but if we have only the physical scan, then we go ahead and check with that."
+AOS starts with Evidence Zero, as DACA. It never locks a stage (D-103, D-113): with only the
+package, Physical Scan runs and builds the cards from the package's evidence. [Claude,
+carried over from D-113, unverified with Max for AOS] Draft Review and Pre-flight gently ask
+for evidence when there is none anywhere.
+
+**Q-61 ANSWERED 2026-10-16 07:58.** Max, verbatim: "for ben and for pet it must be the birth
+certificates which we need. then the second kind source of truth would be the marriage
+certificate if spousal. i94 is needed for the entry date and port but honestly this is
+something that katy fills out. which rly does not require a check, but perhaps a gentle
+nudge. passport for ben is not our source of truth tbh, but we need it as evidence. what we
+get from it tho is the passport number and exp date, only that we can check. and most of
+the times the documents do not disagree, but if they do, point it out. cosponsor should be
+their proof of citizenship or residence."
+- Beneficiary and petitioner: the **birth certificate** is the truth.
+- Spousal: the **marriage certificate** is the second source of truth.
+- **I-94:** gives entry date and port; Katy fills those, so a difference is a gentle nudge,
+  never counted. [Claude, interpretation]
+- **Passport (beneficiary):** evidence, not truth. Only its number and expiry date are
+  checked against the forms.
+- **Co-sponsor:** their proof of citizenship or residence.
+- Documents that disagree with each other are pointed out. How (counted or gentle): asked
+  as a follow-up.
+**Follow-up ANSWERED 2026-10-16 08:05.** Max, verbatim: "okay a." Two documents that
+disagree with each other (for example the birth certificate and the marriage certificate
+spell a name differently) are counted, needing attention.
+
+**Two new requests, 2026-10-16 08:05.** Max, verbatim: "lets try to implement a button for
+each check that we can click and it will be cleared. also lets take another look at the ui,
+i feel like some parts are not that pretty, and also the font is too light and small, pull
+up the dev and take a look urself and add the button i mentioned."
+- **D-132: a "clear" button on every check.** Staff can clear any item by hand. Details
+  (count, undo, who and when, re-runs) to settle after Max sees it in the Lab.
+- **UI pass:** text is too light and too small; some parts not pretty. Done in the Lab first
+  (the sketch loop), then built by terminal.
+
+**UI sketch, 2026-10-16 08:13.** [Claude] The Lab mockup still shows the old stage locks, so
+the sketch is on the real 2.0.2 page instead, in a local-only copy: worktree
+`~/sites/katychavez-portal-ui-sketch`, branch `sketch/v2.2-ui` (from `b8e3924`, never
+pushed), served by the `proof-scan-ui-sketch` launch config at `127.0.0.1:8788` (synthetic
+data, no AI, no database, no email). Changes, all scoped to `.ps2` so the old checker and the
+rest of the portal are untouched:
+- Measured before: report rows and check lists 12px, labels 10 to 11px, grey text `#8b919d`
+  (about 3:1 on white). After: every 10 to 13px size one step up (generated), the size
+  tokens one step up, greys darkened (`#687080`, `#454d5b`), body text weight 500.
+- Attention rows: more padding; the headline stays amber, the rest reads in ink.
+- D-132 sketch (`clear-sketch.js`): a Clear button on every needs-attention, not-checked,
+  needs-info and please-confirm row. Cleared rows turn green with "Cleared by you · time" and
+  Undo; block counts show what is still open; the server's verdict line is kept (D-18) with
+  "N of M cleared by staff" under it. Memory only: a reload resets it.
+Open on D-132: whether clearing changes the official result; whether a cleared item stays
+cleared on the next run; a reason or note; and the word, since "cleared" already means
+"passed" in the report ("all 7 cleared").
+
+**D-132 follow-up and UI notes, 2026-10-16 08:15.** Claude asked whether clearing every item
+changes the result (A keep the scan's verdict with a staff note; B the result flips to "No
+issues found" and the stage counts as done). Max, quoting B, verbatim: "it should say 3 of 3
+cleared, no item needs attention."
+- Clearing changes the result line: all cleared reads "3 of 3 cleared, no item needs
+  attention" (Max's wording). [Claude, interpretation] Partly cleared reads the open count
+  ("2 items need attention") with "1 of 3 cleared"; the stage counts as done when nothing is
+  left open. The server stores clears and decides the line (D-18 holds in the real build).
+Max, verbatim, on the rows: "i feel like regular should be 'The forms disagree on the
+beneficiary's country of birth' and expand should show the rest of the info along with the
+where info. and maybe not pill backgronud, i like the colored background, but it looks odd
+to have each item be a pill because when lots of them pile up they look weird."
+- A closed row shows the headline only; opening it shows the rest of the sentence and the
+  Where details.
+- Rows keep their coloured background but stop being pills: they stack as one list.
+[Claude, sketch round 2, 08:17] Built and checked in the sketch: the result line follows the
+clears ("6 items need attention" with "3 of 9 cleared"; all cleared reads "9 of 9 cleared, no
+item needs attention" in green); closed rows show the headline only; rows stack 2px apart
+with rounded outer corners. Found and fixed in the sketch: the headline split cut addresses
+at "Apt." (it ended the headline at any full stop); now it skips abbreviations and full
+stops not followed by a capital. The same splitter is in `pages/proof-scan/report.js`, which
+the old checker shares, so the real fix must not change the old checker (D-88).
+Not in the sketch: the stage tracker turning done when everything is cleared (server-side).
+
+**D-132 re-runs and two more UI notes, 2026-10-16 08:22.** Claude asked what happens when a
+cleared item comes back on a re-run of the same stage (A stays cleared with who and when;
+B comes back). Max, verbatim: "a". A cleared item stays cleared on a re-run when the scan
+finds the same thing again, showing who cleared it and when.
+Max, verbatim, pasting the evidence-match text for the applicant's EAD (the same first name,
+last name, date of birth and A-Number difference repeated once per form): "lets fix this. ik
+i said one for each, but we need to find a way to organize this info better if it repeats,
+otherwise its just a garble mess." And on a screenshot of the I-765 check list still showing
+"8/9 cleared" with Item 27 amber after it was cleared: "if it was cleared then it should be
+cleared on that part too." And: "lets continue w scope after you build what i said on the
+dev".
+[Claude, sketch round 3, 08:22] Built and checked:
+- Evidence differences are one line per difference: field, what the document shows, what
+  the forms show, and every form that has it ("First name · LUIS · ANA · G-1450 (×2),
+  G-1145, G-28, I-821D, I-765, I-765WS"). Column labels are placeholders.
+- Clearing an item clears its row in that form's check list too (they share the rule ID):
+  the I-765 list reads "all 9 cleared", the row shows a green check and "cleared by staff",
+  and the form's outstanding tag disappears.
+Still open on D-132 (later): a reason or note when clearing; the button's word, since
+"cleared" also means "passed" in the check lists.
+
+**Q-63 ANSWERED 2026-10-16 08:56.** After Claude re-asked in plain words, Max, verbatim: "ah
+1450, uscis does not take money orders anymore. but its not an error for it to include a 1650
+if client begs us to use that."
+- Every AOS fee is paid by G-1450. A G-1650 (bank payment) instead is not an error.
+- [Claude, interpretation, unverified with Max] A money order in the package is flagged,
+  since USCIS no longer takes them. The sheet's money-order lines are out of date.
+- [Claude, read from uscis.gov/g-1055 2026-10-16 08:55, for Max to verify] USCIS takes card
+  (G-1450) or bank (G-1650); paper payment only with a signed G-1651 exemption. And a new
+  G-1055 fee schedule edition, 10/16/26, puts new H.R. 1 fees on the I-131, I-589, I-765,
+  I-821 and I-941 for anything postmarked from Oct. 16, 2026 (today); without the new fee the
+  request "will be rejected". Whether that touches AOS (c)(9) work permits and the I-131 is
+  not checked: the amounts are only in the fee schedule PDF.
+- Claude asked to download the G-1055 PDF (uscis.gov, about 650 KB) to check the AOS amounts.
+  Max, verbatim (2026-10-16 08:57): "nah lets lay off from that". Not downloaded; the fee
+  amounts stay as the firm's sheet has them, unverified.
+
+**Q-64 ANSWERED 2026-10-16 09:01.** Claude asked whether the checker works out the
+beneficiary's age from the date of birth and checks the G-1450 carries the right I-485 fee of
+the three (A), or only that one of the three is there (B). Max, verbatim: "a, but im scared
+it will produce false negatives, thoughts?" Claude proposed four guards; Max, verbatim:
+"yes". Settled: A, with:
+1. Age from the birth certificate / case card date of birth only; if that is not settled,
+   the fee check is skipped (the date-of-birth mismatch is its own item).
+2. Within a month of turning 14 or 79: a gentle confirm, never counted.
+3. Under 14: a gentle confirm ("filed with a parent?"). [Claude, unverified, for Max to
+   check] The $950 fee may apply only when the child files with a parent's I-485.
+4. Fee amounts live in the Rulebook so staff can correct one without code.
+Counted only when the date of birth is settled, the client is not near a cutoff, and the
+amount is plainly wrong.
+
+**Q-65 first half ANSWERED 2026-10-16 09:02.** Max, verbatim: "a", to Claude's options (A two
+G-28s: one for the petitioner and I-130, one for the applicant covering the I-485 and I-765;
+B three; C varies). The AOS package has two G-28s.
+**Second half ANSWERED 2026-10-16 09:03.** Max, verbatim: "a". D-107 applies to the AOS
+applicant's G-28 as in DACA: all boxes empty means home and is fine; office ticked is a gentle
+confirm, never counted.
+
+**Q-66 ANSWERED 2026-10-16 09:07.** Max, verbatim: "a, but consider its undr the pets info".
+The G-1145's name, email and phone are checked, as DACA, against the **petitioner's** case
+card (not the beneficiary's).
+
+**Q-67, Max's correction 2026-10-16 09:18.** Max, verbatim: "lets be clear about this. the
+form has a check mark that says I understand english, and one that says an interpreter
+explained. that gives us the distinction between needing an interp or not ok?" The test is
+the two boxes in the applicant's statement (English, or an interpreter read it), not a yes/no
+question. Claude's proposed rule, awaiting Max:
+- Interpreter box ticked: the interpreter section is filled in (name, language) and, from
+  Pre-flight on, signed. At Draft Review a gentle "was this intended?", as DACA.
+- English box ticked: the interpreter section stays empty; filled anyway is a gentle confirm.
+- Neither or both ticked: counted from Pre-flight on; a gentle confirm at Draft Review.
+**Q-67 ANSWERED 2026-10-16 09:21.** Max, verbatim: "if english box is not checked, its a
+mitskae. if it is then thats how we intended, if we have filled info for interp and checked
+english this is a flag. if we have interpet box checked and no info filled at drafting, we
+might be waiting for sigs to then fill out, but if we dont have that info filled and the box
+is checked on preflight or physical that is a flag. and if neither is ticked, its a mistake."
+Settled, for the I-130A, I-485 and I-765 (replaces Claude's proposal above):
+- English box ticked, interpreter section empty: fine, as intended.
+- English box ticked and interpreter section filled: counted.
+- Interpreter box ticked, interpreter section empty: fine at Draft Review (waiting for
+  signatures); counted at Pre-flight and Physical Scan.
+- Interpreter box ticked, interpreter section filled: fine.
+- Neither box ticked: counted, every stage.
+[Claude, interpretation, unverified with Max] "If english box is not checked, its a mistake"
+read together with the interpreter case: English unticked is a mistake unless the interpreter
+box is ticked. Both boxes ticked: counted.
+
+**Q-68 ANSWERED 2026-10-16 09:33.** Max, verbatim: "yes but honestly... these are
+complicated. most of the crazy ones should be no. so genocide, torture, terrorism. but there
+are sone that somertimes areyes like work violation, or minor misdemeanors or whatever. so im
+not sure how to scope for that. can we have a way for checker to write up notes and check for
+patterns from the scans. so for example if it notices that after 5 scans x amount of
+questions are NO always, then can we make it into a possible new rule we can okay?" Claude
+proposed a design; Max, verbatim: "yes".
+- **D-137: Seed only what Max named.** The I-485 questions on genocide, torture and
+  terrorism are expected No; a Yes is counted ("confirm this answer is right") and staff can
+  clear it (D-132). No other question is added from model knowledge. Question numbers come
+  from the current I-485 edition (terminal task).
+- **D-138: Answer patterns become suggested rules.** Every scan adds to a tally of how each
+  yes/no question on the AOS forms was answered. A question answered No on 5 scans with no
+  Yes appears in the Rulebook as a suggested rule ("normally No; flag a Yes"). Staff approve
+  or decline; it never switches on by itself (R-6, D-59/D-60 spirit). Questions sometimes
+  answered Yes never qualify.
+- **Privacy:** the tally holds counts per question only, never which client or case gave
+  which answer (these are criminal and security answers). The "notes" are the counts.
+
+**Q-69 ANSWERED 2026-10-16 09:35.** Max, verbatim: "b". The I-864 and I-864A income lines
+(current income, household income p.6 #12, most recent year, recent years) are only checked
+as filled in. They are not matched against the tax return or W-2 and not checked against the
+poverty guideline. [Claude] A deliberate exception to D-98 for income figures.
+
+**Q-70 ANSWERED 2026-10-16 09:37.** Max, verbatim: "a". When an I-131 is in the package:
+the applicant's name, date of birth, A-Number and address match the other forms (the
+cross-form check); the applicant's and Katy's signatures (Pre-flight and Physical Scan); and a
+$630 G-1450 in the applicant's name. Signature pages from the current I-131 edition
+(terminal task).
+
+**Q-71 ANSWERED 2026-10-16 09:40.** Max, verbatim: "b". AOS checks page order inside each
+form only, as DACA (D-69). The order of forms in the package is not checked; the sheet's
+"All forms in order" stays a staff task.
+
+**Q-72 ANSWERED 2026-10-16 09:43.** Max, verbatim: "a". "If needed" evidence is read from
+the forms: a naturalization certificate when the I-130 says the petitioner naturalized; a
+divorce certificate when the I-130 or I-130A lists an earlier marriage ended by divorce; the
+co-sponsor's tax return, W-2, pay stubs or employer letter, and proof of citizenship or
+residence when a co-sponsor I-864 is present; no documents for an I-864A household member
+(the sheet lists none); translations as PS-306 with the passport exception (D-124).
+
+**Q-73 ANSWERED 2026-10-16 09:46.** Max, verbatim: "c". Bona fides are not checked at all,
+not even for presence. [Claude] The spousal kind (D-131) still switches on the I-130A and the
+marriage certificate.
+
+**Q-74 ANSWERED 2026-10-16 09:50.** Max, verbatim: "a". At Physical Scan a missing US visa
+or I-94 is a gentle confirm, never counted. Every other evidence item on the AOS list is
+counted when missing at Physical Scan, as DACA (subject to D-131 kind, Q-72 "if needed",
+D-129 I-693 first page, Q-73 no bona fides).
+
+**Q-75 ANSWERED 2026-10-16 09:55.** Max, verbatim: "a, no check". Photos are not checked;
+they stay a mailing task.
+
+**Q-76 ANSWERED 2026-10-16 09:56.** Max, verbatim: "A". General's cross-form rule (PS-305,
+every shared fact per person must match) applies to AOS as is, with the exceptions already
+settled: G-1450 cardholder (D-134); I-94 entry date and port a gentle nudge (Q-61); employers
+judged as a person would (Q-53); county against city a gentle confirm (D-116); foreign cities
+never compared (Q-56); married names backed by the marriage certificate (Q-62); and the
+v2.0.2 leniency (D-111, D-112, D-117, D-118, D-120, D-126).
+
+**Q-77 ANSWERED 2026-10-16 09:58.** Max, verbatim: "a". AOS Pre-flight corrections work as
+DACA (D-72): a correction on one form must reach every form carrying that fact; corrected
+values are proposed to the case card as suggestions to confirm; "United States" left off a US
+address is not a missed correction.
+**All 18 AOS questions (Q-60 to Q-77) are answered as of 2026-10-16 09:58.**
+
+**Loose ends closed, 2026-10-16 10:10.** Claude listed its unconfirmed readings and the open
+D-132 points. Max, verbatim: "1. some people have awful handwritting, so lets just gentle
+confirm that 2. gentle confirm 3. yea, with everything we discussed 4. yea 5. lets not worry
+about that, just check the fee is there. 6. no 7. cleared is fine"
+1. **D-134 amended:** a G-1450 cardholder name that looks like a misspelling of someone on
+   the case is a gentle confirm, never counted (handwriting). Any other cardholder is fine.
+2. **Q-63 amended:** a money order in the package is a gentle confirm, never counted.
+3. **Q-67 confirmed:** English unticked is a mistake unless the interpreter box is ticked;
+   both ticked is a mistake; with everything settled above.
+4. **Q-59 confirmed:** the marriage certificate is required in spousal cases only.
+5. **Q-64 amended:** no under-14 "filed with a parent?" confirm; for an applicant under 14
+   the check is only that an I-485 fee G-1450 is there. [Claude, interpretation, unverified
+   with Max] Guards 1, 2 and 4 and the age check for 14 and over stand.
+6. **D-132:** no reason or note when clearing; one click.
+7. **D-132:** "cleared" stays the word for both a passed check and a staff clear.
+Max, verbatim, on what happens next: "fyi we aint building 2.2, we are merely scoping. i have
+to see it on dev server first and make some tests ok? any other question or can we get to
+building on dev". [Claude] Next: terminal builds on a local dev branch with the local preview
+only (synthetic data); nothing pushed, no PR, until Max has tested and says so.
+**Correction, 2026-10-16 10:38.** Max, verbatim, on Claude's terminal prompt: "wait wait what?
+no we are not building the new update. i want to see the mock up on dev server first. can you
+take care of that?" The terminal prompt is withdrawn; nothing is built. [Claude] Instead a
+v2.2 mockup was added to the local sketch (`~/sites/katychavez-portal-ui-sketch`, never
+pushed): `test/fixtures/proof-scan-v2/aos-mock.mjs` seeds an "Adjustment of Status" rule set
+from the firm's sheet (Rulebook) and one spousal sample case, SANTOS & VEGA (petitioner,
+beneficiary, co-sponsor; synthetic), with a pre-made Draft Review and Physical Scan. The start
+screen shows the AOS kind picker (D-131; not saved). The reports show the scoped rules: the
+I-485 fee by age, Question 61, the interpreter box, the co-sponsor signature and W-2, two
+G-28s, a document-against-document difference, and gentle confirms for the visa, married
+name, county against city, I-94 date, misspelled cardholder, money order and G-28 office box.
+The engine does not know AOS, so a new AOS scan cannot be run in the mockup. Also: a gentle
+confirm no longer shows inside a form's check list (it made forms look failed), and "No." is
+no longer treated as an abbreviation in headlines.
+**Mockup round 2, 2026-10-16 10:53.** Max, verbatim: "make it so that the mock up is just click
+not drag pdf to check for other exmaples please". [Claude, built and checked] The preview's
+example box (open by default) now has one-click buttons for four AOS mock cases, and every
+sample file adds itself to the open stage when clicked (Alt-click still downloads):
+- SANTOS & VEGA, spousal: 8 problems, 7 gentle confirms (as above).
+- REYES & REYES, child to parent: clean, "No issues found"; no I-130A or marriage
+  certificate expected (Q-59).
+- NGUYEN & TRAN, parent to child, applicant 12: the I-485 fee only checked as there (Q-64);
+  neither interpreter box ticked on the I-485, and English ticked with the interpreter
+  section filled on the I-765, both counted (Q-67); naturalization certificate expected and
+  present (Q-72); missing visa a gentle confirm.
+- OKAFOR & BELLO, spousal, applicant turns 79 in 17 days: the fee a gentle confirm (Q-64
+  guard 2); paid by G-1650, fine (Q-63); terrorism answered Yes, counted (D-137); divorce
+  certificate missing though the I-130A lists an earlier marriage (Q-72); marriage abroad,
+  city not compared (Q-56).
+
+**Gap check against DACA, 2026-10-16 11:05.** Max, verbatim: "is there anything we should be
+adding to the AOS mock up from the daca one? like is there anything we have missed? from
+stuff like checks to UI elements. do we have possible issues on aos?" [Claude, checked
+against the DACA rule set in `v2-seed.json` and the DACA sample cases]
+- Decided but not yet in the mockup: Possible issues (AOS has them: the I-130 relationship
+  box against the kind, D-131; blank or duplicate pages, Q-55; expired evidence such as a
+  passport, D-100 #5; and the AI's own findings); a Pre-flight run (client corrections
+  reaching every form, Q-77; signatures; card details); Evidence Zero documents read into
+  the case cards (birth certificates, marriage certificate, passport, I-94); a D-138 pattern
+  suggestion in the Rulebook.
+- DACA checks with no AOS decision yet (Q-78 to Q-81): G-1450 signed by the cardholder
+  (DACA-G1450-006); G-1450 email and phone (DACA-G1450-001); each G-28's form-number box
+  listing the right forms (DACA-G28-001); signatures dated as well as signed (DACA-G28-004,
+  DACA-821D-010, DACA-765-009 say "dated").
+- Fixed in the mock: a page-order row was filed under PS-201 (which is signatures).
+**Q-78 to Q-81 ANSWERED 2026-10-16 11:31.** Max, verbatim: "1. yes 2. yes obsly, check they
+match w each other and the info from either one of the people in the case, like pet can pay
+bens and bens and pay pets 3. yes 4. signed and dated yes"
+- Q-78: each G-1450 is signed by the cardholder; checked at Pre-flight and Physical Scan.
+- Q-79: G-1450 email and phone are checked. [Claude, interpretation, unverified with Max] They
+  agree across the G-1450s and match one person on the case: the petitioner may pay the
+  beneficiary's fees and the beneficiary the petitioner's.
+- Q-80: each G-28's form-number box lists the right forms: the petitioner's G-28 the I-130;
+  the applicant's the I-485 and I-765 (and the I-131 when filed).
+- Q-81: AOS signatures are signed and dated.
+**Mockup round 3, 2026-10-16 11:37.** [Claude, built and checked] Added to the AOS mockup:
+- SANTOS & VEGA Evidence Zero: six documents read into the case cards (both birth
+  certificates, marriage certificate, passport, I-94, the co-sponsor's naturalization
+  certificate), each card field labelled with its source, and a suggestion from the marriage
+  certificate (middle name SOFIA to SOPHIA: use or keep, D-55).
+- SANTOS & VEGA Pre-flight: client markups and corrected pages; a phone corrected on the
+  I-485 but not carried to the I-765 (Our errors, Q-77); card expiration blank; a G-1450 phone
+  that belongs to no one on the case (Q-79); the interpreter section still empty (Q-67); the
+  correction proposed to the case card (D-72); "United States" left off counted as fine.
+- Possible issues: SANTOS (duplicate I-864 page, Q-55; old employer letter, an AI finding),
+  REYES (relationship box Spouse on a child-to-parent case, D-131; the result still reads
+  "No issues found", D-36), OKAFOR (expired I-94, D-100 #5).
+- Rulebook, Adjustment of Status: "Suggested from answer patterns" (D-138) with two
+  suggestions to approve or decline and one question not suggested because it is sometimes
+  Yes. Mock data; the I-485 topics there are examples, not rules.
+- Q-78 to Q-81 in the AOS rules and reports: G-1450 signed by the cardholder, G-1450 email
+  and phone, each G-28's form-number box, and "signature and date" wording.
+**Mockup fix, 2026-10-16 11:44.** Max, verbatim: "it bugged out, re run". [Claude, found and
+fixed] The preview server had been stopped; restarted. Two real faults found: (1) opening the
+child-to-parent example renamed its folder from "REYES & REYES" to "REYES" (the folder names
+itself from its people, D-101), so its example button stopped finding it; the mock now uses
+"REYES" and the buttons fall back to the first last name. (2) Pressing Run on an AOS mock case
+ran the real checker with a General sample answer and replaced the mock report with an
+unrelated one; the preview now refuses a new AOS run with a plain "Mockup: the AOS reports
+here are pre-made" message. DACA and General runs still work. [Claude, build note] D-101's
+"names + case type" folder name collapses two identical last names to one: worth a look in
+the real build for child-to-parent and parent-to-child cases.
+
+**UI notes, 2026-10-16 11:54.** Max, verbatim: "all unexpanded at the beginning. hover makes it
+clear that its a button to expand. case card should have a title that says: General summary"
+- Issue cards start folded (replaces "open by default" from 08:43). Hovering a card's title
+  row darkens the card, underlines the title and turns the chevron into a "Show details"
+  pill ("Hide details" when open). Built and checked.
+- The case card's title is "General summary" (Max's wording). Built in the sketch for every
+  case type.
+- [Claude] Also fixed in the mock: the passport line showed raw label keys; it now reads
+  "passport number, passport expiration date".
+**Hover, 2026-10-16 11:58.** Max, verbatim: "i think "show details" is not necessary. just make
+it a nice animated hover". No text on hover. The card lifts a touch with a soft shadow and a
+deeper tint, the title warms, and the chevron gains a round backing and dips once; it turns
+over when open. Motion is off for people who ask for reduced motion. Built and checked.
+**Hover follow-up, 2026-10-16 12:04.** Max, verbatim: "its slow, it should start animating the
+pixel i start hovering. rn it waits until the text is hovered or i go to the middle". [Claude]
+Cause: the hover watched the title row, which sat inside the card's padding. The padding
+moved onto the row, so the row is the whole card when folded (checked: 838 by 54 px, same as
+the card) and the hover starts at the edge; transitions shortened to 0.12 s. Checked 3 px in
+from a card's corner.
+
+**Five more notes, 2026-10-16 12:05 to 12:17.** Max, verbatim, in order:
+1. "the arrow is not centered fyi on the drop down for expand". The chevron is now a drawn
+   SVG centred in its circle (measured: 0 px off), not a text glyph.
+2. "expand should still show the info from the cleared items not make it smaller". A
+   cleared card still folds when cleared; opening it shows all its details.
+3. "evidence match check should be called evidence match. and it should also get cleared
+   when we clear the item on the needs attention". **Heading is "Evidence Match"** (Max's
+   wording; replaces "Evidence Match Check" from 08:30). A document in Evidence Match turns
+   cleared ("Checked. Its differences were cleared by staff in Needs attention.") once every
+   Needs attention item that came from it is cleared.
+4. "the "i" does not disappear when cleared, is this intentional? does not look so". Not
+   intentional: a stronger 2.0.2 style kept the "i" visible under the check. Fixed; a cleared
+   confirm shows the check only.
+5. **D-139: "stage reviewed means everything gets cleared fyi".** Marking a stage reviewed
+   clears every item in that stage's report ("Cleared with the stage review · time");
+   unmarking takes those back and keeps the ones staff cleared by hand.
+[Claude, found while building 5] Clears were remembered by item only, so clearing a rule on
+one case would have shown it cleared on another case or stage with the same rule. They are
+now kept per case and per stage. All checked in the preview.
+
+**D-140: Evidence Match folds into Checks, "Whole package".** Date: 2026-10-16 12:21. Max,
+verbatim, on a screenshot of the Evidence Match section: "does it make more sense to fold
+this (screenshot) into whole package checks? so they're neatly inside the whole package part,
+i just feel like that doesnt do much, specially bc the item it is listing as attention is
+already going to be covered on needs attentoin (right?)" [Claude, verified] Right: every
+evidence difference is already one merged item in Needs attention (D-135). Built: no
+separate Evidence Match section in Physical Scan; under Checks > Whole package an "Evidence
+Match" subheading lists one check row per document ("The petitioner's birth certificate
+matches the I-130, I-864 (first name, last name, date of birth)."; a document with
+differences "does not match the forms. The differences are in Needs attention."). That row
+clears when its Needs attention items are cleared, and the Whole package count includes it
+(checked: 8/9 to all 9 cleared).
+
+**Last pass before green-light, 2026-10-16 12:34.** Max asked what Claude would add or take
+away. Claude proposed five additions, one subtraction and build notes. Max, verbatim:
+"1. nah i like em down there 2. nah 3. show me this first and maybe i okay it 4. yeah
+5. okay yeah show me tho / drop fatal label you're right / cleared by you is actually not
+necessary at all, just say cleared. and the date also isn't necessary". On the build notes:
+"not sure why this is a problem" (Clear button inside the card header), "suggest some"
+(folder names for identical last names), "lets see then" (dark mode), "like what
+specifically?" (placeholder wording).
+- Declined: Please confirm stays below Checks; cleared cards stay where they are.
+- To show first: a summary strip at the top of the report (counts that jump to sections, a
+  bar that fills as items clear).
+- **D-141: cards open and close smoothly** (yes).
+- To show first: the same cards and one Needs attention list in Draft Review and Pre-flight.
+- **D-142: no FATAL label** anywhere in v2; everything in Needs attention must be fixed.
+- **D-143: a clear shows just "Cleared"**, no name, no date or time.
+[Claude, sketch round, 12:42, built and checked in light and dark]
+- Summary strip under the report header: "8 to fix · 7 to confirm · 2 possible issues",
+  each a jump to its section (the section glows once), over a bar that fills as items and
+  confirms clear; all cleared turns it green with "All cleared" and a "Mark this stage
+  reviewed" button. For Max to approve.
+- Draft Review and Pre-flight now use the Physical Scan design: one Needs attention list of
+  cards (case-card differences merged across forms and documents, consistency, not
+  carried, form against form, client corrections, missing items, translations, checklist
+  failures), then Client corrections (Pre-flight), then Checks with Evidence Match inside the
+  package list. For Max to approve. [Claude, noticed] That list is "Complete runthrough" in
+  Draft Review and Pre-flight but "Whole package" in Physical Scan: one name is needed.
+- D-141 open and close: a 170 ms open, 140 ms close, with a timer fallback so a throttled
+  animation can never leave a card stuck (found in testing).
+- D-142 and D-143 applied.
+Open for Max: Clear button inside the card header (explained, a build detail); folder names
+for identical last names (options given); placeholder wording (list given).
+
+**Approvals, 2026-10-16 12:55.** Max, verbatim, answering each point: folder names "yup" (A);
+wording "all good"; the package list name "this one" (Whole package); Draft Review and
+Pre-flight "ok good"; open and close "maybe smoother? idk"; no FATAL "cool"; then "i like the
+strip" and ""Suggestions only. Never counted, never emailed" delete that description not
+necessary, just say Suggestions only."
+- **D-144: two people with the same last name** make the folder "REYES, Miguel & Carmen"
+  (last name once, both first names).
+- **Wording:** the mockup's placeholder strings are approved as written ("all good").
+  [Claude, interpretation, unverified with Max] Approved for the strings listed at 12:42;
+  the ~150 older placeholders in `copy.js` (D-87) are not part of that.
+- **D-145: "Whole package"** is the package-wide check list's name in every stage
+  (replaces "Complete runthrough" in Draft Review and Pre-flight).
+- **Approved:** the summary strip; Draft Review and Pre-flight in the Physical Scan design.
+- **D-141 smoother:** open 300 ms with a soft ease-out and the details drifting into place,
+  close 240 ms; the chevron turns in step.
+- **D-146: the Possible issues note reads "Suggestions only."**
+All built in the sketch and checked.
+
+**Close jitter, 2026-10-16 13:00.** Max, verbatim: "when it unexpands it jitters. check that
+animation". [Claude, measured frame by frame] Closing shrank the card smoothly to 44 px and
+then jumped to 54 px: the title row had 10 px less padding while open and got it back the
+instant the card closed. Also the animation could snap back to full height for one frame
+before the card closed. Fixed: the row's padding never changes, and the last frame is held
+until the card has closed. Re-measured: closing 181 px down to 54 px and opening 54 px up to
+181 px, both without a single backward step. Build note: the real build must keep both.
+
+**Green light and version name, 2026-10-16 13:21.** Max, verbatim: "thanks. version 2.0.2 is
+already in a pr for rob right? can we make another one for 2.2. so that he can first okay
+2.0.2, and then he can okay 2.2, wait shouldn't it be called 2.1? lol"
+- [Claude, verified via gh] Yes: v2.0.2 is PR #4, open, not merged; production is still at
+  `79759a9`.
+- **D-147: the AOS release is v2.1**, not v2.2. [Claude] 2.0.1 and 2.0.2 are fixes; a new case
+  type is a feature release. Everything logged as "v2.2" today means v2.1.
+- **The v2.1 scope is green-lit** for terminal to build: the AOS case type and the UI pass
+  (D-129 to D-147, Q-59 to Q-81, as amended). [Claude] Built on top of `proof-scan-v2.0.2`;
+  its PR is stacked on #4 so Rob reviews 2.0.2 first, then 2.1. Max tests the real build in
+  the local preview before it is pushed (his rule from 10:10). Launch config
+  `proof-scan-v21-dev` (port 8789).
+
+**Q-62 ANSWERED 2026-10-16 08:24.** Max, verbatim: "yes", to Claude's option A: a married
+name on the forms against the maiden name on the birth certificate is not a mistake when the
+marriage certificate backs it up (the spouse's last name, or both names together); a gentle
+confirm asks staff to check the client wants the married name (the sheet's "Is there a name
+change due to marriage?").
+
+**D-133: No "Included in the scan" list in Physical Scan.** Date: 2026-10-16 08:24. Max,
+verbatim, pasting the list (G-1450 $520, G-1450 $85, G-1145, G-28, I-821D, I-765, I-765WS, EAD
+card): "now i think this is unnnecessary. if something is missing checker will say so...."
+[Claude, verified in code] A missing package item already leads Needs attention
+(`report-model.js`: "missing forms, then failed checks"). Removed in the sketch by v2 only,
+since `report.js` is shared with the old checker (D-88). Same spirit as D-106.
+
+**G-1450 cardholder and the evidence table, 2026-10-16 08:27.** Max, verbatim, after pasting
+the sketch's evidence table (the EAD and the intake each listing the same first name, last
+name, A-Number and date of birth differences): "fyi the 1450 can have a different name on the
+credit card holder's info, that is not a mistake whatsoever, unless they dont match which
+would be a typo, so this one needs more intelligence. and also this part you've organized
+does not make much sense. try again yeah? lets keep the mistakes up on top first"
+- **D-134: the G-1450 cardholder can be anyone.** A cardholder name different from the
+  client is never a mistake. [Claude, interpretation, unverified with Max] "Unless they dont
+  match which would be a typo": a cardholder name that looks like a misspelling of someone on
+  the case (the petitioner, say) is flagged as a typo, judged the way a person would (as
+  Q-53). The G-1450's applicant or petitioner name is still checked against the forms.
+- **Evidence table, round 2:** reorganise; mistakes first.
+  [Claude, sketch round 4, 08:31] The table is gone. "Evidence matches the forms" now sits
+  right under Needs attention, above the per-form checks. Mistakes come first, one sentence
+  per wrong fact, merged across documents that agree, with the forms under it ("The
+  applicant's first name is ANA on the forms; the EAD and the intake show LUIS." / "On
+  G-1450 (×2), G-1145, G-28, I-821D, I-765, I-765WS"). Tinted and stacked like Needs
+  attention, each with a Clear button. Matching documents follow, quiet. Wording is
+  placeholder. [Claude, noticed] In DACA these facts also appear in Needs attention as case
+  card differences, because the card is built from the EAD; folding the two is a candidate.
+- **Copy, 2026-10-16 08:30.** Max, verbatim: ""Evidence matches the forms" Better to say.
+  Evidence Match Check". The section heading is "Evidence Match Check" (Max's wording, final).
+  Applied in the sketch (`copy.js`, `match.heading`).
+
+**D-135: One Needs attention list; every wrong fact once.** Date: 2026-10-16 08:36. Max, on a
+screenshot of the same facts in Needs attention and in Evidence Match Check: "wait are we not
+duplicating the issues? cant we merge into one needs attention? or evidence match check?"
+Claude recommended one Needs attention list. Max, verbatim: "yes build it as one needs
+attention".
+- Each wrong fact is one item naming every source that disagrees with the forms, the forms
+  to fix under Where: "The applicant's name is ANA MARIA RIVERA on the forms." / "The case
+  card, the EAD and the intake show LUIS ALBERTO GARCIA." / Where: "G-1450 (×2) · G-1145 ·
+  G-28 · I-821D · I-765 · I-765WS". Name parts fold into one name line, address parts into one
+  address line. Other problems (failed checks, missing forms) follow.
+- One count and one Clear per problem; the result line uses the merged count (9 in the
+  sample, each problem once).
+- Evidence Match Check keeps only what was checked: a matching document in green, a
+  document with differences as "Checked. Its differences are listed in Needs attention."
+- [Claude] Built in the sketch for Physical Scan (`model.js` `mergedFacts`). Draft Review and
+  Pre-flight have the same duplication (case-card differences in "Our errors" plus the
+  evidence block); the build applies the same rule there. The real count comes from the
+  server (D-18).
+
+**D-136: Each problem is a card that says what to do.** Date: 2026-10-16 08:41. Max,
+verbatim, on a screenshot of the merged list: "perhaps give more details or make each
+bigger, so its easier to understand what is the issue what to do".
+[Claude, sketch round 5] Built and checked. Each Needs attention item is a larger card,
+always open:
+- Title says what is wrong ("The applicant's name does not match").
+- The two values side by side: "On the forms" (amber) and "On the case card, EAD and intake"
+  (green), named by source.
+- "Fix on": the forms as chips (G-1450 ×2, G-1145, G-28, ...).
+- A what-to-do line ("If the forms are wrong, correct them on the forms listed. If the case
+  card is out of date, update it in Evidence Zero."). A failed check shows Expected, Where
+  and Why, then "Correct it on the form, then run Physical Scan again."
+- A cleared card folds to one green line with "Cleared by you · time" and Undo.
+All wording is placeholder (D-87). [Claude] This replaces the 08:15 headline-only closed row
+for Needs attention items: the card is always open, because the details are the point.
+**Follow-up, 08:43.** Max, verbatim: "allow to unexpand each please". Each card opens by
+default and folds to its title line with a chevron; clearing folds it too. Built in the
+sketch and checked.
+
 **Answers to Q-48 to Q-57 (v2.0.2), as in the master record:**
 
 **Q-48 — ANSWERED 2026-10-13 10:45.** Max, verbatim: "B gentle confirm". A last name or

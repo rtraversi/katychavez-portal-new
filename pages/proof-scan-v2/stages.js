@@ -11,9 +11,9 @@ import {
   el, t, button, section, dropZone, scanButton, reveal, scrollTo, fmtMb, fmtWhen, errorLine, icon,
 } from './ui.js';
 import {
-  checkFiles, totalBytes, LIMITS, SCOPED_STAGES, isGeneral, isSignedOff, latestRuns, emailOutcome,
+  checkFiles, totalBytes, LIMITS, SCOPED_STAGES, isMulti, isSignedOff, latestRuns, emailOutcome,
 } from './model.js';
-import { renderReviewResult, renderPhysicalScanResult } from './results.js';
+import { renderStageResult } from './results.js';
 import { renderPossibleIssues } from './possible-issues.js';
 import { errorText } from './api.js';
 
@@ -21,7 +21,7 @@ const NEXT = { draft_review: ['preflight', 'physical_scan'], preflight: ['physic
 
 export function stageLocal(ctx, stage) {
   ctx.stages ||= {};
-  return (ctx.stages[stage] ||= { scope: null, form: null, files: [], email: false, error: '', response: null, stored: null });
+  return (ctx.stages[stage] ||= { scope: null, form: null, files: [], email: false, error: '', response: null, stored: null, open: new Set() });
 }
 
 // Opening a stage shows its latest stored result, read back from the server.
@@ -32,12 +32,13 @@ export async function loadStoredRun(ctx, stage) {
   if (local.stored?.run_id === latest.id) return;
   const res = await ctx.api.getRun(latest.id);
   if (!res.ok || !res.data?.run?.result_json) { local.stored = null; local.error = res.ok ? '' : errorText(res); return; }
-  local.stored = { run_id: res.data.run.id, result: res.data.run.result_json, issues: res.data.possible_issues || [], created_at: res.data.run.created_at };
+  local.stored = { run_id: res.data.run.id, result: res.data.run.result_json, issues: res.data.possible_issues || [], created_at: res.data.run.created_at, view: res.data.view };
 }
 
 export function renderStage(mount, ctx, stage) {
   const view = ctx.view;
-  const general = isGeneral(view);
+  // General and AOS: one card per person and no forms list to pick from (D-93).
+  const general = isMulti(view);
   const local = stageLocal(ctx, stage);
   const scoped = SCOPED_STAGES.has(stage);
   if (scoped && !local.scope) local.scope = 'whole';
@@ -202,7 +203,8 @@ export function renderStage(mount, ctx, stage) {
       return false;
     }
     local.response = { ...res.data, emailed: local.email };
-    local.stored = { run_id: res.data.run_id, result: res.data.result, issues: res.data.possible_issues || [], created_at: res.data.result?.scan?.scanned_at, fresh: true };
+    local.stored = { run_id: res.data.run_id, result: res.data.result, issues: res.data.possible_issues || [], created_at: res.data.result?.scan?.scanned_at, fresh: true, view: res.data.view };
+    local.open = new Set();
     local.files = [];
     local.justRan = true;
     if (res.data.case_view) ctx.setView(res.data.case_view, { scrollToResult: stage });
@@ -225,22 +227,38 @@ export function renderStage(mount, ctx, stage) {
     const card = el('div', `card ps-report v2-result${stage === 'physical_scan' ? '' : ' v2-review-result'}`);
     card.dataset.stage = stage;
     body.appendChild(card);
-    const issuesCtx = { api: ctx.api, caseTypeLabel: view.case.case_type_label };
+    let signoffNode = null;
+    // Re-reads the run (its view and Possible issues) after a Possible issue
+    // is decided, so the strip's count is the server's.
+    const refresh = async () => {
+      const res = await ctx.api.getRun(stored.run_id);
+      if (res.ok && res.data?.view) { stored.view = res.data.view; stored.issues = res.data.possible_issues || stored.issues; draw(); }
+    };
+    const issuesCtx = { api: ctx.api, caseTypeLabel: view.case.case_type_label, onDecided: refresh };
     // Fixed values from Pre-flight corrections were proposed to the case card (D-72).
     const proposedFromRun = (view.suggestions || []).filter((s) => s.run_id && s.run_id === stored.run_id).length;
-    const resultCtx = { openStage: ctx.openStage, proposedFromRun };
-    if (stage === 'physical_scan') {
-      renderPhysicalScanResult(stored.result, card, {
-        ...resultCtx,
-        afterReport: (extra) => renderPossibleIssues(extra, stored.issues, issuesCtx),
-      });
-    } else {
-      renderReviewResult(stored.result, card, resultCtx);
-      renderPossibleIssues(card, stored.issues, issuesCtx);
+    // D-132: one click clears an item; the server answers with the new view
+    // (the result line and every count) and the case view (the tracker).
+    const onClear = async (key, cleared) => {
+      const res = await ctx.api.clear(view.case.id, stage, key, cleared);
+      if (!res.ok) { local.error = t('v21.clear_failed', { error: errorText(res) }); ctx.redraw(); return; }
+      if (cleared) local.open.delete(key);
+      stored.view = res.data.view;
+      if (res.data.case_view) ctx.setView(res.data.case_view, { keepScroll: true }); else draw();
+    };
+    const resultCtx = {
+      openStage: ctx.openStage, proposedFromRun, onClear: stored.run_id ? onClear : null, open: local.open,
+      signoffTarget: () => signoffNode, view: stored.view,
+      afterReport: (mount) => renderPossibleIssues(mount, stored.issues, issuesCtx),
+    };
+    function draw() {
+      if (!stored.view) { card.textContent = ''; card.appendChild(errorLine(t('review.not_stored'))); return; }
+      renderStageResult(stored.result, stored.view, card, { ...resultCtx, view: stored.view });
     }
+    draw();
     if (stored.fresh) { reveal(card); stored.fresh = false; }
 
-    if (stored.run_id) body.appendChild(signOff());
+    if (stored.run_id) { signoffNode = signOff(); body.appendChild(signoffNode); }
     if (resp?.emailed) body.appendChild(emailNote(resp));
   }
 
@@ -264,7 +282,10 @@ export function renderStage(mount, ctx, stage) {
       const res = await ctx.api.signOff(view.case.id, stage, want);
       cb.disabled = false;
       if (!res.ok) { local.error = t('signoff.error', { error: errorText(res) }); cb.checked = !want; ctx.redraw(); return; }
-      ctx.setView({ ...view, signoffs: res.data.signoffs || [] });
+      // D-139: marking the stage reviewed clears every item; unmarking takes
+      // back only those. The server answers with the view as it now stands.
+      if (res.data.view) local.stored.view = res.data.view;
+      ctx.setView(res.data.case_view || { ...view, signoffs: res.data.signoffs || [] }, { keepScroll: true });
     });
     wrap.appendChild(lab);
     if (on && NEXT[stage].length) {

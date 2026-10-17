@@ -164,3 +164,111 @@ editions button) was not possible in this session (no browser); it uses kit clas
 - Migrations not applied anywhere. Not deployed.
 - Placeholder wording throughout (`pages/proof-scan-v2/copy.js`); Max rewrites after launch.
 - Removing the old checker waits until Max signs v2 off.
+
+## v2.1: the AOS case type and the UI pass (branch `proof-scan-v2.1`, 2026-10-17)
+
+Built on `proof-scan-v2.0.2` (`b8e3924`, PR #4, unmerged), for decisions D-129 to D-147 and
+answers Q-59 to Q-81 as amended (copied into `DECISIONS-MASTER-RECORD.md`). Synthetic data
+only. Local commit, not pushed. Migration `2006`, never applied anywhere.
+
+**Tests:** 965 → 1019 passing (`npm test`). **Database checks:** 48/48 on a throwaway local
+Postgres 16 (`scripts/proof-scan-v2-dbcheck/run.sh`, 2006 added to the chain).
+
+### UI pass (all case types)
+- **Type and greys (Max: "the font is too light and small"):** a `.ps2`-scoped ramp one step up
+  and darker greys, both derived from the theme tokens (`css/portal.css`, end of file). No
+  hard-coded colours; light, dark and every theme follow.
+- **One design for all three stages (approved 10-16):** `pages/proof-scan-v2/results.js` is a new
+  renderer for Draft Review, Pre-flight and Physical Scan. Physical Scan no longer uses
+  `pages/proof-scan/report.js`, so the old checker's renderer is byte-for-byte unchanged (D-88).
+- **One Needs attention list (D-135), server-side:** `functions/api/_proof-scan-v2-merge.js`.
+  Case-card, reference, evidence and form-against-form differences become one `fact` item per
+  person and fact (name parts one name, address parts one address), naming every source, with
+  the findings kept under it (`parts`). Then two documents that disagree, failed checks, missing
+  items, translations, corrections. `attention_count` and the email use the merged list.
+  Result schema version 3; version-2 results still open, item by item as stored.
+- **Issue cards (D-136, D-141):** title is what is wrong; "On the forms" / "On the {sources}";
+  "Fix on" chips; a what-to-do line; checks show Expected, Where (duplicate page text dropped)
+  and Why. Folded at first. 300 ms open, 240 ms close, the header's padding never changes, the
+  last frame is held until closed, a timer finishes a throttled animation, no motion for reduced
+  motion. The whole card is the hover target; centred SVG chevron. Clear sits beside the card's
+  button, never inside it.
+- **Clears (D-132, D-139, D-143):** table `proof_scan_clears` (case, stage, item key, hand or
+  review, who, when; who and when never shown). `POST /api/proof-scan-v2-clear`. The server
+  computes the result line, every count, the strip, each form's list and the Evidence Match
+  rows from the clears (`functions/api/_proof-scan-v2-view.js`). Item keys are stable (a fact's
+  key carries a hash of its values, never the values), so a re-run finding the same thing keeps
+  the clear. "Mark this stage reviewed" clears every item; unmarking takes back only those.
+- **Evidence Match (D-140, D-145):** one row per document inside "Whole package", which is the
+  list's name in every stage. **Summary strip:** "N to fix · N to confirm · N possible issues",
+  jumps that glow once, a bar that fills; all cleared turns green with "Mark this stage
+  reviewed". **Also:** no "Included in the scan" (D-133), no severity label (D-142), confirms
+  never in a form's list, a cleared confirm shows the check only, "General summary",
+  "Suggestions only." (D-146), headlines no longer break at "Apt." (v2 only).
+
+### AOS case type
+- **Migration 2006:** `aos` case type; `aos_kind` on the case (required for AOS, locked with
+  the case type); passport number and expiry on the card; `applies_when` on rules and package
+  items; `missing_confirm` on package items; origin `answer_pattern`; `proof_scan_clears`;
+  `proof_scan_answer_tally` (counts only: no case, run or person column); the AOS rule set v1
+  (General's current firm-wide checks copied in SQL, then 49 AOS checks and 28 package items,
+  generated from `functions/api/proof-scan-profiles/v2-aos-seed.json` by
+  `scripts/proof-scan-v2-aos-seed.mjs`).
+- **Server decisions** (`functions/api/_proof-scan-v2-aos.js`, wired in the engine): fees with
+  the I-485 by age and guards 1, 2 and 4 (amounts live in the rule's Expected text, so staff
+  edit them in the Rulebook; unreadable wording is not checked, never guessed) and the amended
+  under-14 rule; G-1650 fine; money order a gentle confirm; cardholder anyone, a likely
+  misspelling a gentle confirm; G-1450 email and phone (Q-79); the English/interpreter table
+  (Q-67); "if needed" items read from the package (Q-72); visa and I-94 missing gentle (Q-74);
+  relationship box against the kind as a reserved Possible issue (D-131); married names backed
+  by a marriage certificate (Q-62); I-94 entry date and port gentle, passport number and expiry
+  only (Q-61); two documents that disagree counted; the answer tally and Rulebook suggestions
+  (D-138, `POST /api/proof-scan-v2-patterns`).
+- **Model rules** for everything the model reads: names, boxes, form-number boxes (Q-80),
+  signatures signed and dated (Q-81), the G-1450 signed by the cardholder (Q-78), income filled
+  in only (Q-69), genocide, torture and terrorist activity No (D-137), page order inside forms
+  (Q-71).
+- **Page:** the kind picker at the start, the kind on the case header, multi-person cards,
+  Evidence Zero with the AOS requirement, the Rulebook's "Suggested from answer patterns".
+
+### Page and question numbers (item 9)
+The portal's form maps are older editions (I-485 01/20/25, I-864 10/17/24), so the current
+blank forms were read from uscis.gov (2026-10-16): I-485 09/18/26, I-864 and I-864A 08/24/26,
+I-130 and I-130A 04/01/24, I-765 08/21/25, I-131 01/20/25, G-1450 02/06/26.
+- **I-485 Question 61 is not confirmable.** Item 61 is "highest level of education" in both the
+  09/18/26 and the 01/20/25 editions, not a yes/no question. The record says the number must be
+  found before it becomes a rule, so it is not in the rule set. Open for Max.
+- Torture 53.a and genocide 53.b are on page 17. The form never says "terrorism"; items 43.b to
+  44 (page 16) are its terrorist-activity questions. That reading is Claude's, for Max to confirm.
+- The current I-485 has no English/interpreter boxes in Part 10, so Q-67's box test applies to
+  the I-130A and I-765; on the I-485 a filled interpreter section must be signed and dated.
+- Moved from the sheet: I-765 address "questions 12-15" is now Part 2 items 5 to 7 (page 2); the
+  I-130A language boxes are on page 3 (interpreter section page 4). Everything else on the
+  sheet's pages matches the current editions.
+
+### Choices made in the build (for Max)
+- Clears count toward the result line for needs-attention and not-checked items (both keep a
+  stage from being done); confirms and needs-info are cleared but never change the line. The
+  strip's "to fix" is needs-attention only; its bar fills with every clearable item.
+- A new run of a stage drops that stage's review clears with its sign-off (D-75: a fresh run
+  needs a fresh review); hand clears stay.
+- The answer tally counts Physical Scan runs only, so one case's Draft Review and Pre-flight do
+  not count three times. Re-running the same Physical Scan does count again (nothing records
+  which case answered, by design).
+- The AOS kind is locked once the case starts, like the case type.
+- AOS stages run whole-package only, like General.
+- A Pre-flight correction only has to reach forms about the same person (v2.1, General too).
+- The fee payer is matched against the person's card and every one of their forms, so a married
+  name on the payment is still the person.
+- G-1450 has no date beside the signature, so Q-81's "dated" is not asked of it.
+
+### Preview
+`PORT=8789 npm run preview:proof-scan-v2`. At start-up the four AOS cases of the mockup run
+through the real engine (`test/fixtures/proof-scan-v2/aos-scenarios.mjs` answers the model):
+SANTOS & VEGA (Evidence Zero, Draft Review, Pre-flight, Physical Scan), REYES (Miguel & Carmen),
+NGUYEN & TRAN, OKAFOR & BELLO. Earlier answer counts are seeded so the Rulebook shows two
+suggestions. Example buttons and click-to-add sample files in the banner.
+
+### Not done
+- I-485 Question 61 (above). Not run against the real AI; the AOS prompt and the new "aos"
+  observations have only seen canned answers. Placeholder wording elsewhere stays as before.
