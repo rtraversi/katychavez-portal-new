@@ -106,9 +106,10 @@ SELECT dbcheck.record('cases: a person card holds the D-100 facts, dates as date
   AND (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'proof_scan_people'
      AND column_name IN ('i94_expiration','last_entry_date','marriage_date') AND data_type = 'date') = 3);
 
+-- v2.1: three case types once 2006 has added AOS.
 SELECT dbcheck.record('seed: one current rule set per case type',
-  (SELECT count(*) FROM public.proof_scan_rule_sets WHERE is_current) = 2
-  AND (SELECT count(DISTINCT case_type) FROM public.proof_scan_rule_sets WHERE is_current) = 2);
+  (SELECT count(*) FROM public.proof_scan_rule_sets WHERE is_current) = 3
+  AND (SELECT count(DISTINCT case_type) FROM public.proof_scan_rule_sets WHERE is_current) = 3);
 
 CREATE TABLE dbcheck.seed_before AS SELECT dbcheck.seed_fingerprint() AS fp;
 \ir ../../supabase/migrations/2003_proof_scan_v2_seed.sql
@@ -165,6 +166,9 @@ BEGIN
   VALUES (v_run_dr, 't', 'd', 'e', 'w', 'u') RETURNING id INTO v_issue;
   INSERT INTO public.proof_scan_rule_changes (rule_set_id, action, rule_id)
   VALUES (dbcheck.rule_set('general'), 'edit', 'PS-101');
+  -- v2.1 (2006): a clear and an answer count, so the staff-only checks see rows.
+  INSERT INTO public.proof_scan_clears (case_id, stage, item_key, via) VALUES (v_case, 'draft_review', 'rule:PS-101', 'hand');
+  INSERT INTO public.proof_scan_answer_tally (case_type, form, item, topic, no_count) VALUES ('aos', 'I-485', '53.b', 'genocide', 1);
 
   INSERT INTO dbcheck.ids VALUES ('case', v_case), ('case2', v_case2), ('person', v_person), ('doc', v_doc),
     ('run_dr', v_run_dr), ('run_pf', v_run_pf), ('issue', v_issue);
@@ -177,7 +181,8 @@ INSERT INTO dbcheck.ps_tables VALUES
   ('proof_scan_documents'), ('proof_scan_document_people'), ('proof_scan_suggestions'),
   ('proof_scan_signoffs'), ('proof_scan_possible_issues'), ('proof_scan_suppressions'),
   ('proof_scan_rule_sets'), ('proof_scan_package_items'), ('proof_scan_rules'),
-  ('proof_scan_rule_stage_settings'), ('proof_scan_rule_changes');
+  ('proof_scan_rule_stage_settings'), ('proof_scan_rule_changes'),
+  ('proof_scan_clears'), ('proof_scan_answer_tally');
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- SECURITY
@@ -401,7 +406,7 @@ SELECT dbcheck.record('v2.0.2: PS-103 is retired in the current versions and liv
   (SELECT bool_and(r.retired) FROM public.proof_scan_rules r
      JOIN public.proof_scan_rule_sets s ON s.id = r.rule_set_id WHERE s.is_current AND r.rule_id = 'PS-103')
   AND (SELECT bool_and(NOT r.retired) FROM public.proof_scan_rules r
-     JOIN public.proof_scan_rule_sets s ON s.id = r.rule_set_id WHERE s.version = 1 AND r.rule_id = 'PS-103'));
+     JOIN public.proof_scan_rule_sets s ON s.id = r.rule_set_id WHERE s.version = 1 AND s.case_type <> 'aos' AND r.rule_id = 'PS-103'));
 
 SELECT dbcheck.record('v2.0.2: the new versions copy every rule, stage setting and package item',
   (SELECT bool_and(
@@ -437,3 +442,70 @@ SELECT dbcheck.record('v2.0.2: edition notices must be an object; a general rule
                               SELECT id, 't', 'd', 'e', 'w', 'u', '' FROM public.proof_scans WHERE case_id IS NOT NULL LIMIT 1$q$))).err IS NOT NULL
   AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_possible_issues (run_id, title, description, evidence, why_it_matters, uncertainty, general_rule)
                               SELECT id, 't', 'd', 'e', 'w', 'u', 'Check the evidence.' FROM public.proof_scans WHERE case_id IS NOT NULL LIMIT 1$q$))).n = 1);
+
+
+-- ── v2.1 (migration 2006) ────────────────────────────────────────────────────
+
+SELECT dbcheck.record('v2.1: AOS v1 is current, with General''s firm-wide checks, 48 AOS checks and 28 package items',
+  (SELECT is_current FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1)
+  AND (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('aos') AND scope = 'case_type') = 48
+  AND (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('aos') AND scope = 'firm')
+    = (SELECT count(*) FROM public.proof_scan_rules r JOIN public.proof_scan_rule_sets s ON s.id = r.rule_set_id
+       WHERE s.case_type = 'general' AND s.is_current AND r.scope = 'firm')
+  AND (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('aos')) = 28
+  AND (SELECT bool_and(r.retired) FROM public.proof_scan_rules r WHERE r.rule_set_id = dbcheck.rule_set('aos') AND r.rule_id = 'PS-103')
+  AND (SELECT count(*) FROM public.proof_scan_rule_stage_settings x JOIN public.proof_scan_rules r ON r.id = x.rule_pk
+       WHERE r.rule_set_id = dbcheck.rule_set('aos')) = 3 * (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('aos')),
+  format('aos rules=%s items=%s',
+    (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('aos')),
+    (SELECT count(*) FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('aos'))));
+
+SELECT dbcheck.record('v2.1: spousal-only, co-sponsor and gentle items are marked (Q-59, Q-72, Q-74)',
+  (SELECT applies_when FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('aos') AND item_id = 'AOS-F-I130A') = 'spousal'
+  AND (SELECT applies_when FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('aos') AND item_id = 'AOS-E-STATUS-J') = 'joint_sponsor'
+  AND (SELECT bool_and(missing_confirm) FROM public.proof_scan_package_items WHERE rule_set_id = dbcheck.rule_set('aos') AND item_id IN ('AOS-E-VISA', 'AOS-E-I94'))
+  AND NOT (SELECT bool_or(missing_confirm) FROM public.proof_scan_package_items WHERE item_id NOT IN ('AOS-E-VISA', 'AOS-E-I94'))
+  AND (SELECT count(*) FROM public.proof_scan_rules WHERE applies_when IS NOT NULL AND rule_set_id <> dbcheck.rule_set('aos')) = 0);
+
+SELECT dbcheck.record('v2.1: an AOS case needs a kind, no other case type has one, and it is locked (D-131)',
+  (dbcheck.attempt($q$INSERT INTO public.proof_scan_cases (case_type, label) VALUES ('aos', 'X')$q$)).err IS NOT NULL
+  AND (dbcheck.attempt($q$INSERT INTO public.proof_scan_cases (case_type, label, aos_kind) VALUES ('general', 'X', 'spousal')$q$)).err IS NOT NULL
+  AND (dbcheck.attempt($q$INSERT INTO public.proof_scan_cases (case_type, label, aos_kind) VALUES ('aos', 'X', 'cousin')$q$)).err IS NOT NULL
+  AND (dbcheck.attempt($q$INSERT INTO public.proof_scan_cases (case_type, label, aos_kind) VALUES ('aos', 'X', 'spousal')$q$)).n = 1
+  AND (dbcheck.attempt($q$WITH c AS (INSERT INTO public.proof_scan_cases (case_type, label, aos_kind) VALUES ('aos', 'X', 'spousal') RETURNING id)
+                         UPDATE public.proof_scan_cases SET aos_kind = 'child_to_parent' WHERE id = (SELECT id FROM c)$q$)).err IS NOT NULL);
+
+SELECT dbcheck.record('v2.1: applies_when is a closed list; an answer-pattern rule is a valid origin (D-138)',
+  (dbcheck.attempt(format($q$UPDATE public.proof_scan_package_items SET applies_when = 'cousin' WHERE rule_set_id = %L AND item_id = 'AOS-E-MC'$q$, dbcheck.rule_set('aos')))).err IS NOT NULL
+  AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_rules (rule_set_id, rule_id, title, severity, scope, origin, sort_order)
+                              VALUES (%L, 'AOS-ADD-001', 't', 'fatal', 'case_type', 'answer_pattern', 999)$q$, dbcheck.rule_set('aos')))).err IS NULL);
+
+SELECT dbcheck.record('v2.1: one clear per case, stage and item; by hand or by the stage review (D-132, D-139)',
+  (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_clears (case_id, stage, item_key, via) VALUES (%L, 'draft_review', 'rule:PS-101', 'review')$q$, dbcheck.id('case')))).err IS NOT NULL
+  AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_clears (case_id, stage, item_key, via) VALUES (%L, 'preflight', 'rule:PS-101', 'review')$q$, dbcheck.id('case')))).n = 1
+  AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_clears (case_id, stage, item_key, via) VALUES (%L, 'preflight', 'rule:PS-102', 'robot')$q$, dbcheck.id('case')))).err IS NOT NULL
+  AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_clears (case_id, stage, item_key, via) VALUES (%L, 'evidence_zero', 'rule:PS-102', 'hand')$q$, dbcheck.id('case')))).err IS NOT NULL);
+
+SELECT dbcheck.record('v2.1: the answer tally holds counts only: no case, run, person or client column (D-138)',
+  NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'proof_scan_answer_tally'
+              AND (column_name ~ '(case_id|run_id|person|client|scan_id|matter)')));
+
+SELECT dbcheck.record('v2.1: a clear goes with its case',
+  (dbcheck.attempt(format($q$WITH d AS (DELETE FROM public.proof_scan_cases WHERE id = %L RETURNING id)
+                            SELECT count(*) FROM public.proof_scan_clears WHERE case_id = %L$q$, dbcheck.id('case2'), dbcheck.id('case2')))).err IS NULL);
+
+CREATE TABLE dbcheck.v21_before AS SELECT dbcheck.seed_fingerprint() AS fp;
+\ir ../../supabase/migrations/2006_proof_scan_v2_1.sql
+SELECT dbcheck.record('v2.1: running 2006 a second time changes nothing',
+  (SELECT fp FROM dbcheck.v21_before) = dbcheck.seed_fingerprint());
+
+-- After the second run of 2006: a later run of 2005 narrows the suggestion
+-- fields again, so 2005 is never applied after 2006 (DEPLOY-CHECKLIST).
+SELECT dbcheck.record('v2.1: a card holds a passport number and expiration; a suggestion may carry them (Q-61)',
+  (dbcheck.attempt(format($q$UPDATE public.proof_scan_people SET passport_number = 'G1234567', passport_expiration = '2030-01-01' WHERE id = %L$q$, dbcheck.id('person')))).n = 1
+  AND (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_suggestions (person_id, field, value, source_label)
+                              VALUES (%L, 'passport_number', 'G7654321', 'Passport')$q$, dbcheck.id('person')))).err IS NULL,
+  concat_ws(' / ',
+    (dbcheck.attempt(format($q$UPDATE public.proof_scan_people SET passport_number = 'G1234567', passport_expiration = '2030-01-01' WHERE id = %L$q$, dbcheck.id('person')))).err,
+    (dbcheck.attempt(format($q$INSERT INTO public.proof_scan_suggestions (person_id, field, value, source_label)
+                              VALUES (%L, 'passport_number', 'G7654321', 'Passport')$q$, dbcheck.id('person')))).err));

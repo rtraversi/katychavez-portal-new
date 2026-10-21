@@ -246,7 +246,7 @@ export const COPY = {
   'ps.drop.ready': 'Package ready',
   'ps.casecard_diff_person': 'The scanned package shows the {role}\'s {field} as {scanned}. The {role}\'s case card has {card}.',
   'ps.people.shared': 'Shared',
-  'match.heading': 'Evidence matches the forms',
+  'match.heading': 'Evidence Match', // Max 2026-10-16 12:05 (D-140)
   'match.note': 'Every fact on a document is checked against the forms about the same person.',
   'match.and': 'and',
   'match.doc': 'The {owner}\'s {evidence}',
@@ -350,7 +350,7 @@ export const COPY = {
   'ps.missing_item': '{item} is not in the package. The {case_type} package definition includes it.',
 
   // ── Possible issues (D-59) ──
-  'pi.powerless': 'Suggestions only. Never counted, never emailed.',
+  'pi.powerless': 'Suggestions only.', // Max 2026-10-16 (D-146)
   'pi.never': 'Suppressed for the whole firm, every case type. Listed in the Rulebook.',
   'pi.dismissed': 'Dismissed: {choice}.',
 
@@ -446,7 +446,7 @@ export const APPROVED = {
   'r12.note': 'Note',
   'r12.why_not_checked': 'Why it could not be checked',
   'r12.not_checked': 'Not checked',
-  'r12.package_group': 'Complete runthrough',
+  'r12.package_group': 'Whole package', // Max 2026-10-16: one name in every stage (D-145)
 
   // 1.2 Lab chrome around the report.
   'r12.fixture_label': 'Report fixture',
@@ -683,4 +683,86 @@ export const PORTAL = {
   'field.city_of_birth': 'City of birth',
   'field_in.city_of_birth': 'city of birth',
   'ez.fact.city_of_birth': 'City of birth',
+
+  // ── v2.1 (D-129 to D-147). The mockup's wording, approved by Max ("all
+  // good", 2026-10-16), and Max's own final words where he gave them. ──
+  'v21.kind.spousal': 'Spousal',
+  'v21.kind.child_to_parent': 'Child to parent',
+  'v21.kind.parent_to_child': 'Parent to child',
+  'v21.kind_label': 'Kind of AOS case',
+  'v21.kind_hint': 'Only switches the spousal-only items on or off (I-130A, marriage certificate).',
+  'v21.kind_placeholder': 'Choose the kind',
+  'v21.summary_title': 'General summary', // Max 2026-10-16
+  // D-132, D-143: clearing.
+  'v21.clear': 'Clear',
+  'v21.undo': 'Undo',
+  'v21.cleared': 'Cleared', // Max 2026-10-16
+  'v21.clear_label': 'Clear this item',
+  'v21.undo_label': 'Undo clear',
+  'v21.clear_failed': 'That did not save: {error}',
+  // D-135, D-136: one Needs attention list of cards.
+  'v21.needs_attention': 'Needs attention',
+  'v21.none': 'Nothing needs attention.',
+  'v21.checks': 'Checks',
+  'v21.on_forms': 'On the forms',
+  'v21.on_sources': 'On the {sources}',
+  'v21.fix_on': 'Fix on',
+  'v21.detail': 'Detail',
+  'v21.expected': 'Expected',
+  'v21.where': 'Where',
+  'v21.why': 'Why',
+  'v21.todo.fact': 'If the forms are wrong, correct them on the forms listed. If the case card is out of date, update it in Evidence Zero.',
+  'v21.todo.forms': 'Decide which form is right and correct the others.',
+  'v21.todo.documents': 'Check the documents with the client before the forms are filed.',
+  'v21.todo.other': 'Correct it on the form, then run {stage} again.',
+  'v21.evidence_match': 'Evidence Match', // Max 2026-10-16 (D-140)
+  // The summary strip (approved 2026-10-16).
+  'v21.strip.fix': 'to fix',
+  'v21.strip.confirm': 'to confirm',
+  'v21.strip.possible': 'possible issues',
+  'v21.strip.done': 'All cleared',
+  'v21.strip.review': 'Mark this stage reviewed',
+  // Gentle confirms, never counted.
+  'v21.confirm.married_name': 'The forms use the married name {form_last}; the birth certificate shows {birth_last} and the marriage certificate backs the change. Does the client want the married name?',
+  'v21.confirm.i94': 'The I-94 shows the {field} as {ev_value}; the {form} shows {form_value}. Is the {form} right?',
+  'v21.confirm.missing_item': 'The {item} is not in the package. Is that expected for this client?',
+  'v21.confirm.money_order': 'A money order copy is in the package. USCIS no longer takes money orders: is it meant to be there?',
+  'v21.confirm.cardholder': 'The cardholder reads {cardholder}. Is that a misspelling of the {who}, {person}?',
+  'v21.confirm.no_evidence': 'No evidence was found in Evidence Zero or in these files. Can you add the birth certificates, so the forms are checked against them?',
+  'v21.document_difference': 'The {who}\'s {field} differs between two documents. The {a} shows {av}; the {b} shows {bv}.',
+  // D-131: the relationship box against the kind, a Possible issue.
+  'v21.pi.relationship.title': 'The I-130 relationship box says {box} on a {kind} case',
+  'v21.pi.relationship.description': 'This case was started with a kind whose I-130 box would be {expected}.',
+  'v21.pi.relationship.evidence': 'I-130, Part 1, item 1',
+  'v21.pi.relationship.why': 'The relationship box decides which petition USCIS reviews.',
+  'v21.pi.relationship.uncertainty': 'The kind picked at the start may be the one that is wrong.',
+  // D-149: a Yes on a suggested answer pattern, a Possible issue (Max, 2026-10-21).
+  'v21.pi.pattern.title': '{form} item {item} ({topic}) is answered Yes',
+  'v21.pi.pattern.description': 'Earlier scans: No {no} times, Yes {yes} times.',
+  'v21.pi.pattern.why': 'A Yes ticked by mistake is easy to miss, and USCIS reads it as the client\'s answer.',
+  'v21.pi.pattern.uncertainty': 'The Yes may be the right answer for this client.',
+  // D-138: answer patterns in the Rulebook.
+  'v21.patterns.heading': 'Suggested from answer patterns',
+  'v21.patterns.hint': 'When a yes/no question is answered No on at least 5 scans, and Yes on no more than 1 in 10, it is suggested as a rule: "normally No; flag a Yes". Only counts are kept, never which client answered what. While a question is suggested, a Yes on it shows under Possible issues.',
+  'v21.patterns.counts': 'No on {no} scans, Yes on {yes}.',
+  'v21.patterns.sometimes': 'Sometimes Yes: not suggested yet.',
+  'v21.patterns.approve': 'Approve as rule',
+  'v21.patterns.decline': 'Decline',
+  'v21.patterns.approved': 'Approved: a Yes is flagged from now on',
+  'v21.patterns.declined': 'Declined',
+  'v21.patterns.none': 'No suggestions yet.',
+  'rulebook.origin.answer_pattern': 'Approved from an answer pattern',
+  // The stage email (D-114, Q-51): structured fields only.
+  'v21.email.line.fact': 'The forms differ on {who}{field} ({forms}).',
+  'v21.email.line.fact_no_forms': 'The forms differ on {who}{field}.',
+  'v21.email.line.document_difference': 'Two documents differ on {who}{field}.',
+  'v21.email.line.missing_evidence': 'A document is missing from the package.',
+  // Q-61: passport number and expiry on the case card.
+  'field.passport_number': 'Passport number',
+  'field.passport_expiration': 'Passport expiration',
+  'field_in.passport_number': 'passport number',
+  'field_in.passport_expiration': 'passport expiration date',
+  'ez.fact.passport_number': 'Passport number',
+  'ez.fact.passport_expiration': 'Passport expiration',
+  'ez.gate.aos': 'Add the birth certificates and the other evidence, or mark that there is no evidence for this case.',
 };

@@ -12,12 +12,17 @@ import { requireStaff, readJson, json, guarded, methodNotAllowed } from './_proo
 import { validate } from './_schemas.js';
 import * as store from './_proof-scan-v2-store.js';
 import { loadCase, publicCaseView } from './_proof-scan-v2-case.js';
-import { CASE_TYPES, ROLES, caseLabel } from './_proof-scan-v2-common.js';
+import { CASE_TYPES, ROLES, AOS_KINDS, caseLabel } from './_proof-scan-v2-common.js';
 
+// v2.1, D-131: an AOS case is started as one of three kinds; no other case
+// type has one.
 const CreateCaseSchema = z.object({
   case_type: z.enum(CASE_TYPES),
   role: z.enum(ROLES).optional(),
-}).strict();
+  aos_kind: z.enum(AOS_KINDS).optional(),
+}).strict().refine((b) => (b.case_type === 'aos') === Boolean(b.aos_kind), {
+  message: 'Choose the kind of AOS case: spousal, child to parent or parent to child.', path: ['aos_kind'],
+});
 
 const uuid = z.string().uuid();
 
@@ -44,7 +49,9 @@ export const onRequest = guarded('proof-scan-v2-case', async ({ request, env }) 
     // DACA is always one applicant (D-94). General starts with the beneficiary
     // unless staff chose another role; more cards are added later.
     const role = case_type === 'daca_renewal' ? 'applicant' : (v.data.role || 'beneficiary');
-    const kase = await store.insertCase(gate.admin, { case_type, label, created_by: gate.auth.profile.id });
+    const kase = await store.insertCase(gate.admin, {
+      case_type, label, created_by: gate.auth.profile.id, ...(case_type === 'aos' ? { aos_kind: v.data.aos_kind } : {}),
+    });
     await store.insertPerson(gate.admin, { case_id: kase.id, role, is_main: true });
     const snapshot = await loadCase(gate.admin, kase.id);
     return json(201, await publicCaseView(gate.admin, snapshot));

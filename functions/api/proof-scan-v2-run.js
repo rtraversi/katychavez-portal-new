@@ -36,6 +36,8 @@ import { loadCase, publicCaseView } from './_proof-scan-v2-case.js';
 import { REVIEW_STAGES, SCOPED_STAGES, STAGE_LABELS, CASE_TYPE_LABELS, REFERENCE_FIELDS } from './_proof-scan-v2-common.js';
 import { callModel, stageRunSchema, stageRunValidator, stageRunPrompt } from './_proof-scan-v2-ai.js';
 import { selectRules, evaluateRun, RESULT_SCHEMA_VERSION, PAGES_RULE } from './_proof-scan-v2-engine.js';
+import { reportView } from './_proof-scan-v2-view.js';
+import { nextTallyState } from './_proof-scan-v2-aos.js';
 import { acceptedEditions } from './_uscis-editions.js';
 import { FALLBACK_EDITIONS } from './_proof-scan-run.js';
 import { isUploadId } from './proof-scan-upload.js';
@@ -192,10 +194,12 @@ export async function prepareRun(admin, body) {
 
   const scope = scoped ? body.scope : null;
   const hasMarkedFiles = body.files.some((f) => f.kind === 'marked');
-  const selection = selectRules({ ruleSet, stage: body.stage, scope, form: body.form, hasMarkedFiles });
+  // v2.1, D-131: the AOS kind picked at the start switches the spousal-only items.
+  const aosKind = caseType === 'aos' ? snapshot.case.aos_kind || null : null;
+  const selection = selectRules({ ruleSet, stage: body.stage, scope, form: body.form, hasMarkedFiles, aosKind });
   return {
     prep: {
-      snapshot, caseType, ruleSet, scope, hasMarkedFiles, selection,
+      snapshot, caseType, ruleSet, scope, hasMarkedFiles, selection, aosKind, withAos: caseType === 'aos',
       ruleIds: selection.ask.map((r) => r.rule_id),
       itemIds: selection.items.map((i) => i.item_id),
       withMarkups: body.stage === 'preflight' && hasMarkedFiles,
@@ -209,8 +213,11 @@ export async function prepareRun(admin, body) {
 // The model call and the engine. `files` carry file_base64. Returns
 // { ok: true, evaluation, meta } or { ok: false, status, error }.
 export async function executeRun(env, admin, { body, prep, files }) {
-  const { snapshot, caseType, ruleSet, scope, hasMarkedFiles, selection, ruleIds, itemIds, withMarkups, withPages = false } = prep;
+  const { snapshot, caseType, ruleSet, scope, hasMarkedFiles, selection, ruleIds, itemIds, withMarkups, withPages = false, aosKind = null, withAos = false } = prep;
   const suppressions = await store.listSuppressions(admin);
+  // D-149: suggested answer patterns, read before this scan's own answers are
+  // counted, so a scan never decides its own Possible issues.
+  const answerPatterns = withAos ? (await store.listTally(admin, caseType)).filter((r) => r.state === 'suggested') : [];
   const scannedAt = new Date().toISOString();
   const editions = await formEditions(admin, scannedAt.slice(0, 10));
 
@@ -225,22 +232,22 @@ export async function executeRun(env, admin, { body, prep, files }) {
     system: stageRunPrompt({
       caseTypeLabel: CASE_TYPE_LABELS[caseType], caseType, stageLabel: STAGE_LABELS[body.stage], stage: body.stage,
       scope, form: body.form, rules: selection.ask, items: selection.items, people: snapshot.people,
-      files, withMarkups, withPages, suppressions, formEditions: editions.text,
+      files, withMarkups, withPages, suppressions, formEditions: editions.text, aosKind,
     }),
-    schema: stageRunSchema({ ruleIds, itemIds, withMarkups, withPages }),
+    schema: stageRunSchema({ ruleIds, itemIds, withMarkups, withPages, withAos }),
     content,
     maxTokens: MAX_TOKENS,
   });
   if (!answer.ok) return { ok: false, status: answer.status, error: answer.error };
-  const obs = stageRunValidator({ ruleIds, itemIds, withMarkups, withPages })(answer.json);
+  const obs = stageRunValidator({ ruleIds, itemIds, withMarkups, withPages, withAos })(answer.json);
   if (!obs.ok) return { ok: false, status: obs.status, error: 'The scan could not be completed. Nothing was saved. Please try again.' };
 
   const evaluation = evaluateRun({
     caseType, stage: body.stage, scope, form: body.form, ruleSet, selection,
     people: snapshot.people, documents: snapshot.documents, openSuggestions: snapshot.suggestions,
     cardSsn: cardSsnMap(snapshot.people, env), obs: obs.data, hasMarkedFiles,
-    suppressedKeys: suppressions.map((s) => s.reasoning_key),
-    files: files.map((f) => ({ filename: f.filename.trim(), kind: f.kind })), scannedAt, editionAlerts: editions.alerts,
+    suppressedKeys: suppressions.map((s) => s.reasoning_key), answerPatterns,
+    files: files.map((f) => ({ filename: f.filename.trim(), kind: f.kind })), scannedAt, editionAlerts: editions.alerts, aosKind,
   });
   return { ok: true, evaluation, meta: answer.meta };
 }
@@ -266,17 +273,40 @@ export function storedRunFields({ evaluation, meta, prep }) {
 
 // Everything after the run row is stored. Returns the outcome flags the page
 // shows. Never throws: a follow-up failure is reported, not hidden.
-export async function completeRun(env, admin, { runId, caseId, stage, people, evaluation, email }) {
+// D-138: a Physical Scan adds its yes/no answers to the tally. Counts only:
+// nothing here records which case or client answered what.
+export async function addAnswerCounts(admin, caseType, answers) {
+  if (!answers?.length) return;
+  const rows = await store.listTally(admin, caseType);
+  for (const a of answers) {
+    const have = rows.find((r) => r.form === a.form && r.item === a.item);
+    const counts = have ? { no_count: have.no_count, yes_count: have.yes_count } : { no_count: 0, yes_count: 0 };
+    if (a.answer === 'no') counts.no_count += 1; else counts.yes_count += 1;
+    const state = nextTallyState({ ...(have || { state: 'watching' }), ...counts });
+    if (have) await store.updateTallyRow(admin, have.id, { ...counts, state, topic: a.topic, updated_at: new Date().toISOString() });
+    else await store.insertTallyRow(admin, { case_type: caseType, form: a.form, item: a.item, topic: a.topic, ...counts, state });
+  }
+}
+
+export async function completeRun(env, admin, { runId, caseId, stage, people, evaluation, email, caseType = null }) {
   // D-75: a fresh run needs a fresh sign-off (the database trigger does the
   // same; this keeps it true even before the trigger exists).
   let followUpError = null;
   let possibleIssues = [];
   try {
     await store.deleteSignoff(admin, caseId, stage);
+    // D-139: the stage review's clears go with the sign-off; hand clears stay,
+    // so a re-run that finds the same item keeps it cleared (D-132).
+    await store.deleteReviewClears(admin, caseId, stage);
     possibleIssues = await applyFollowUps(admin, { caseId, runId, people, evaluation });
   } catch (err) {
     console.error('[proof-scan-v2-run] follow-up writes failed:', err?.cause?.code || err.message);
     followUpError = 'The review was saved, but some case card updates could not be saved.';
+  }
+  if (stage === 'physical_scan' && evaluation.answers?.length) {
+    try { await addAnswerCounts(admin, caseType, evaluation.answers); } catch (err) {
+      console.error('[proof-scan-v2-run] answer tally not updated:', err?.cause?.code || err.message);
+    }
   }
 
   // D-61: optional, and only once the run is stored, so the link always opens
@@ -357,12 +387,14 @@ async function startRun({ request, env, gate }) {
   }
 
   const { possibleIssues, outcome } = await completeRun(env, admin, {
-    runId, caseId: prep.snapshot.case.id, stage: body.stage, people: prep.snapshot.people, evaluation, email: body.email,
+    runId, caseId: prep.snapshot.case.id, stage: body.stage, people: prep.snapshot.people, evaluation, email: body.email, caseType: prep.caseType,
   });
   const after = await loadCase(admin, prep.snapshot.case.id);
+  const clears = await store.listClears(admin, prep.snapshot.case.id, body.stage);
   return json(200, {
     run_id: runId, stored: true, storage_error: null, ...outcome,
     result, possible_issues: possibleIssues, case_view: await publicCaseView(admin, after),
+    view: reportView(result, clears, { possibleIssues }),
   });
 }
 
@@ -401,7 +433,11 @@ async function getRun({ request, gate }) {
   const { job, ...run } = found;
   const outcome = job?.outcome || null;
   const possibleIssues = run.status === 'structured' ? await store.listPossibleIssues(gate.admin, run.id) : [];
-  return json(200, { run, possible_issues: possibleIssues, outcome });
+  // v2.1 (D-132): the report with the staff clears of its case and stage applied.
+  const view = run.status === 'structured' && run.result_json
+    ? reportView(run.result_json, await store.listClears(gate.admin, run.case_id, run.stage), { possibleIssues })
+    : null;
+  return json(200, { run, possible_issues: possibleIssues, outcome, view });
 }
 
 export const onRequest = guarded('proof-scan-v2-run', async ({ request, env }) => {

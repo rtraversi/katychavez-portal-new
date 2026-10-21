@@ -50,6 +50,7 @@ CHAIN=(
   2003_proof_scan_v2_seed.sql
   2004_proof_scan_v2_jobs.sql
   2005_proof_scan_v2_0_2.sql
+  2006_proof_scan_v2_1.sql
 )
 
 PSQL=(psql -X -q -v ON_ERROR_STOP=1 -d "$DB")

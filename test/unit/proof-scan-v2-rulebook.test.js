@@ -99,26 +99,31 @@ describe('the rulebook (D-61)', () => {
     const general = await rules('GET', undefined, { case_type: 'general' });
     expect(general.body.case_type_rules).toEqual([]);
     expect(general.body.package_items).toEqual([]);
-    expect((await rules('GET', undefined, { case_type: 'aos' })).status).toBe(400);
+    // v2.1: AOS is a case type, with the same firm-wide rules (D-93) and its own.
+    const aos = await rules('GET', undefined, { case_type: 'aos' });
+    expect(aos.status).toBe(200);
+    expect(aos.body.firm.map((r) => r.rule_id)).toEqual(daca.body.firm.map((r) => r.rule_id).filter((id) => id !== 'PS-103'));
+    expect(aos.body.case_type_rules).toHaveLength(48);
+    expect((await rules('GET', undefined, { case_type: 'pip' })).status).toBe(400);
   });
 
   it('adding a firm-wide rule makes a new version of every case type; the old versions are untouched (D-60, D-65)', async () => {
     const before = JSON.stringify(db.rows('proof_scan_rules'));
     const r = await rules('POST', { scope: 'firm', title: 'Every page is right side up.', stages: { draft_review: 'later' } });
-    expect(r).toEqual({ status: 201, body: { rule_id: 'FIRM-ADD-001', versions: { daca_renewal: 2, general: 2 } } });
-    for (const caseType of ['daca_renewal', 'general']) {
+    expect(r).toEqual({ status: 201, body: { rule_id: 'FIRM-ADD-001', versions: { daca_renewal: 2, general: 2, aos: 2 } } });
+    for (const caseType of ['daca_renewal', 'general', 'aos']) {
       const set = currentSet(caseType);
       expect(set.version).toBe(2);
       const added = rulesIn(set.id).find((x) => x.rule_id === 'FIRM-ADD-001');
       expect(added).toMatchObject({ scope: 'firm', origin: 'staff_added', retired: false });
       const settings = db.rows('proof_scan_rule_stage_settings').filter((s) => s.rule_pk === added.id);
       expect(Object.fromEntries(settings.map((s) => [s.stage, s.state]))).toEqual({ draft_review: 'later', preflight: 'checked', physical_scan: 'checked' });
-      expect(rulesIn(set.id)).toHaveLength(caseType === 'general' ? 11 : 43);
+      expect(rulesIn(set.id)).toHaveLength({ general: 11, daca_renewal: 43, aos: 59 }[caseType]); // AOS: 10 firm-wide + 48 + this one
     }
     // Version 1 rows are exactly as they were; only is_current moved.
     expect(JSON.stringify(db.rows('proof_scan_rules').filter((x) => x.rule_set_id.startsWith('rs-')))).toBe(before);
     expect(db.rows('proof_scan_rule_sets').filter((s) => s.version === 1).every((s) => !s.is_current)).toBe(true);
-    expect(db.rows('proof_scan_rule_changes')).toHaveLength(2);
+    expect(db.rows('proof_scan_rule_changes')).toHaveLength(3); // one per case type: DACA, General, AOS
     expect(db.rows('proof_scan_rule_changes')[0]).toMatchObject({ action: 'add', rule_id: 'FIRM-ADD-001', changed_by: 'staff-1' });
   });
 
@@ -139,7 +144,7 @@ describe('the rulebook (D-61)', () => {
     mockModel(vi, [observations(), observations()]);
     await runGeneral(caseId);
     const edit = await rules('PATCH', { rule_id: 'PS-101', changes: { title: 'Edition date current everywhere.' } });
-    expect(edit.body.versions).toEqual({ daca_renewal: 2, general: 2 }); // firm-wide: every case type
+    expect(edit.body.versions).toEqual({ daca_renewal: 2, general: 2, aos: 2 }); // firm-wide: every case type
     const second = await runGeneral(caseId);
     expect(db.rows('proof_scans').map((r) => r.rule_set_version)).toEqual([1, 2]);
     expect(second.body.result.rule_set_version).toBe(2);
@@ -236,7 +241,7 @@ describe('Possible issues (D-36 to D-39, D-59, D-60)', () => {
     const { issue } = await issueFromRun();
     await act({ issue_id: issue.id, action: 'accept' });
     const created = await act({ issue_id: issue.id, action: 'suggest_rule', rule: { scope: 'firm', title: 'Every page is upright.' } });
-    expect(created.body.versions).toEqual({ daca_renewal: 2, general: 2 });
+    expect(created.body.versions).toEqual({ daca_renewal: 2, general: 2, aos: 2 });
   });
 });
 

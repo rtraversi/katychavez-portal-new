@@ -181,7 +181,8 @@ export function proofScanCaseUrl(portalUrl, caseId) {
 
 // One line per attention item, from its structured fields only.
 export function stageSummaryLines(result) {
-  const general = result?.case_type === 'general';
+  // General and AOS have several people, so the role is named (D-94, D-131).
+  const general = result?.case_type === 'general' || result?.case_type === 'aos';
   const who = (role) => (general && ROLE_LABELS[role] ? `the ${ROLE_LABELS[role].toLowerCase()}'s ` : '');
   const field = (f) => FIELD_LABELS[f] || '';
   const formName = (f) => String(f || '').replace(/[^A-Za-z0-9 -]/g, '').slice(0, 20);
@@ -191,7 +192,10 @@ export function stageSummaryLines(result) {
     const vars = { form: formName(a.form), field: field(a.field), who: who(a.person_role), forms: forms(a.forms) };
     let line;
     switch (a.kind) {
-      case 'missing_item': line = copyText('v202.email.line.missing_item', vars); break;
+      case 'missing_item': line = copyText(vars.form ? 'v202.email.line.missing_item' : 'v21.email.line.missing_evidence', vars); break;
+      // v2.1, D-135: one line per wrong fact, naming the forms to fix.
+      case 'fact': line = copyText(vars.forms ? 'v21.email.line.fact' : 'v21.email.line.fact_no_forms', vars); break;
+      case 'document_difference': line = copyText('v21.email.line.document_difference', vars); break;
       case 'reference_difference': line = copyText('v202.email.line.reference_difference', vars); break;
       case 'case_card_difference': line = copyText('v202.email.line.case_card_difference', vars); break;
       case 'evidence_difference': line = copyText('v202.email.line.evidence_difference', { ...vars, doc: (DOC_TYPE_LABELS[a.doc_type] || DOC_TYPE_LABELS.other).toLowerCase() }); break;

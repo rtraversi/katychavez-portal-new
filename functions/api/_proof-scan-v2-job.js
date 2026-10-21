@@ -101,7 +101,7 @@ export async function runClaimedV2(env, admin, claimed) {
 
     const { outcome } = await completeRun(env, admin, {
       runId: claimed.id, caseId: prep.snapshot.case.id, stage: claimed.stage,
-      people: prep.snapshot.people, evaluation: run.evaluation, email: body.email,
+      people: prep.snapshot.people, evaluation: run.evaluation, email: body.email, caseType: prep.caseType,
     });
     await store.updateRunFields(admin, claimed.id, { job: { ...job, files: [], outcome } });
     return { status: 'structured' };
