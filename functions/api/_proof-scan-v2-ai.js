@@ -618,8 +618,6 @@ export const RULE_GUIDANCE = {
   'PS-301': 'Capitals and accents never make a difference (DOE = Doe, José = Jose). A first name printed together with the middle name is the same name. Report needs_attention only when the words of the name themselves differ.',
   // v2.1, D-107 for AOS (Q-65): the applicant's G-28, as DACA's.
   'AOS-G28A-003': 'All delivery boxes left empty means the card goes to the applicant\'s home: that is clear. Home ticked is clear. Report needs_attention only when the office box is ticked.',
-  // D-137: a Yes is reported, never judged.
-  'AOS-485-SEC': 'Report needs_attention when any of these items is answered Yes, naming the item; blank when one is left unanswered.',
 };
 
 function describeRule(r, stage) {

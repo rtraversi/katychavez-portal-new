@@ -103,7 +103,7 @@ describe('the rulebook (D-61)', () => {
     const aos = await rules('GET', undefined, { case_type: 'aos' });
     expect(aos.status).toBe(200);
     expect(aos.body.firm.map((r) => r.rule_id)).toEqual(daca.body.firm.map((r) => r.rule_id).filter((id) => id !== 'PS-103'));
-    expect(aos.body.case_type_rules).toHaveLength(49);
+    expect(aos.body.case_type_rules).toHaveLength(48);
     expect((await rules('GET', undefined, { case_type: 'pip' })).status).toBe(400);
   });
 
@@ -118,7 +118,7 @@ describe('the rulebook (D-61)', () => {
       expect(added).toMatchObject({ scope: 'firm', origin: 'staff_added', retired: false });
       const settings = db.rows('proof_scan_rule_stage_settings').filter((s) => s.rule_pk === added.id);
       expect(Object.fromEntries(settings.map((s) => [s.stage, s.state]))).toEqual({ draft_review: 'later', preflight: 'checked', physical_scan: 'checked' });
-      expect(rulesIn(set.id)).toHaveLength({ general: 11, daca_renewal: 43, aos: 60 }[caseType]); // AOS: 10 firm-wide + 49 + this one
+      expect(rulesIn(set.id)).toHaveLength({ general: 11, daca_renewal: 43, aos: 59 }[caseType]); // AOS: 10 firm-wide + 48 + this one
     }
     // Version 1 rows are exactly as they were; only is_current moved.
     expect(JSON.stringify(db.rows('proof_scan_rules').filter((x) => x.rule_set_id.startsWith('rs-')))).toBe(before);

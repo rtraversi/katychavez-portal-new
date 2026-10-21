@@ -1,4 +1,4 @@
--- Migration 2006: Proof Scan v2.1 (decisions D-129 to D-147, Q-59 to Q-81 in
+-- Migration 2006: Proof Scan v2.1 (decisions D-129 to D-148, Q-59 to Q-81 in
 -- docs/proof-scan-v2/DECISIONS-MASTER-RECORD.md)
 --
 -- Apply AFTER 2005 and BEFORE deploying the v2.1 code. Depends on 2000 to 2005.
@@ -101,7 +101,7 @@ ALTER TABLE public.proof_scan_rules ADD CONSTRAINT proof_scan_rules_origin_check
 
 -- ── 4. Clears ────────────────────────────────────────────────────────────────
 -- item_key is the server's stable key for an item in a stage's report
--- ("rule:AOS-485-SEC", "fact:beneficiary:date_of_birth:3f2a91c0", ...). A fact's
+-- ("rule:AOS-485-002", "fact:beneficiary:date_of_birth:3f2a91c0", ...). A fact's
 -- key carries a hash of the values, never the values themselves.
 CREATE TABLE IF NOT EXISTS public.proof_scan_clears (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -173,7 +173,7 @@ CREATE POLICY "proof_scan_answer_tally_staff_delete" ON public.proof_scan_answer
 -- ── BEGIN GENERATED: AOS rule set (scripts/proof-scan-v2-aos-seed.mjs) ──
 
 -- Adjustment of Status v1: the firm-wide checks of General's current version, then
--- 49 AOS checks and 28 package items.
+-- 48 AOS checks and 28 package items.
 INSERT INTO public.proof_scan_rule_sets (case_type, version, is_current, label, source_note, created_by)
 SELECT 'aos', 1,
        NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND is_current),
@@ -750,27 +750,10 @@ WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule
 INSERT INTO public.proof_scan_rules (rule_set_id, rule_id, title, severity, check_kind, form, page, item, expected,
                                      pass_text, note, source_note, applies_to_item_ids, scope, origin, retired, sort_order, applies_when)
 SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1),
-       'AOS-485-SEC', 'Torture (Part 9, item 53.a), genocide (53.b) and terrorist activity (items 43.b to 44) are answered No.', 'fatal', 'pdf',
-       'I-485', '16-17', '43.b-44, 53.a, 53.b', 'No',
-       'Torture, genocide and terrorist activity answered No.', 'D-137: a Yes is counted (confirm the answer is right); staff can clear it. Item numbers from the 09/18/26 edition. The form does not name items 43.b to 44 "terrorism"; they are its terrorist-activity questions.', NULL, ARRAY['AOS-F-I485']::text[],
-       'case_type', 'firm_checklist', false, 124, NULL
-WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-SEC');
-INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
-SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-SEC'), 'draft_review', 'checked', NULL, NULL, NULL, false
-WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-SEC') AND stage = 'draft_review');
-INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
-SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-SEC'), 'preflight', 'not_this_stage', NULL, NULL, NULL, false
-WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-SEC') AND stage = 'preflight');
-INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
-SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-SEC'), 'physical_scan', 'checked', NULL, NULL, NULL, false
-WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rule_stage_settings WHERE rule_pk = (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-SEC') AND stage = 'physical_scan');
-INSERT INTO public.proof_scan_rules (rule_set_id, rule_id, title, severity, check_kind, form, page, item, expected,
-                                     pass_text, note, source_note, applies_to_item_ids, scope, origin, retired, sort_order, applies_when)
-SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1),
        'AOS-485-002', 'Applicant''s signature, signed and dated.', 'fatal', 'pdf',
        'I-485', '22', '4', NULL,
        'Applicant''s signature, signed and dated.', NULL, NULL, ARRAY['AOS-F-I485']::text[],
-       'case_type', 'firm_checklist', false, 125, NULL
+       'case_type', 'firm_checklist', false, 124, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-002'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -787,7 +770,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-485-003', 'Katy''s signature (preparer), signed and dated.', 'fatal', 'pdf',
        'I-485', '23', '6', NULL,
        'Katy''s signature (preparer), signed and dated.', NULL, NULL, ARRAY['AOS-F-I485']::text[],
-       'case_type', 'firm_checklist', false, 126, NULL
+       'case_type', 'firm_checklist', false, 125, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-003');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-003'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -804,7 +787,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-485-LANG', 'Interpreter section (Part 11): signed and dated when it is filled in.', 'fatal', 'pdf',
        'I-485', '22', NULL, NULL,
        'Interpreter section as intended.', 'Q-67. The 09/18/26 edition has no English or interpreter box in Part 10; the box test applies only to an edition that has them.', NULL, ARRAY['AOS-F-I485']::text[],
-       'case_type', 'firm_checklist', false, 127, NULL
+       'case_type', 'firm_checklist', false, 126, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-LANG');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-485-LANG'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -821,7 +804,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-765-001', 'Initial permission to accept employment, and the applicant''s name.', 'fatal', 'pdf',
        'I-765', '1', '1.a', NULL,
        'Initial permission to accept employment, and the applicant''s name.', NULL, NULL, ARRAY['AOS-F-I765']::text[],
-       'case_type', 'firm_checklist', false, 128, NULL
+       'case_type', 'firm_checklist', false, 127, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-001'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -838,7 +821,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-765-002', 'Applicant''s mailing and physical address.', 'fatal', 'pdf',
        'I-765', '2', '5-7', NULL,
        'Applicant''s mailing and physical address.', NULL, NULL, ARRAY['AOS-F-I765']::text[],
-       'case_type', 'firm_checklist', false, 129, NULL
+       'case_type', 'firm_checklist', false, 128, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-002'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -855,7 +838,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-765-003', 'Eligibility category (c)(9), adjustment applicant.', 'fatal', 'pdf',
        'I-765', '3', '27', '(c)(9)',
        'Eligibility category (c)(9), adjustment applicant.', NULL, NULL, ARRAY['AOS-F-I765']::text[],
-       'case_type', 'firm_checklist', false, 130, NULL
+       'case_type', 'firm_checklist', false, 129, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-003');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-003'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -872,7 +855,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-765-004', 'Applicant''s signature, signed and dated.', 'fatal', 'pdf',
        'I-765', '4', '7.a', NULL,
        'Applicant''s signature, signed and dated.', NULL, NULL, ARRAY['AOS-F-I765']::text[],
-       'case_type', 'firm_checklist', false, 131, NULL
+       'case_type', 'firm_checklist', false, 130, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-004');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-004'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -889,7 +872,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-765-005', 'Katy''s signature (preparer), signed and dated.', 'fatal', 'pdf',
        'I-765', '6', '8.a', NULL,
        'Katy''s signature (preparer), signed and dated.', NULL, NULL, ARRAY['AOS-F-I765']::text[],
-       'case_type', 'firm_checklist', false, 132, NULL
+       'case_type', 'firm_checklist', false, 131, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-005');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-005'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -906,7 +889,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-765-LANG', 'English or interpreter box (Part 3, item 1), and the interpreter section (Part 4), signed and dated when needed.', 'fatal', 'pdf',
        'I-765', '4-5', NULL, NULL,
        'English or interpreter box as intended.', 'Q-67, decided by the server from what the model reads.', NULL, ARRAY['AOS-F-I765']::text[],
-       'case_type', 'firm_checklist', false, 133, NULL
+       'case_type', 'firm_checklist', false, 132, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-LANG');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-765-LANG'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -923,7 +906,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864P-001', 'Petitioner''s I-864: the sponsor''s name and address, and the immigrant''s name and address.', 'fatal', 'pdf',
        'I-864', '1-3', NULL, NULL,
        'Petitioner''s I-864: the sponsor''s name and address, and the immigrant''s name and address.', NULL, NULL, ARRAY['AOS-F-I864']::text[],
-       'case_type', 'firm_checklist', false, 134, NULL
+       'case_type', 'firm_checklist', false, 133, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864P-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864P-001'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -940,7 +923,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864P-002', 'Petitioner''s I-864: current individual annual income, current annual household income and the most recent tax year''s income are filled in.', 'fatal', 'pdf',
        'I-864', '5-7', '7, 12, 16.a', NULL,
        'Petitioner''s I-864: current individual annual income, current annual household income and the most recent tax year''s income are filled in.', 'Q-69: filled in only; never matched to the tax return or W-2, never checked against the poverty guideline.', NULL, ARRAY['AOS-F-I864']::text[],
-       'case_type', 'firm_checklist', false, 135, NULL
+       'case_type', 'firm_checklist', false, 134, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864P-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864P-002'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -957,7 +940,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864P-003', 'Petitioner''s I-864: sponsor''s signature, signed and dated.', 'fatal', 'pdf',
        'I-864', '10', '6', NULL,
        'Petitioner''s I-864: sponsor''s signature, signed and dated.', NULL, NULL, ARRAY['AOS-F-I864']::text[],
-       'case_type', 'firm_checklist', false, 136, NULL
+       'case_type', 'firm_checklist', false, 135, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864P-003');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864P-003'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -974,7 +957,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864P-004', 'Petitioner''s I-864: Katy''s signature (preparer), signed and dated.', 'fatal', 'pdf',
        'I-864', '11', '6', NULL,
        'Petitioner''s I-864: Katy''s signature (preparer), signed and dated.', NULL, NULL, ARRAY['AOS-F-I864']::text[],
-       'case_type', 'firm_checklist', false, 137, NULL
+       'case_type', 'firm_checklist', false, 136, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864P-004');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864P-004'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -991,7 +974,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864J-001', 'Co-sponsor''s I-864: the co-sponsor''s name and address, and the immigrant''s name and address.', 'fatal', 'pdf',
        'I-864', '1-3', NULL, NULL,
        'Co-sponsor''s I-864: the co-sponsor''s name and address, and the immigrant''s name and address.', NULL, NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 138, 'joint_sponsor'
+       'case_type', 'firm_checklist', false, 137, 'joint_sponsor'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864J-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864J-001'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -1008,7 +991,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864J-002', 'Co-sponsor''s I-864: current individual annual income and the recent tax years'' income are filled in.', 'fatal', 'pdf',
        'I-864', '5-7', '7, 16.a-16.c', NULL,
        'Co-sponsor''s I-864: current individual annual income and the recent tax years'' income are filled in.', 'Q-69: filled in only.', NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 139, 'joint_sponsor'
+       'case_type', 'firm_checklist', false, 138, 'joint_sponsor'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864J-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864J-002'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -1025,7 +1008,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864J-003', 'Co-sponsor''s I-864: co-sponsor''s signature, signed and dated.', 'fatal', 'pdf',
        'I-864', '10', '6', NULL,
        'Co-sponsor''s I-864: co-sponsor''s signature, signed and dated.', NULL, NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 140, 'joint_sponsor'
+       'case_type', 'firm_checklist', false, 139, 'joint_sponsor'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864J-003');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864J-003'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -1042,7 +1025,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864J-004', 'Co-sponsor''s I-864: Katy''s signature (preparer), signed and dated.', 'fatal', 'pdf',
        'I-864', '11', '6', NULL,
        'Co-sponsor''s I-864: Katy''s signature (preparer), signed and dated.', NULL, NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 141, 'joint_sponsor'
+       'case_type', 'firm_checklist', false, 140, 'joint_sponsor'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864J-004');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864J-004'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -1059,7 +1042,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864A-001', 'Household member''s name and address (page 1), employment and income (page 2), and the intending immigrant''s name (page 3).', 'fatal', 'pdf',
        'I-864A', '1-3', NULL, NULL,
        'Household member''s name and address (page 1), employment and income (page 2), and the intending immigrant''s name (page 3).', 'Q-69: income filled in only.', NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 142, 'household_member'
+       'case_type', 'firm_checklist', false, 141, 'household_member'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864A-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864A-001'), 'draft_review', 'checked', NULL, NULL, NULL, false
@@ -1076,7 +1059,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864A-002', 'Sponsor''s signature, signed and dated.', 'fatal', 'pdf',
        'I-864A', '4', '10', NULL,
        'Sponsor''s signature, signed and dated.', NULL, NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 143, 'household_member'
+       'case_type', 'firm_checklist', false, 142, 'household_member'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864A-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864A-002'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -1093,7 +1076,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864A-003', 'Household member''s signature, signed and dated.', 'fatal', 'pdf',
        'I-864A', '6', '7', NULL,
        'Household member''s signature, signed and dated.', NULL, NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 144, 'household_member'
+       'case_type', 'firm_checklist', false, 143, 'household_member'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864A-003');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864A-003'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -1110,7 +1093,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-864A-004', 'Katy''s signature (preparer), signed and dated.', 'fatal', 'pdf',
        'I-864A', '7', '6', NULL,
        'Katy''s signature (preparer), signed and dated.', NULL, NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 145, 'household_member'
+       'case_type', 'firm_checklist', false, 144, 'household_member'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864A-004');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-864A-004'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -1127,7 +1110,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-131-001', 'Applicant''s signature, signed and dated.', 'fatal', 'pdf',
        'I-131', '11', '4', NULL,
        'Applicant''s signature, signed and dated.', NULL, NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 146, 'i131'
+       'case_type', 'firm_checklist', false, 145, 'i131'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-131-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-131-001'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -1144,7 +1127,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-131-002', 'Katy''s signature (preparer), signed and dated.', 'fatal', 'pdf',
        'I-131', '13', '6', NULL,
        'Katy''s signature (preparer), signed and dated.', NULL, NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 147, 'i131'
+       'case_type', 'firm_checklist', false, 146, 'i131'
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-131-002');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-131-002'), 'draft_review', 'later', NULL, NULL, NULL, false
@@ -1161,7 +1144,7 @@ SELECT (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND v
        'AOS-ASM-001', 'Pages are in order inside each form.', 'fatal', 'pdf',
        NULL, NULL, NULL, NULL,
        'Pages in order inside each form.', 'Q-71: the order of the forms in the package is not checked; "All forms in order" stays a staff task.', NULL, '{}'::text[],
-       'case_type', 'firm_checklist', false, 148, NULL
+       'case_type', 'firm_checklist', false, 147, NULL
 WHERE NOT EXISTS (SELECT 1 FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-ASM-001');
 INSERT INTO public.proof_scan_rule_stage_settings (rule_pk, stage, state, stage_title, stage_pass_text, stage_expected, gentle_if_no)
 SELECT (SELECT id FROM public.proof_scan_rules WHERE rule_set_id = (SELECT id FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1) AND rule_id = 'AOS-ASM-001'), 'draft_review', 'checked', NULL, NULL, NULL, false

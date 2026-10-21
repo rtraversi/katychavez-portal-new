@@ -446,9 +446,9 @@ SELECT dbcheck.record('v2.0.2: edition notices must be an object; a general rule
 
 -- ── v2.1 (migration 2006) ────────────────────────────────────────────────────
 
-SELECT dbcheck.record('v2.1: AOS v1 is current, with General''s firm-wide checks, 49 AOS checks and 28 package items',
+SELECT dbcheck.record('v2.1: AOS v1 is current, with General''s firm-wide checks, 48 AOS checks and 28 package items',
   (SELECT is_current FROM public.proof_scan_rule_sets WHERE case_type = 'aos' AND version = 1)
-  AND (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('aos') AND scope = 'case_type') = 49
+  AND (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('aos') AND scope = 'case_type') = 48
   AND (SELECT count(*) FROM public.proof_scan_rules WHERE rule_set_id = dbcheck.rule_set('aos') AND scope = 'firm')
     = (SELECT count(*) FROM public.proof_scan_rules r JOIN public.proof_scan_rule_sets s ON s.id = r.rule_set_id
        WHERE s.case_type = 'general' AND s.is_current AND r.scope = 'firm')

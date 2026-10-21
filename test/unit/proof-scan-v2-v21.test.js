@@ -106,8 +106,8 @@ describe('the AOS rule set (D-129, D-130)', () => {
     expect(generatedBlock(sql2006)).toBe(buildAosSeedSql(aosSeed));
   });
 
-  it('49 checks and 28 package items from the firm\'s sheet; signatures and card details wait for Pre-flight', () => {
-    expect(aosSeed.rules).toHaveLength(49);
+  it('48 checks and 28 package items from the firm\'s sheet; signatures and card details wait for Pre-flight', () => {
+    expect(aosSeed.rules).toHaveLength(48);
     expect(aosSeed.package_items).toHaveLength(28);
     for (const r of aosSeed.rules) expect(Object.keys(r.stages).sort()).toEqual(['draft_review', 'physical_scan', 'preflight']);
     const signatures = aosSeed.rules.filter((r) => /signature/i.test(r.title) && !/form-number/i.test(r.title));
@@ -120,13 +120,14 @@ describe('the AOS rule set (D-129, D-130)', () => {
     expect(aosSeed.rules.find((r) => r.rule_id === 'AOS-G1450-CARD').stages.draft_review.state).toBe('later');
   });
 
-  it('only what Max decided: no Question 61 rule (not confirmable), no bona fides, no photos, I-693 first page only', () => {
+  it('only what Max decided: no Question 61 rule (not confirmable), no bona fides, no photos, I-693 first page only, no security-question rule (D-148)', () => {
     const text = JSON.stringify(aosSeed.rules) + JSON.stringify(aosSeed.package_items);
     expect(text).not.toMatch(/Question 61/);
     expect(text).not.toMatch(/bona fide/i);
     expect(text).not.toMatch(/photo(?! page)/i);
     expect(aosSeed.package_items.find((i) => i.item_id === 'AOS-E-I693').label).toMatch(/first page/);
-    expect(aosSeed.rules.find((r) => r.rule_id === 'AOS-485-SEC').item).toBe('43.b-44, 53.a, 53.b');
+    expect(aosSeed.rules.find((r) => r.rule_id === 'AOS-485-SEC')).toBeUndefined();
+    expect(JSON.stringify(aosSeed.rules)).not.toMatch(/genocide|torture|terrorist/i);
   });
 
   it('the kind switches the spousal-only items; co-sponsor, I-864A and I-131 apply only when in the package', () => {

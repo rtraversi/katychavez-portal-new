@@ -844,34 +844,6 @@
       }
     },
     {
-      "rule_id": "AOS-485-SEC",
-      "title": "Torture (Part 9, item 53.a), genocide (53.b) and terrorist activity (items 43.b to 44) are answered No.",
-      "severity": "fatal",
-      "check_kind": "pdf",
-      "form": "I-485",
-      "page": "16-17",
-      "item": "43.b-44, 53.a, 53.b",
-      "pass_text": "Torture, genocide and terrorist activity answered No.",
-      "applies_to_item_ids": [
-        "AOS-F-I485"
-      ],
-      "scope": "case_type",
-      "origin": "firm_checklist",
-      "expected": "No",
-      "note": "D-137: a Yes is counted (confirm the answer is right); staff can clear it. Item numbers from the 09/18/26 edition. The form does not name items 43.b to 44 \"terrorism\"; they are its terrorist-activity questions.",
-      "stages": {
-        "draft_review": {
-          "state": "checked"
-        },
-        "preflight": {
-          "state": "not_this_stage"
-        },
-        "physical_scan": {
-          "state": "checked"
-        }
-      }
-    },
-    {
       "rule_id": "AOS-485-002",
       "title": "Applicant's signature, signed and dated.",
       "severity": "fatal",

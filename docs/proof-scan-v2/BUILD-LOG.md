@@ -272,3 +272,10 @@ suggestions. Example buttons and click-to-add sample files in the banner.
 ### Not done
 - I-485 Question 61 (above). Not run against the real AI; the AOS prompt and the new "aos"
   observations have only seen canned answers. Placeholder wording elsewhere stays as before.
+
+## v2.1 follow-up (D-148, 2026-10-21)
+D-148: the I-485 yes/no eligibility questions are left alone. The seeded rule AOS-485-SEC
+(D-137: torture 53.a, genocide 53.b, terrorist activity 43.b to 44 "answered No") is withdrawn
+(R-9): removed from `v2-aos-seed.json`, the generated block in `2006_proof_scan_v2_1.sql` and
+the model's rule guidance. AOS rule count 49 -> 48. The answer tally (D-138) is unchanged: those
+questions are still counted, never flagged.

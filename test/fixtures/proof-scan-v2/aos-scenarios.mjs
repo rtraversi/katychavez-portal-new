@@ -233,8 +233,7 @@ export function aosStageAnswer({ stage, files, ruleIds, itemIds, withMarkups, wi
       pay('g1450', 'I-485', '$1,440', P.beneficiary, card(P.petitioner), first, '2'),
       pay('g1450', 'I-765', '$260', P.beneficiary, card(P.petitioner), first, '3'),
     ], language_statements: [lang('I-130A'), lang('I-485'), lang('I-765')], yes_no_answers: answers({ 44: 'yes' }) };
-    // D-137: the terrorist-activity question is answered Yes.
-    rules['AOS-485-SEC'] = { status: 'needs_attention', summary: 'Item 44 (terrorist activity) is answered Yes.', locations: ['I-485 page 16'] };
+    // Item 44 (terrorist activity) is answered Yes: only counted in the answer tally (D-138), never flagged (D-148).
     // Q-72: the I-130A lists an earlier marriage ended by divorce; no divorce certificate.
     items['AOS-E-DIV'] = 'missing';
     evidence = [
