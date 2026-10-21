@@ -215,6 +215,9 @@ export async function prepareRun(admin, body) {
 export async function executeRun(env, admin, { body, prep, files }) {
   const { snapshot, caseType, ruleSet, scope, hasMarkedFiles, selection, ruleIds, itemIds, withMarkups, withPages = false, aosKind = null, withAos = false } = prep;
   const suppressions = await store.listSuppressions(admin);
+  // D-149: suggested answer patterns, read before this scan's own answers are
+  // counted, so a scan never decides its own Possible issues.
+  const answerPatterns = withAos ? (await store.listTally(admin, caseType)).filter((r) => r.state === 'suggested') : [];
   const scannedAt = new Date().toISOString();
   const editions = await formEditions(admin, scannedAt.slice(0, 10));
 
@@ -243,7 +246,7 @@ export async function executeRun(env, admin, { body, prep, files }) {
     caseType, stage: body.stage, scope, form: body.form, ruleSet, selection,
     people: snapshot.people, documents: snapshot.documents, openSuggestions: snapshot.suggestions,
     cardSsn: cardSsnMap(snapshot.people, env), obs: obs.data, hasMarkedFiles,
-    suppressedKeys: suppressions.map((s) => s.reasoning_key),
+    suppressedKeys: suppressions.map((s) => s.reasoning_key), answerPatterns,
     files: files.map((f) => ({ filename: f.filename.trim(), kind: f.kind })), scannedAt, editionAlerts: editions.alerts, aosKind,
   });
   return { ok: true, evaluation, meta: answer.meta };

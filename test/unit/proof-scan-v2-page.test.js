@@ -632,6 +632,14 @@ describe('Possible issues', () => {
     expect(db.rows('proof_scan_rules').some((r) => r.title === 'Phone numbers use one format across the package.' && r.origin === 'possible_issue')).toBe(true);
     expect(oneByClass(root, 'psr-verdict').textContent).toBe(verdict);
   });
+
+  it('"never suggest" is not offered for a Yes on a suggested answer pattern (D-149)', () => {
+    const node = document.createElement('div');
+    renderPossibleIssues(node, [{ id: 'i1', title: 't', description: 'd', evidence: 'e', why_it_matters: 'w', uncertainty: 'u', reasoning_key: 'answer_pattern', status: 'open' }], { api: {} });
+    const ids = byClass(node, 'ps-explore-choice').map((c) => c.dataset.reasonId);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids).not.toContain('never_suggest_reasoning');
+  });
 });
 
 // ── v2.1 UI pass (D-132, D-136, D-141, D-143) ────────────────────────────────

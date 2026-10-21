@@ -3,12 +3,12 @@
 //   POST { id, decision: 'approve' | 'decline' }
 //
 // Every AOS Physical Scan adds its yes/no answers to a tally of counts (no
-// case, no client). A question answered No on 5 scans and never Yes is
-// suggested in the Rulebook as "normally No; flag a Yes". It never switches on
-// by itself (R-6, D-59/D-60 spirit): approving adds a case-type rule to a new
-// rule-set version (origin 'answer_pattern'); declining means it is never
-// suggested again. A Yes ever withdraws a suggestion (Q-68: "most of the crazy
-// ones should be no", but some are sometimes yes).
+// case, no client). A question answered No on 5 scans and Yes on at most 1 in
+// 10 answers (D-150) is suggested in the Rulebook as "normally No; flag a Yes".
+// It never switches on by itself (R-6, D-59/D-60 spirit): approving adds a
+// case-type rule to a new rule-set version (origin 'answer_pattern'); declining
+// means it is never suggested again. A Yes no longer withdraws a suggestion
+// (D-149): while suggested, a Yes on a scan shows as a Possible issue.
 
 import { z } from 'zod';
 import { requireStaff, readJson, json, guarded, methodNotAllowed, HttpError } from './_proof-scan-v2-http.js';
@@ -40,7 +40,7 @@ export const onRequest = guarded('proof-scan-v2-patterns', async ({ request, env
     scope: 'case_type', case_type: row.case_type, form: row.form, item: row.item,
     title: `${row.form} item ${row.item} (${row.topic}) is answered No.`,
     expected: 'No',
-    note: `Suggested from answer patterns and approved by staff (D-138): No on ${row.no_count} scans, never Yes. A Yes is counted: confirm the answer is right, then clear it.`,
+    note: `Suggested from answer patterns and approved by staff (D-138): No on ${row.no_count} scans, Yes on ${row.yes_count}. A Yes is counted: confirm the answer is right, then clear it.`,
     severity: 'fatal',
     stages: { draft_review: 'checked', preflight: 'not_this_stage' },
   }, { userId: gate.auth.profile.id, origin: 'answer_pattern' });

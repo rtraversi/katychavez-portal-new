@@ -201,12 +201,14 @@ export function tallyRows(answers, caseWords) {
   return [...out.values()];
 }
 
-// The next state of a tally row once these counts are in (D-138).
+// The next state of a tally row once these counts are in (D-138). D-150: an
+// early Yes does not block a suggestion; No on 5 scans and Yes on at most 1 in
+// 10 answers does. D-149: once suggested, a Yes never withdraws it.
 export const SUGGEST_AFTER = 5;
+export const MAX_YES_IN = 10;
 export function nextTallyState(row) {
-  if (row.state === 'approved' || row.state === 'declined') return row.state;
-  if (row.yes_count > 0) return 'watching';
-  return row.no_count >= SUGGEST_AFTER ? 'suggested' : 'watching';
+  if (row.state === 'approved' || row.state === 'declined' || row.state === 'suggested') return row.state;
+  return row.no_count >= SUGGEST_AFTER && row.yes_count * MAX_YES_IN <= row.no_count + row.yes_count ? 'suggested' : 'watching';
 }
 
 // ── Fees ─────────────────────────────────────────────────────────────────────

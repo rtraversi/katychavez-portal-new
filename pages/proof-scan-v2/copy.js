@@ -736,11 +736,16 @@ export const PORTAL = {
   'v21.pi.relationship.evidence': 'I-130, Part 1, item 1',
   'v21.pi.relationship.why': 'The relationship box decides which petition USCIS reviews.',
   'v21.pi.relationship.uncertainty': 'The kind picked at the start may be the one that is wrong.',
+  // D-149: a Yes on a suggested answer pattern, a Possible issue (Max, 2026-10-21).
+  'v21.pi.pattern.title': '{form} item {item} ({topic}) is answered Yes',
+  'v21.pi.pattern.description': 'Earlier scans: No {no} times, Yes {yes} times.',
+  'v21.pi.pattern.why': 'A Yes ticked by mistake is easy to miss, and USCIS reads it as the client\'s answer.',
+  'v21.pi.pattern.uncertainty': 'The Yes may be the right answer for this client.',
   // D-138: answer patterns in the Rulebook.
   'v21.patterns.heading': 'Suggested from answer patterns',
-  'v21.patterns.hint': 'When a yes/no question is answered No on 5 scans and never Yes, it is suggested as a rule: "normally No; flag a Yes". Only counts are kept, never which client answered what. Questions sometimes answered Yes are never suggested.',
+  'v21.patterns.hint': 'When a yes/no question is answered No on at least 5 scans, and Yes on no more than 1 in 10, it is suggested as a rule: "normally No; flag a Yes". Only counts are kept, never which client answered what. While a question is suggested, a Yes on it shows under Possible issues.',
   'v21.patterns.counts': 'No on {no} scans, Yes on {yes}.',
-  'v21.patterns.sometimes': 'Sometimes Yes: not suggested.',
+  'v21.patterns.sometimes': 'Sometimes Yes: not suggested yet.',
   'v21.patterns.approve': 'Approve as rule',
   'v21.patterns.decline': 'Decline',
   'v21.patterns.approved': 'Approved: a Yes is flagged from now on',

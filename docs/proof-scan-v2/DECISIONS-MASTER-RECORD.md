@@ -36,6 +36,10 @@ This is **what is true right now**. It is the first thing a new session reads.
 4. Anything not personally checked is marked **[unverified]**.
 5. No client PII. Firm process, fees, and workflow are fine. Real names,
    A-Numbers, addresses, and SSNs are not.
+6. The portal repo is public. Its copy (`docs/proof-scan-v2/DECISIONS-MASTER-RECORD.md`)
+   leaves out two 2026-10-15 passages about how and where the code is deployed (the
+   12:30 "Correction" and one quote of Rob's in the 12:45 entry). Max chose this on
+   2026-10-21 ("Trim them (Recommended)"). Every recopy drops them again.
 
 ---
 
@@ -1678,6 +1682,12 @@ what needs attention, or a "good to go" when nothing does. See D-114.
 **R-9 — Seeding I-485 genocide, torture and terrorism as "expected No" (D-137). Reversed.**
 Date: 2026-10-20. Max: "lets make it leave all of those questions alone yes?" See D-148.
 
+**R-10: A Yes withdrawing a suggested answer pattern (D-138). Reversed.**
+Date: 2026-10-21. Max picked "Keep it suggested (Recommended)". See D-149.
+
+**R-11: An early Yes blocking a question from ever being suggested (D-138). Reversed.**
+Date: 2026-10-21. Max: "No. An early Yes shouldn't block it." See D-150.
+
 **R-6 — Letting the model resolve a fact conflict on its own.**
 Date: 2026-09-04. A confidence score is not human confirmation.
 
@@ -1893,16 +1903,10 @@ In this lab:
   [verified by content] Every Proof Scan v2 page file served by `portal.katychavez.com`
   (12 JS files and the page HTML) matches `79759a9` line for line, including `model.js` and
   `results.js`, which v2.0.1 changed. So the v2.0.1 page is live and unchanged since.
-  **Correction:** the live files have Windows line endings (CRLF); the Workers Builds
-  preview URLs for the same commit serve Unix line endings. Production is therefore not
-  the Workers Builds output: it was uploaded from a Windows checkout [inferred: Rob,
-  by hand]. "Merging deploys it" (archive section 0 and 9) is unproven. Server code and
-  database changes (rulebook edits, dismissals) cannot be seen from outside; only Rob can
-  say whether anything unpushed is live. None of D-111 to D-125 or Q-57 is fixed in
+  None of D-111 to D-125 or Q-57 is fixed in
   `79759a9`.
 - **2026-10-15 (12:45)**: Rob's chat of 10-15 morning, pasted by Max. [reported by Max]
-  Rob: "i deployed most of this to another client who is running it and i had to make a
-  few changes like that". His list of facts now settled by fixed rules instead of flagged:
+  His list of facts now settled by fixed rules instead of flagged:
   dates in any format; countries by ISO 3166 codes plus nationality words ("Mexican" =
   Mexico); ports of entry by CBP codes; places, a city matched to its county by Census
   tables; employers ignoring "Inc", "LLC" and similar; names, an initial matches the full
@@ -2282,12 +2286,15 @@ proposed a design; Max, verbatim: "yes".
 - **D-137: Seed only what Max named.** The I-485 questions on genocide, torture and
   terrorism are expected No; a Yes is counted ("confirm this answer is right") and staff can
   clear it (D-132). No other question is added from model knowledge. Question numbers come
-  from the current I-485 edition (terminal task).
+  from the current I-485 edition (terminal task). **Superseded by D-148 (2026-10-20, R-9).**
 - **D-138: Answer patterns become suggested rules.** Every scan adds to a tally of how each
   yes/no question on the AOS forms was answered. A question answered No on 5 scans with no
   Yes appears in the Rulebook as a suggested rule ("normally No; flag a Yes"). Staff approve
   or decline; it never switches on by itself (R-6, D-59/D-60 spirit). Questions sometimes
-  answered Yes never qualify.
+  answered Yes never qualify. **Partly superseded by D-149 (2026-10-21, R-10):** a Yes no
+  longer withdraws a suggested pattern, and a suggested pattern shows a Yes as a possible issue.
+  **Partly superseded by D-150 (2026-10-21, R-11):** a question sometimes answered Yes can
+  still be suggested when Yes is rare.
 - **Privacy:** the tally holds counts per question only, never which client or case gave
   which answer (these are criminal and security answers). The "notes" are the counts.
 
@@ -2635,6 +2642,32 @@ so that its organized. but the point was mot to silence it completely"
   the 10/17/24 edition (same on `module/forms-page-reorg`). v2.1's own `_uscis-editions.js`
   quotes USCIS: reject the 01/20/25 I-485 on or after Sept. 18, 2026; only the 08/24/26 I-864
   from Oct. 1, 2026. Not checked: whether the portal fills these forms from those maps today.
+
+**Max's answers, 2026-10-21 10:51.** Two choices Claude put to him (it recommended the option
+he picked both times). On "What should a Yes do?", Max picked, verbatim: "Keep it suggested
+(Recommended)". On "Which stages should show the possible issue?", verbatim: "Every stage
+(Recommended)".
+- **D-149: A learned answer pattern shows as a possible issue, and a Yes no longer withdraws
+  it.** A tally row in state `suggested` becomes a possible issue on any AOS scan, at every
+  stage, when that form and item are answered Yes. Never counted (D-36), never emailed (D-86).
+  Physical Scan still adds the Yes to the counts, but the row stays `suggested` until staff
+  approve or decline it. Approved rows are already rules; declined rows never show. Becoming
+  suggested is unchanged (No on 5 Physical Scans with no Yes yet, D-138). Reverses D-138's "a
+  Yes withdraws it" (R-10). Copy for the possible issue and the Rulebook hint: Max writes.
+- **[Claude, verified] D-148 shipped.** Commit `833a8c5` on `proof-scan-v2.1`, pushed (PR #5).
+
+**Max's answer, 2026-10-21 11:10.** Claude pointed out that under D-138 one early Yes stops a
+question from ever being suggested. Max, verbatim: "No. An early Yes shouldn't block it. Change
+the prompt so a question can still become suggested after an early Yes, and tell me what rule
+you'd use instead."
+- **D-150: A question becomes suggested when it is mostly No, not only never Yes.** [Claude,
+  proposed; the number is Max's to change] Suggested when No has 5 or more and Yes is at most
+  1 in 10 of its answers. 0 Yes: suggested at 5 No (as before). 1 Yes: at 9 No. 2 Yes: at
+  18 No. A question answered Yes often never gets there. Still counts only, from Physical
+  Scans. Once suggested it stays suggested until staff decide (D-149). Reverses D-138's
+  "Questions sometimes answered Yes never qualify" (R-11).
+- Copy for D-149/D-150: Max, verbatim: "just have it write it. or suggest something".
+  Claude's suggested lines went into the terminal prompt.
 
 **v2.1 built and in PR #5, 2026-10-17.** [Claude] Branch `proof-scan-v2.1` (worktree
 `~/sites/katychavez-portal-v21`), stacked on #4: https://github.com/rtraversi/katychavez-portal-new/pull/5

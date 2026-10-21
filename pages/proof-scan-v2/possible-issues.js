@@ -16,8 +16,9 @@ import { DISMISS_REASONS } from '../proof-scan/exploration-model.js';
 // D-123 / Q-55 (v2.0.2): reasoning the server raises itself and never lets the
 // firm suppress for good (blank or duplicate pages). Mirrors
 // RESERVED_REASONING_KEYS in the server's engine.
-// v2.1: the I-130 relationship box against the AOS kind too (D-131).
-const NOT_SUPPRESSIBLE = new Set(['blank_or_duplicate_pages', 'relationship_box_kind']);
+// v2.1: the I-130 relationship box against the AOS kind too (D-131), and a Yes
+// on a suggested answer pattern (D-149): staff decline the pattern instead.
+const NOT_SUPPRESSIBLE = new Set(['blank_or_duplicate_pages', 'relationship_box_kind', 'answer_pattern']);
 import { el, t, button } from './ui.js';
 import { errorText } from './api.js';
 

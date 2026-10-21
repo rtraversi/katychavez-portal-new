@@ -20,6 +20,7 @@ import { onRequest as patternsRoute } from '../../functions/api/proof-scan-v2-pa
 import { onRequest as rulesRoute } from '../../functions/api/proof-scan-v2-rules.js';
 import { onRequest as suppressionsRoute } from '../../functions/api/proof-scan-v2-suppressions.js';
 import { onRequest as evidenceRoute } from '../../functions/api/proof-scan-v2-evidence.js';
+import { onRequest as issueRoute } from '../../functions/api/proof-scan-v2-possible-issue.js';
 import { caseLabel } from '../../functions/api/_proof-scan-v2-common.js';
 import { FACT_FIELDS } from '../../functions/api/_proof-scan-v2-ai.js';
 import { reportView } from '../../functions/api/_proof-scan-v2-view.js';
@@ -559,7 +560,7 @@ describe('answer patterns become suggested rules (D-138)', () => {
     { form: 'I-485', item: '53.b', topic: 'ever committed genocide', answer: over['53.b'] || 'no' },
     { form: 'I-485', item: '23', topic: 'crime against ELENA in 2019', answer: over['23'] || 'yes' },
   ];
-  it('counts only, from Physical Scans; 5 No and no Yes is suggested; a Yes withdraws it', async () => {
+  it('counts only, from Physical Scans; 5 No and no Yes is suggested; a Yes keeps it suggested (D-149)', async () => {
     const id = await aosCase();
     await stage(id, 'draft_review', { aos: { fee_payments: goodFees(), yes_no_answers: answers() } });
     expect(db.rows('proof_scan_answer_tally')).toHaveLength(0);
@@ -572,9 +573,25 @@ describe('answer patterns become suggested rules (D-138)', () => {
     expect(crime.topic).toBe('crime against in');
     for (const r of rows) expect(Object.keys(r).some((k) => /case_id|run|person|client/.test(k))).toBe(false);
     await physical(id, { aos: { fee_payments: goodFees(), yes_no_answers: answers({ '53.b': 'yes' }) } });
-    expect(db.rows('proof_scan_answer_tally').find((r) => r.item === '53.b').state).toBe('watching');
+    expect(db.rows('proof_scan_answer_tally').find((r) => r.item === '53.b')).toMatchObject({ no_count: 5, yes_count: 1, state: 'suggested' });
+    expect(db.rows('proof_scan_answer_tally').find((r) => r.item === '23')).toMatchObject({ yes_count: 6, state: 'watching' });
     expect(nextTallyState({ state: 'declined', no_count: 9, yes_count: 0 })).toBe('declined');
     expect(tallyRows([{ form: 'I-485', item: '61', topic: 'education', answer: 'blank' }], new Set())).toEqual([]);
+  });
+
+  it('an early Yes does not block a suggestion: No on 5 scans and Yes on at most 1 in 10 (D-150)', () => {
+    const next = (no, yes, state = 'watching') => nextTallyState({ state, no_count: no, yes_count: yes });
+    expect(next(5, 0)).toBe('suggested');
+    expect(next(4, 0)).toBe('watching');
+    expect(next(8, 1)).toBe('watching');
+    expect(next(9, 1)).toBe('suggested');
+    expect(next(17, 2)).toBe('watching');
+    expect(next(18, 2)).toBe('suggested');
+    expect(next(5, 5)).toBe('watching');
+    // D-149: once suggested it stays; approved and declined stay as they are.
+    expect(next(5, 5, 'suggested')).toBe('suggested');
+    expect(next(5, 0, 'approved')).toBe('approved');
+    expect(next(5, 0, 'declined')).toBe('declined');
   });
 
   it('staff approve (a rule is added to a new version) or decline; nothing switches on by itself', async () => {
@@ -588,9 +605,112 @@ describe('answer patterns become suggested rules (D-138)', () => {
     expect(ok.body).toMatchObject({ rule_id: 'AOS-ADD-001', versions: { aos: 2 } });
     const rule = db.rows('proof_scan_rules').find((r) => r.rule_id === 'AOS-ADD-001');
     expect(rule).toMatchObject({ origin: 'answer_pattern', form: 'I-485', item: '53.b', expected: 'No', scope: 'case_type' });
+    expect(rule.note).toMatch(/No on 5 scans, Yes on 0\./);
     expect((await decide('decline')).status).toBe(409);
     const crime = db.rows('proof_scan_answer_tally').find((r) => r.item === '23');
     expect((await decide('approve', crime.id)).status).toBe(409);
+  });
+});
+
+// ── A Yes on a suggested pattern is a Possible issue (D-149, D-150) ──────────
+
+describe('a Yes on a suggested answer pattern is a Possible issue (D-149)', () => {
+  const tally = (o = {}) => {
+    const row = { id: `tally-${db.rows('proof_scan_answer_tally').length + 1}`, case_type: 'aos', form: 'I-485', item: '44', topic: 'intend terrorist activity',
+      no_count: 6, yes_count: 0, state: 'suggested', approved_rule_id: null, decided_by: null, decided_at: null, updated_at: '2026-10-10T00:00:00Z', ...o };
+    db.rows('proof_scan_answer_tally').push(row);
+    return row;
+  };
+  const yesNo = (answer, item = '44', topic = 'intend terrorist activity') => ({ aos: { fee_payments: goodFees(), yes_no_answers: [{ form: 'I-485', item, topic, answer }] } });
+  const patternIssues = (r) => r.body.possible_issues.filter((p) => p.reasoning_key === 'answer_pattern');
+
+  it('shows once at every stage, never counted; a No shows nothing', async () => {
+    tally();
+    const id = await aosCase();
+    for (const s of ['draft_review', 'preflight', 'physical_scan']) {
+      const r = await stage(id, s, { aos: { fee_payments: goodFees(), yes_no_answers: [
+        { form: 'I-485', item: '44', topic: 'intend terrorist activity', answer: 'yes' },
+        { form: 'I-485', item: '44.', topic: 'intend terrorist activity', answer: 'yes' },
+      ] } });
+      expect(r.status).toBe(200);
+      expect(patternIssues(r)).toHaveLength(1);
+      expect(patternIssues(r)[0]).toMatchObject({
+        title: 'I-485 item 44 (intend terrorist activity) is answered Yes',
+        description: 'Earlier scans: No 6 times, Yes 0 times.',
+        evidence: 'I-485, item 44',
+        why_it_matters: 'A Yes ticked by mistake is easy to miss, and USCIS reads it as the client\'s answer.',
+        uncertainty: 'The Yes may be the right answer for this client.',
+        general_rule: null,
+      });
+      expect(r.body.result.attention_count).toBe(0);
+    }
+    expect(patternIssues(await stage(id, 'draft_review', yesNo('no')))).toHaveLength(0);
+  });
+
+  it('watching, approved and declined patterns show nothing; neither does another case type', async () => {
+    tally({ item: '44', state: 'watching' });
+    tally({ item: '53.a', topic: 'ever committed torture', state: 'approved' });
+    tally({ item: '53.b', topic: 'ever committed genocide', state: 'declined' });
+    const id = await aosCase();
+    const r = await stage(id, 'draft_review', { aos: { fee_payments: goodFees(), yes_no_answers: [
+      { form: 'I-485', item: '44', topic: 'intend terrorist activity', answer: 'yes' },
+      { form: 'I-485', item: '53.a', topic: 'ever committed torture', answer: 'yes' },
+      { form: 'I-485', item: '53.b', topic: 'ever committed genocide', answer: 'yes' },
+    ] } });
+    expect(r.status).toBe(200);
+    expect(patternIssues(r)).toHaveLength(0);
+    tally({ case_type: 'general', item: '45' });
+    const general = (await create({ case_type: 'general' })).body.case.id;
+    mockModel(vi, [observations({ aos: { yes_no_answers: [{ form: 'I-485', item: '45', topic: 'intend terrorist activity', answer: 'yes' }] } })]);
+    const g = await call(runRoute, '/api/proof-scan-v2-run', { method: 'POST', body: { case_id: general, stage: 'draft_review', scope: 'whole', files: [pdfFile()] } });
+    expect(g.status).toBe(200);
+    expect(g.body.possible_issues.filter((p) => p.reasoning_key === 'answer_pattern')).toHaveLength(0);
+  });
+
+  it('the Physical Scan that makes a pattern suggested never flags itself; the next Yes does', async () => {
+    const id = await aosCase();
+    for (let i = 0; i < 4; i += 1) await physical(id, yesNo('no'));
+    // The 5th No makes it suggested; patterns are read before this scan's answers are counted.
+    const fifth = await physical(id, yesNo('no'));
+    expect(db.rows('proof_scan_answer_tally')[0]).toMatchObject({ no_count: 5, yes_count: 0, state: 'suggested' });
+    expect(patternIssues(fifth)).toHaveLength(0);
+    const next = await physical(id, yesNo('yes'));
+    expect(patternIssues(next)).toHaveLength(1);
+    expect(patternIssues(next)[0].description).toBe('Earlier scans: No 5 times, Yes 0 times.');
+    // D-149: still suggested after the Yes.
+    expect(db.rows('proof_scan_answer_tally')[0]).toMatchObject({ no_count: 5, yes_count: 1, state: 'suggested' });
+  });
+
+  it('one early Yes, then enough No answers: suggested, and the next Yes shows (D-150)', async () => {
+    const id = await aosCase();
+    await physical(id, yesNo('yes'));
+    for (let i = 0; i < 8; i += 1) await physical(id, yesNo('no'));
+    expect(db.rows('proof_scan_answer_tally')[0]).toMatchObject({ no_count: 8, yes_count: 1, state: 'watching' });
+    const ninth = await physical(id, yesNo('no'));
+    expect(patternIssues(ninth)).toHaveLength(0);
+    expect(db.rows('proof_scan_answer_tally')[0].state).toBe('suggested');
+    expect(patternIssues(await stage(id, 'draft_review', yesNo('yes')))).toHaveLength(1);
+  });
+
+  it('carries nothing from the case: only the form, the item and the pattern\'s own topic', async () => {
+    tally({ item: '23', topic: 'crime against in' });
+    const id = await aosCase();
+    const r = await stage(id, 'draft_review', yesNo('yes', '23', 'crime against ELENA in 2019'));
+    const [issue] = patternIssues(r);
+    expect(issue.title).toBe('I-485 item 23 (crime against in) is answered Yes');
+    const text = [issue.title, issue.description, issue.evidence, issue.why_it_matters, issue.uncertainty].join(' ');
+    expect(text).not.toMatch(/ELENA|VEGA|MARCO|SANTOS|2019|1991|1988|555|example\.test/);
+  });
+
+  it('cannot be silenced firm-wide: the suppression endpoint and "never suggest" refuse it', async () => {
+    tally();
+    const r = await stage(await aosCase(), 'draft_review', yesNo('yes'));
+    const [issue] = patternIssues(r);
+    const s = await call(suppressionsRoute, '/api/proof-scan-v2-suppressions', { method: 'POST', body: { reasoning_key: 'answer_pattern', label: 'x' } });
+    expect(s.status).toBe(409);
+    const never = await call(issueRoute, '/api/proof-scan-v2-possible-issue', { method: 'POST', body: { issue_id: issue.id, action: 'dismiss', reason: 'never_suggest_reasoning' } });
+    expect(never.status).toBe(409);
+    expect(db.rows('proof_scan_suppressions').some((x) => x.reasoning_key === 'answer_pattern')).toBe(false);
   });
 });
 

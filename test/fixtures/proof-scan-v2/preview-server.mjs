@@ -65,11 +65,14 @@ db.rows('proof_scan_suppressions').push({ id: 'sup-r1', reasoning_key: 'signatur
 db.rows('proof_scan_config').push({ id: 'cfg', notify_email: 'alerts@example.test' });
 // D-138: answer counts from earlier (synthetic) scans, so the Rulebook shows a
 // suggestion once the seeded AOS Physical Scans add theirs. Counts only.
-for (const [form, item, topic, no, yes] of [
+// D-149: item 44 is already suggested, so OKAFOR & BELLO's Yes on it shows
+// under Possible issues.
+for (const [form, item, topic, no, yes, state = 'watching'] of [
   ['I-485', '53.b', 'ever committed genocide', 1, 0],
   ['I-485', '53.a', 'ever committed torture', 1, 0],
   ['I-485', '23', 'ever committed a crime of any kind', 3, 2],
-]) db.rows('proof_scan_answer_tally').push({ id: `tally-${item}`, case_type: 'aos', form, item, topic, no_count: no, yes_count: yes, state: 'watching', approved_rule_id: null, decided_by: null, decided_at: null, updated_at: '2026-10-10T00:00:00Z' });
+  ['I-485', '44', 'intend terrorist activity', 6, 0, 'suggested'],
+]) db.rows('proof_scan_answer_tally').push({ id: `tally-${item}`, case_type: 'aos', form, item, topic, no_count: no, yes_count: yes, state, approved_rule_id: null, decided_by: null, decided_at: null, updated_at: '2026-10-10T00:00:00Z' });
 // D-127, D-128: one form edition row, so "Check USCIS editions now" has something to check.
 db.rows('form_editions').push({ id: 'fe-g28', form_number: 'G-28', pages: 4, edition_date: '09/17/18', upstream_edition: '09/17/18', check_status: 'current', last_checked_at: null });
 

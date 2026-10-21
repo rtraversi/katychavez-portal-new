@@ -164,7 +164,10 @@ const EVIDENCE_FIELDS = ['first_name', 'last_name', 'date_of_birth', 'a_number',
 // key, which can never be suppressed firm-wide: dismissing it is per case only,
 // so one "never suggest this" cannot silence it for every package for good.
 export const PAGES_REASONING_KEY = 'blank_or_duplicate_pages';
-export const RESERVED_REASONING_KEYS = new Set([PAGES_REASONING_KEY, RELATIONSHIP_REASONING_KEY]);
+// D-149: a Yes on a suggested answer pattern. Staff silence it by declining
+// the pattern in the Rulebook, never by "never suggest".
+export const ANSWER_PATTERN_REASONING_KEY = 'answer_pattern';
+export const RESERVED_REASONING_KEYS = new Set([PAGES_REASONING_KEY, RELATIONSHIP_REASONING_KEY, ANSWER_PATTERN_REASONING_KEY]);
 export const PAGES_RULE = 'PS-103';
 
 // D-121: the actual document, by its type, or by its own printed title when
@@ -218,7 +221,7 @@ export function evaluateRun(input) {
   const {
     caseType, stage, scope = null, form = null, ruleSet, selection, people, documents = [],
     openSuggestions = [], cardSsn = new Map(), obs, hasMarkedFiles = false, suppressedKeys = [],
-    files = [], scannedAt, editionAlerts = [], aosKind = null,
+    files = [], scannedAt, editionAlerts = [], aosKind = null, answerPatterns = [],
   } = input;
   // General and AOS have one card per person (D-94, D-131); DACA has one person.
   const general = isMultiPerson(caseType);
@@ -1086,6 +1089,28 @@ export function evaluateRun(input) {
     });
   }
 
+  // D-149: a Yes on a question the tally suggests is normally No, at every
+  // stage. Only the form, the item and the pattern's own general topic words.
+  const answers = aos ? tallyRows(aosObs.yes_no_answers, words) : [];
+  const patternSeen = new Set();
+  for (const a of answers) {
+    if (a.answer !== 'yes') continue;
+    const p = answerPatterns.find((r) => r.state === 'suggested' && r.form === a.form && r.item === a.item);
+    const key = `${a.form}|${a.item}`;
+    if (!p || patternSeen.has(key)) continue;
+    patternSeen.add(key);
+    const vars = { form: p.form, item: p.item, topic: p.topic, no: p.no_count, yes: p.yes_count };
+    possibleIssues.push({
+      title: copyText('v21.pi.pattern.title', vars),
+      description: copyText('v21.pi.pattern.description', vars),
+      evidence: `${p.form}, item ${p.item}`,
+      why_it_matters: copyText('v21.pi.pattern.why', vars),
+      uncertainty: copyText('v21.pi.pattern.uncertainty', vars),
+      reasoning_key: ANSWER_PATTERN_REASONING_KEY,
+      general_rule: null,
+    });
+  }
+
   // D-94: a document whose owner is unclear goes to Possible issues.
   for (const e of unclearOwners) {
     if (suppressedSet.has('evidence_owner_unclear')) break;
@@ -1142,7 +1167,7 @@ export function evaluateRun(input) {
     cardFills,
     suggestions: correctionSuggestions,
     // D-138: the yes/no answers, as counts to add (no case, no person).
-    answers: aos ? tallyRows(aosObs.yes_no_answers, words) : [],
+    answers,
   };
 }
 

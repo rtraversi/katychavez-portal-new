@@ -279,3 +279,17 @@ D-148: the I-485 yes/no eligibility questions are left alone. The seeded rule AO
 (R-9): removed from `v2-aos-seed.json`, the generated block in `2006_proof_scan_v2_1.sql` and
 the model's rule guidance. AOS rule count 49 -> 48. The answer tally (D-138) is unchanged: those
 questions are still counted, never flagged.
+
+## v2.1 follow-up (D-149, D-150, 2026-10-21)
+- **D-149:** a tally row in state `suggested` shows as a Possible issue on any AOS scan, at
+  every stage, when that form and item are answered Yes (reasoning key `answer_pattern`,
+  reserved: staff silence it by declining the pattern in the Rulebook, never by "never
+  suggest"). The patterns are read before the scan's own answers are counted. Text: the form,
+  the item, the pattern's own topic words and its counts, nothing from the case. Never counted
+  (D-36), never emailed (D-86). A Yes no longer withdraws a suggestion (R-10).
+- **D-150:** a question becomes suggested at No on 5 or more Physical Scans with Yes at most 1
+  in 10 of its answers (`SUGGEST_AFTER`, `MAX_YES_IN`), so an early Yes no longer blocks it
+  (R-11). Approved and declined rows stay as they are.
+- Copy from Max: `v21.pi.pattern.*`, new `v21.patterns.hint` and `v21.patterns.sometimes`.
+  No schema change; the 2006 tally comment is reworded. The preview seeds I-485 item 44 as
+  suggested, so OKAFOR & BELLO's Yes shows under Possible issues.

@@ -1,4 +1,4 @@
--- Migration 2006: Proof Scan v2.1 (decisions D-129 to D-148, Q-59 to Q-81 in
+-- Migration 2006: Proof Scan v2.1 (decisions D-129 to D-150, Q-59 to Q-81 in
 -- docs/proof-scan-v2/DECISIONS-MASTER-RECORD.md)
 --
 -- Apply AFTER 2005 and BEFORE deploying the v2.1 code. Depends on 2000 to 2005.
@@ -134,9 +134,9 @@ CREATE POLICY "proof_scan_clears_staff_delete" ON public.proof_scan_clears
 
 -- ── 5. Answer-pattern tally ──────────────────────────────────────────────────
 -- One row per case type, form and question number. Never which client, case or
--- run gave which answer. A question answered No on 5 scans with no Yes becomes
--- 'suggested'; staff approve (a rule is added) or decline. A Yes ever means it
--- is never suggested.
+-- run gave which answer. A question answered No on at least 5 scans, and Yes
+-- on at most 1 in 10 answers, becomes 'suggested' (D-150); staff approve (a rule
+-- is added) or decline. A Yes does not withdraw a suggestion (D-149).
 CREATE TABLE IF NOT EXISTS public.proof_scan_answer_tally (
   id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   case_type         text        NOT NULL CHECK (case_type IN ('daca_renewal', 'general', 'aos')),
