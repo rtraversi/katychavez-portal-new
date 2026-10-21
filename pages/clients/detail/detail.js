@@ -1840,7 +1840,7 @@
           address_line1:           fd.get('address_line1')?.trim() || null,
           address_line2:           fd.get('address_line2')?.trim() || null,
           city:                    fd.get('city')?.trim() || null,
-          state:                   fd.get('state')?.trim()?.toUpperCase() || 'TX',
+          state:                   ContactFormat.stateValue(fd.get('state')),
           zip:                     fd.get('zip')?.trim() || null,
           county:                  fd.get('county')?.trim() || null,
           length_of_residence:     fd.get('length_of_residence')?.trim() || null,
@@ -2113,6 +2113,10 @@
     const opts = options.map(([v, l]) => `<option value="${v}"${current === v ? ' selected' : ''}>${Utils.esc(l)}</option>`).join('');
     return `<div class="field"><label>${Utils.esc(label)}</label><select name="${name}"><option value="">—</option>${opts}</select></div>`;
   }
+  // State of an address: 2-letter codes, empty by default (js/contact-format.js).
+  function stateSel(name, label, current) {
+    return `<div class="field"><label>${Utils.esc(label)}</label><select name="${name}">${ContactFormat.stateOptions(current)}</select></div>`;
+  }
   function ck(name, label, checked, description = '') {
     return `
       <div class="flag-row" style="margin-bottom:var(--space-2)">
@@ -2131,22 +2135,23 @@
 
   function buildClientInfoFields() {
     const c = client;
+    ContactFormat.wire(document.getElementById('form-client-info'));
     document.getElementById('fields-client-info').innerHTML = `
       ${row2(inp('first_name','First name',c.first_name,'text','required'), inp('last_name','Last name',c.last_name,'text','required'))}
       ${row2(inp('middle_name','Middle name',c.middle_name), inp('former_maiden_name','Former/maiden name',c.former_maiden_name))}
       ${row2(inp('dob','Date of birth',c.dob,'date'), inp('place_of_birth','Place of birth',c.place_of_birth))}
       ${row2(inp('driver_license_number','Driver\'s license #',c.driver_license_number), inp('driver_license_state','DL state',c.driver_license_state,'text','maxlength="2"'))}
       <p class="section-divider">Contact</p>
-      ${row2(inp('cell_phone','Cell phone',c.cell_phone,'tel'), inp('home_phone','Home phone',c.home_phone,'tel'))}
-      ${row2(inp('work_phone','Work phone',c.work_phone,'tel'), inp('fax','Fax',c.fax,'tel'))}
+      ${row2(inp('cell_phone','Cell phone',c.cell_phone,'tel','data-fmt="phone"'), inp('home_phone','Home phone',c.home_phone,'tel','data-fmt="phone"'))}
+      ${row2(inp('work_phone','Work phone',c.work_phone,'tel','data-fmt="phone"'), inp('fax','Fax',c.fax,'tel','data-fmt="phone"'))}
       ${row2(inp('email','Email',c.email,'email'), sel('preferred_contact','Preferred contact',[['phone','Phone'],['email','Email'],['portal','Portal message'],['text','Text']],c.preferred_contact))}
       <p class="section-divider">Address</p>
       ${row2(inp('address_line1','Street address',c.address_line1), inp('address_line2','Apt / Suite',c.address_line2))}
-      ${row3(inp('city','City',c.city), inp('state','State',c.state||'TX','text','maxlength="2"'), inp('zip','ZIP',c.zip))}
+      ${row3(inp('city','City',c.city), stateSel('state','State',c.state), inp('zip','ZIP',c.zip,'text','inputmode="numeric" data-fmt="zip"'))}
       ${row2(inp('county','County (TX)',c.county), inp('length_of_residence','Length of residence',c.length_of_residence))}
       <p class="section-divider">Employment</p>
       ${row2(inp('employer','Employer',c.employer), inp('employer_address_line1','Employer address',c.employer_address_line1))}
-      ${row3(inp('employer_city','City',c.employer_city), inp('employer_state','State',c.employer_state,'text','maxlength="2"'), inp('employer_zip','ZIP',c.employer_zip))}
+      ${row3(inp('employer_city','City',c.employer_city), inp('employer_state','State',c.employer_state,'text','maxlength="2"'), inp('employer_zip','ZIP',c.employer_zip,'text','inputmode="numeric" data-fmt="zip"'))}
       ${row2(inp('length_of_employment','Length of employment',c.length_of_employment), inp('gross_annual_income','Gross annual income',c.gross_annual_income,'number','min="0" step="0.01"'))}
       <p class="section-divider">Background</p>
       ${row2(inp('education','Education level',c.education), inp('living_with_others','Living with others (who)',c.living_with_others))}
@@ -2689,12 +2694,12 @@
                 )}
             ${inp('a_number','A-Number (if any)',op.a_number||'')}` : ''}
             <p class="section-divider">Contact</p>
-            ${row2(inp('cell_phone','Cell phone',op.cell_phone||'','tel'), inp('home_phone','Home phone',op.home_phone||'','tel'))}
-            ${row2(inp('work_phone','Work phone',op.work_phone||'','tel'), inp('email','Email',op.email||'','email'))}
+            ${row2(inp('cell_phone','Cell phone',op.cell_phone||'','tel','data-fmt="phone"'), inp('home_phone','Home phone',op.home_phone||'','tel','data-fmt="phone"'))}
+            ${row2(inp('work_phone','Work phone',op.work_phone||'','tel','data-fmt="phone"'), inp('email','Email',op.email||'','email'))}
             <p class="section-divider">Address</p>
             ${ck('is_address_restricted','Address restricted (DV)',op.is_address_restricted||false)}
             ${row2(inp('address_line1','Street address',op.address_line1||''), inp('address_line2','Apt/Suite',op.address_line2||''))}
-            ${row3(inp('city','City',op.city||''), inp('state','State',op.state||'TX','text','maxlength="2"'), inp('zip','ZIP',op.zip||''))}
+            ${row3(inp('city','City',op.city||''), stateSel('state','State',op.state), inp('zip','ZIP',op.zip||'','text','inputmode="numeric" data-fmt="zip"'))}
             ${row2(inp('county','County',op.county||''), inp('length_of_residence','Residence length',op.length_of_residence||''))}
             <p class="section-divider">Employment</p>
             ${row2(inp('employer','Employer',op.employer||''), inp('gross_annual_income','Gross annual income ($)',op.gross_annual_income||'','number','min="0" step="0.01"'))}
@@ -2723,6 +2728,7 @@
     modalEl.querySelector('.modal-close').addEventListener('click', () => closeModal(modalEl));
     modalEl.querySelector('.modal-cancel').addEventListener('click', () => closeModal(modalEl));
     modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(modalEl); });
+    ContactFormat.wire(modalEl.querySelector('#opposing-form'));
 
     modalEl.querySelector('#opposing-form').addEventListener('submit', async e => {
       e.preventDefault();
@@ -2756,7 +2762,7 @@
           address_line1:        fd.get('address_line1')?.trim() || null,
           address_line2:        fd.get('address_line2')?.trim() || null,
           city:                 fd.get('city')?.trim() || null,
-          state:                fd.get('state')?.trim()?.toUpperCase() || null,
+          state:                ContactFormat.stateValue(fd.get('state')),
           zip:                  fd.get('zip')?.trim() || null,
           county:               fd.get('county')?.trim() || null,
           length_of_residence:  fd.get('length_of_residence')?.trim() || null,

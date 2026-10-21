@@ -110,6 +110,17 @@ export async function seedMatterForms(admin, matter, userId = null) {
   return { seeded: true, inserted: items.length };
 }
 
+// RT-16: the new-client form used to save "Phone" to the old phone column,
+// and the client card saves cell_phone; maps read either one. Each falls back
+// to the other when empty, so a phone typed in either place fills both.
+export function withPhoneFallback(client) {
+  if (!client) return {};
+  const out = { ...client };
+  if (!out.cell_phone && out.phone) out.cell_phone = out.phone;
+  if (!out.phone && out.cell_phone) out.phone = out.cell_phone;
+  return out;
+}
+
 // Assembles the per-matter fill context consumed by applyFieldMap/resolvePath.
 export async function buildFillContext(admin, matter, pkg, activeTemplates) {
   const matter_id = matter.id;
@@ -132,7 +143,7 @@ export async function buildFillContext(admin, matter, pkg, activeTemplates) {
   const jointSponsor = partyRows.find(p => p.party_role === 'joint_sponsor') || {};
 
   return {
-    client:        client || {},
+    client:        withPhoneFallback(client),
     matter,
     immigration:   immigration || {},
     familyMembers: familyMembers || [],

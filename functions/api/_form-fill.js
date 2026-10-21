@@ -109,6 +109,19 @@ export function applyTransform(value, transform) {
   }
 }
 
+// Drafter 1.0.1: the card keeps a ZIP+4 and a formatted phone, the forms
+// cannot. Every USCIS ZIP box takes 5 characters, so a column named "zip" or
+// "*_zip" gives its first 5 digits; phone boxes take bare digits (most take
+// exactly 10), so a column ending in "phone", or "fax", gives its digits only.
+// Applied by source column, before any transform, wherever a value is written.
+export function cleanForBox(source, value) {
+  if (value == null || value === '' || typeof source !== 'string' || source.startsWith('literal:')) return value;
+  const col = source.slice(source.lastIndexOf('.') + 1);
+  if (col === 'zip' || col.endsWith('_zip')) return String(value).replace(/\D/g, '').slice(0, 5);
+  if (col.endsWith('phone') || col === 'fax') return String(value).replace(/\D/g, '');
+  return value;
+}
+
 // Resolves a dotted-path source ("prefix.path") against the fill context.
 // Supports one level of array indexing for "immigration.family.<n>.<col>".
 export function resolvePath(source, context, env) {
@@ -166,7 +179,7 @@ export function applyFieldMap(pdfForm, fieldMap, context, env) {
       const resolved = resolvePath(descriptor.source, context, env);
       if (resolved.skip) continue;
 
-      let value = resolved.value;
+      let value = cleanForBox(descriptor.source, resolved.value);
       if (value == null || value === '') continue;
       if (descriptor.transform) value = applyTransform(value, descriptor.transform);
 

@@ -12,6 +12,7 @@ import { PDFDocument } from 'pdf-lib';
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 import { applyFieldMap, applyManualEdits, stripRichText } from './_form-fill.js';
 import { loadPackageTemplates, seedMatterForms, buildFillContext, loadManualEdits } from './_fill-context.js';
+import { formFileName } from './_form-file-name.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -134,7 +135,7 @@ async function handleRequest(request, env) {
       const versionNum = (existing?.version_num || 0) + 1;
 
       const r2Key    = `generated-forms/${matter_id}/${batchId}/${tmpl.form_key}_v${versionNum}.pdf`;
-      const fileName = `${tmpl.label} (v${versionNum}).pdf`;
+      const fileName = formFileName(tmpl.form_key, fillContext.client?.last_name);
 
       await env.R2.put(r2Key, outBytes, { httpMetadata: { contentType: 'application/pdf' } });
 

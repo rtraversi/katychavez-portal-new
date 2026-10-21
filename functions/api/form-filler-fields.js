@@ -18,7 +18,7 @@
 // never from client input — so only mapped columns can ever be written.
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
-import { resolvePath, applyTransform } from './_form-fill.js';
+import { resolvePath, applyTransform, cleanForBox } from './_form-fill.js';
 import { loadPackageTemplates, buildFillContext, loadManualEdits } from './_fill-context.js';
 
 // Buckets reverse autofill may write to, and how to address their rows.
@@ -94,8 +94,9 @@ async function handleGet(request, env) {
     let autofill = null;
     try {
       const r = resolvePath(descriptor.source, fillContext, env);
-      if (!r.skip && r.value != null && r.value !== '') {
-        autofill = String(descriptor.transform ? applyTransform(r.value, descriptor.transform) : r.value);
+      const v = r.skip ? null : cleanForBox(descriptor.source, r.value);
+      if (v != null && v !== '') {
+        autofill = String(descriptor.transform ? applyTransform(v, descriptor.transform) : v);
       }
     } catch { /* unreadable source — show as unfilled */ }
 
