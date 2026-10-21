@@ -7,6 +7,7 @@
 // scanned pages spliced in — see package-builder-apply.js).
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
+import { contentDisposition } from './_form-file-name.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -51,7 +52,7 @@ async function handleRequest(request, env) {
   return new Response(obj.body, {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${row.file_name.replace(/"/g, '')}"`,
+      'Content-Disposition': contentDisposition(row.file_name),
     },
   });
 }

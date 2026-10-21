@@ -302,6 +302,7 @@
     modalEl.querySelector('.modal-close').addEventListener('click', closeModal);
     modalEl.querySelector('#modal-cancel').addEventListener('click', closeModal);
     modalEl.querySelector('#client-form').addEventListener('submit', handleSave);
+    ContactFormat.wire(modalEl.querySelector('#client-form'));
     modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
 
     const deleteBtn = modalEl.querySelector('#modal-delete');
@@ -331,10 +332,14 @@
         <div class="modal-body">
 
           <p class="section-divider">Client information</p>
-          <div class="field-row">
+          <div class="field-row thirds">
             <div class="field">
               <label for="client-first-name">First name <span class="required">*</span></label>
               <input type="text" id="client-first-name" name="first_name" required autocomplete="given-name">
+            </div>
+            <div class="field">
+              <label for="client-middle-name">Middle name</label>
+              <input type="text" id="client-middle-name" name="middle_name" autocomplete="additional-name">
             </div>
             <div class="field">
               <label for="client-last-name">Last name <span class="required">*</span></label>
@@ -359,8 +364,8 @@
           </div>
           <div class="field-row">
             <div class="field">
-              <label for="client-phone">Phone</label>
-              <input type="tel" id="client-phone" name="phone" autocomplete="tel">
+              <label for="client-cell-phone">Cell phone</label>
+              <input type="tel" id="client-cell-phone" name="cell_phone" autocomplete="tel" data-fmt="phone">
             </div>
             <div class="field">
               <label for="client-email">Email</label>
@@ -384,11 +389,11 @@
             </div>
             <div class="field">
               <label for="client-state">State</label>
-              <input type="text" id="client-state" name="state" value="TX" maxlength="2" style="text-transform:uppercase">
+              <select id="client-state" name="state">${ContactFormat.stateOptions('')}</select>
             </div>
             <div class="field">
               <label for="client-zip">ZIP</label>
-              <input type="text" id="client-zip" name="zip" inputmode="numeric">
+              <input type="text" id="client-zip" name="zip" inputmode="numeric" data-fmt="zip">
             </div>
           </div>
           <div class="field-row">
@@ -511,13 +516,16 @@
     if (error || !client) return;
 
     const f = document.getElementById('client-form');
-    const clientFields = ['first_name','last_name','dob','phone','email','address_line1','address_line2',
+    const clientFields = ['first_name','middle_name','last_name','dob','cell_phone','email','address_line1','address_line2',
       'city','state','zip','preferred_contact','employer','emergency_contact_name',
       'emergency_contact_phone','conflict_check_notes','notes'];
     clientFields.forEach(k => {
       const el = f.elements[k];
       if (el && client[k] != null) el.value = client[k];
     });
+    // Saved before 1.0.1 with only the old phone column: show it as the cell.
+    if (!client.cell_phone && client.phone) f.elements['cell_phone'].value = client.phone;
+    f.elements['state'].innerHTML = ContactFormat.stateOptions(client.state);
     const dvEl = f.elements['is_dv_confidential'];
     if (dvEl) dvEl.checked = !!client.is_dv_confidential;
     document.getElementById('modal-save').dataset.clientId = clientId;
@@ -582,14 +590,15 @@
 
     const clientPayload = {
       first_name:             f.elements['first_name'].value.trim(),
+      middle_name:            f.elements['middle_name'].value.trim() || null,
       last_name:              f.elements['last_name'].value.trim(),
       dob:                    f.elements['dob'].value || null,
-      phone:                  f.elements['phone'].value.trim() || null,
+      cell_phone:             f.elements['cell_phone'].value.trim() || null,
       email:                  f.elements['email'].value.trim() || null,
       address_line1:          f.elements['address_line1'].value.trim() || null,
       address_line2:          f.elements['address_line2'].value.trim() || null,
       city:                   f.elements['city'].value.trim() || null,
-      state:                  f.elements['state'].value.trim().toUpperCase() || 'TX',
+      state:                  ContactFormat.stateValue(f.elements['state'].value),
       zip:                    f.elements['zip'].value.trim() || null,
       preferred_contact:      f.elements['preferred_contact'].value || null,
       employer:               f.elements['employer'].value.trim() || null,
