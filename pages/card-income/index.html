@@ -1,0 +1,158 @@
+<!-- Card Income — loaded dynamically into #page-content by menu.js. Owner-only (KCL). -->
+<!-- Docket kit (see .dk-* in portal.css / DESIGN-SYSTEM.md); chart marks follow the dataviz rules:
+     emphasis form, one axis, thin marks, hover + keyboard tooltips, month table as the table view. -->
+<style>
+/* Chart roles — token-derived so every theme and both modes follow.
+   Validated 2026-10-23 (dataviz validate_palette.js, default theme):
+   light #93402f vs ~#a8adb5 — CVD ΔE 25.7, normal 28.2;
+   dark  #cf7a64 vs ~#656e7b — CVD ΔE 11.7, normal 19.4.
+   The prior-year gray is recessive on purpose and under 3:1 in both modes, so
+   the end labels + the month table carry its values (relief rule). */
+#ci-root {
+  --ci-cur:  var(--money);
+  --ci-prev: color-mix(in srgb, var(--ink-faint) 75%, var(--surface));
+  --stat-acc: var(--money);
+}
+:root[data-mode="dark"] #ci-root {
+  --ci-cur:  color-mix(in srgb, var(--h-money) 70%, #f3b7a6);
+  --ci-cur:  oklch(from var(--h-money) 0.66 max(c, 0.13) h);
+  --ci-prev: color-mix(in srgb, var(--ink-faint) 80%, var(--surface));
+}
+
+.ci-asof { font-size: 12.5px; color: var(--ink-soft); }
+#ci-years { min-width: 0; }
+.ci-asof b { color: var(--ink); font-weight: 600; }
+
+/* Chart card */
+.ci-chart { position: relative; min-width: 0; background: var(--surface); border-top: 2px solid var(--ink);
+  border-radius: 0 0 var(--r-card) var(--r-card); box-shadow: var(--card-shadow); padding: 14px 16px 10px; }
+.ci-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-soft); margin: 0 0 4px 4px; }
+.ci-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.ci-plot { position: relative; min-height: 260px; }
+.ci-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.ci-svg text { font-family: var(--font-sans); }
+.ci-grid { stroke: var(--line); stroke-width: 1; }
+.ci-base { stroke: var(--line-strong); stroke-width: 1; }
+.ci-tick { font-size: 11px; fill: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.ci-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ci-line.ci-cur  { stroke: var(--ci-cur); }
+.ci-line.ci-prev { stroke: var(--ci-prev); }
+.ci-dot { stroke: var(--surface); stroke-width: 2; }
+.ci-dot.ci-cur  { fill: var(--ci-cur); }
+.ci-dot.ci-prev { fill: var(--ci-prev); }
+.ci-end-val { font-size: 12.5px; font-weight: 700; fill: var(--ink); }
+.ci-end-lab { font-size: 11px; fill: var(--ink-soft); }
+.ci-bar.ci-cur  { fill: var(--ci-cur); }
+.ci-bar.ci-prev { fill: var(--ci-prev); }
+.ci-bar.is-hover { filter: brightness(1.12); }
+.ci-hair { stroke: var(--ink-faint); stroke-width: 1; }
+.ci-hit { fill: transparent; cursor: crosshair; outline: none; }
+.ci-hit:focus-visible { stroke: var(--daily); stroke-width: 1.5; }
+
+/* Line keys (legend + tooltip) */
+.ci-key { display: inline-block; width: 16px; height: 2px; border-radius: 1px; vertical-align: middle; }
+.ci-key.ci-cur  { background: var(--ci-cur); }
+.ci-key.ci-prev { background: var(--ci-prev); }
+.ci-key.ci-none { background: transparent; }
+.ci-key.box { width: 10px; height: 10px; border-radius: 2px; }
+
+.ci-tip { position: absolute; z-index: 5; pointer-events: none; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: 9px; box-shadow: var(--card-shadow-hover);
+  padding: 9px 11px; font-size: 12.5px; min-width: 150px; }
+.ci-tip-title { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
+.ci-tip-row { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.ci-tip-row b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ci-tip-lab { color: var(--ink-soft); }
+
+/* Tables inside registers */
+.ci-table th.num, .ci-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ci-table td.mut, .ci-table tr.mut td, .ci-table .mut { color: var(--ink-faint); }
+.ci-table + .ci-table { border-top: 2px solid var(--line-strong); }
+.ci-table tr.is-partial td:first-child::after { content: " · so far"; color: var(--ink-faint); font-size: 11.5px; }
+.ci-table tfoot td { font-weight: 700; border-top: 1px solid var(--line-strong); padding: var(--space-3) var(--space-4); }
+.ci-chg.up { color: var(--color-success); }
+.ci-chg.down { color: var(--color-danger); }
+.ci-note { font-size: 12px; color: var(--ink-soft); }
+
+/* Every-year grid — sequential, one hue: deeper money tint = bigger month */
+.ci-grid-table td.cell { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+  background: color-mix(in srgb, var(--ci-cur) calc(var(--h, 0) * 42%), var(--surface)); }
+.ci-grid-table tbody tr:nth-child(even) { background: transparent; }
+.ci-grid-table td.empty { color: var(--ink-faint); background: var(--surface); }
+.ci-grid-table th.yr, .ci-grid-table td.yr { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+.ci-grid-table td.yr button { border: 0; background: transparent; font: inherit; font-weight: 700; color: var(--ink); cursor: pointer; padding: 0; }
+.ci-grid-table tr.is-sel td.yr button { color: var(--money); text-decoration: underline; text-underline-offset: 3px; }
+.ci-grid-table td.total { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.ci-scale { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-soft); padding: 10px 16px 12px; }
+.ci-scale .grow { flex: 1; }
+.ci-scale i { display: block; width: 120px; height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--surface), color-mix(in srgb, var(--ci-cur) 42%, var(--surface)));
+  border: 1px solid var(--line); }
+
+.ci-two { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 34px; margin-bottom: 34px; }
+.ci-two > .dk-sec { margin-bottom: 0; }
+@media (max-width: 1100px) { .ci-two { grid-template-columns: minmax(0, 1fr); } }
+</style>
+
+<div id="ci-root">
+  <div class="dk-masthead">
+    <div class="dk-kicker rise" style="animation-delay:.04s">Finance · Card Income</div>
+    <h1 class="dk-title rise" style="animation-delay:.09s">Card <em>income</em>, year over year.</h1>
+    <p class="dk-sub rise" style="animation-delay:.13s">Every credit-card receipt since 2020, by day, month and year. Visible to owners only.</p>
+  </div>
+
+  <div class="dk-toolbar">
+    <div class="dk-formchips" id="ci-years" role="group" aria-label="Year"></div>
+    <span class="dk-spacer"></span>
+    <span class="ci-asof" id="ci-asof"></span>
+    <button class="btn btn--secondary" id="ci-refresh" type="button">Refresh</button>
+  </div>
+
+  <div id="ci-gate"><div class="dk-empty">Loading…</div></div>
+
+  <div id="ci-body" hidden>
+    <div class="dk-stats" id="ci-stats"></div>
+
+    <div class="ci-two">
+      <section class="dk-sec" id="ci-sec-running">
+        <div class="dk-sec-head"><h2>Running total</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ci-running-note"></span></div>
+        <div class="ci-chart">
+          <div class="ci-legend" id="ci-running-legend"></div>
+          <div class="ci-plot" id="ci-running"></div>
+        </div>
+      </section>
+
+      <section class="dk-sec" id="ci-sec-months">
+        <div class="dk-sec-head"><h2>Month by month</h2><span class="dk-sec-rule"></span></div>
+        <div class="ci-chart">
+          <div class="ci-legend" id="ci-months-legend"></div>
+          <div class="ci-plot" id="ci-months-chart"></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="dk-sec" id="ci-sec-table">
+      <div class="dk-sec-head"><h2 id="ci-table-title">Months</h2><span class="dk-sec-rule"></span></div>
+      <div class="dk-register"><div class="table-wrap" id="ci-month-table"></div></div>
+    </section>
+
+    <section class="dk-sec" id="ci-sec-daca">
+      <div class="dk-sec-head"><h2>DACA renewals</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ci-daca-count"></span></div>
+      <div class="dk-register" id="ci-daca"></div>
+    </section>
+
+    <section class="dk-sec" id="ci-sec-ledger">
+      <div class="dk-sec-head"><h2>Daily ledger</h2><span class="dk-sec-rule"></span></div>
+      <div class="dk-formbar"><div class="dk-formchips" id="ci-ledger-months" role="group" aria-label="Month"></div></div>
+      <div class="dk-register"><div class="table-wrap" id="ci-ledger"></div></div>
+    </section>
+
+    <section class="dk-sec" id="ci-sec-grid">
+      <div class="dk-sec-head"><h2>Every year</h2><span class="dk-sec-rule"></span></div>
+      <div class="dk-register">
+        <div class="table-wrap" id="ci-grid"></div>
+        <div class="ci-scale"><span>Less</span><i></i><span>More</span><span class="grow"></span><span>Select a year to compare it with the one before.</span></div>
+      </div>
+    </section>
+  </div>
+</div>

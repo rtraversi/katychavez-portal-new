@@ -214,6 +214,21 @@ window.MODULE_REGISTRY = [
     },
   },
   {
+    // KCL-only. Access is Owner-only via role_module_access (2100_cc_income.sql).
+    key:         'cc_income',
+    name:        'Card Income',
+    group:       'money',
+    icon:        'money-flat',
+    navIcon:     'chart-columns',
+    route:       'card-income',
+    wave:        2,
+    sortOrder:   52,
+    staffOnly:   true,
+    premium:     true,
+    description: 'Credit-card receipts by day, month and year, compared with prior years.',
+    badge:       'VIEW →',
+  },
+  {
     key:         'trust_accounting',
     name:        'Trust Accounting',
     group:       'money',

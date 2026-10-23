@@ -2183,6 +2183,23 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
    next to the search rather than stretching full-width on their own row. */
 .dk-toolbar select { flex: 0 0 auto; width: auto; min-width: 150px; max-width: 220px; }
 
+/* Stat tiles — a row of headline figures (label · value · delta vs a named period).
+   New with Card Income (2026-10): the deskbar's chips carry counts, these carry
+   amounts. Value is sans, proportional figures (never the serif). The delta is
+   signed and arrowed, so direction never rests on color alone.
+   --stat-acc colors the top rule; default ink. */
+.dk-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 1fr)); gap: 14px; margin: 22px 0 32px; }
+.dk-stat {
+  background: var(--surface); border-radius: 0 0 var(--r-card) var(--r-card); box-shadow: var(--card-shadow);
+  border-top: 2px solid var(--stat-acc, var(--ink)); padding: 15px 18px 16px; min-width: 0;
+}
+.dk-stat-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+.dk-stat-value { font-family: var(--font-sans); font-size: 28px; font-weight: 600; color: var(--ink); line-height: 1.15; margin-top: 8px; overflow-wrap: anywhere; }
+.dk-stat-delta { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.4; }
+.dk-stat-delta b { font-weight: 700; }
+.dk-stat-delta .up   { color: var(--color-success); }
+.dk-stat-delta .down { color: var(--color-danger); }
+
 /* Register group head — a labelled divider inside a register (e.g. Open / Completed),
    for status- or date-grouped record lists. Sits flush under the register's ink rule. */
 .dk-reg-group {

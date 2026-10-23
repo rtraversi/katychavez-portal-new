@@ -23,6 +23,7 @@ Reference implementation: `pages/settings/scheduling/` (+ the kit in `css/portal
 ## The kit (`.dk-*`, defined at the bottom of `css/portal.css`)
 - **Masthead:** `.dk-masthead` / `.dk-kicker` / `.dk-title` (`<em>` = italic accent) / `.dk-sub`
 - **Status chips:** `.dk-deskbar` + `.dk-chip` (`.is-live` / `.is-warn` / `.static`; `.n` = count)
+- **Stat tiles:** `.dk-stats` + `.dk-stat` (`.dk-stat-label` / `.dk-stat-value` / `.dk-stat-delta` with `.up` / `.down`; `--stat-acc` colors the rule) — headline amounts with a signed, arrowed delta. Sans figures, never serif. First used on Card Income.
 - **Sections:** `.dk-sec` + `.dk-sec-head` (h2 + `.dk-sec-rule` + `.dk-sec-add` / `.dk-sec-count`)
 - **Records:** `.dk-register` / `.dk-reg-row` / `.dk-reg-title` / `.dk-reg-meta` (`.fee`/`.sep`/`.danger`) / `.dk-reg-act`
 - **People:** `.dk-roster` / `.dk-att` (`.who`, `.slug`) + `.dk-week` / `.dk-wd` availability strip
