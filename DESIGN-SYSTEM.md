@@ -30,6 +30,7 @@ Reference implementation: `pages/settings/scheduling/` (+ the kit in `css/portal
 - **Bits:** `.dk-avatar` + `.dk-stack`, `.dk-tag` (`.warn`/`.ok`/`.mut`/`.acc`/`.crit` = red, danger colors), `.dk-linkbtn` (`.d` = danger, `.ico` = with an icon), `.dk-empty`
 - **Layout:** `.dk-cols` + `.dk-rail` (sticky rail — *optional*, only when there's second-order content like a live preview). A two-column page auto-widens past the 1200px reading cap to 1600px via `.page-content:has(.dk-cols)`; single-column pages keep the cap.
 - **Forms:** `.dk-toggle` (slider — wraps a real checkbox), `.dk-hours` / `.dk-hours-row`, `.dk-fieldrow` (`.lead` / `.trio`)
+- **Form fold:** `.dk-formfold` (native `<details>` + `.dk-formfold-body`) — fields a case rarely needs, one click away (`js/case-fold.js`)
 - **Nested rows:** `.dk-disclosure` (expand chevron) + `.dk-subrows` (`.collapsed`) / `.dk-subrow` — indented sub-items revealed under a register row (e.g. practice-area sub-areas)
 
 ## Render helpers (`js/dk.js`, global `window.DK`)
