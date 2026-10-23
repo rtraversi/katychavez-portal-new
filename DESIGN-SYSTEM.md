@@ -24,9 +24,10 @@ Reference implementation: `pages/settings/scheduling/` (+ the kit in `css/portal
 - **Masthead:** `.dk-masthead` / `.dk-kicker` / `.dk-title` (`<em>` = italic accent) / `.dk-sub`
 - **Status chips:** `.dk-deskbar` + `.dk-chip` (`.is-live` / `.is-warn` / `.static`; `.n` = count)
 - **Sections:** `.dk-sec` + `.dk-sec-head` (h2 + `.dk-sec-rule` + `.dk-sec-add` / `.dk-sec-count`)
-- **Records:** `.dk-register` / `.dk-reg-row` / `.dk-reg-title` / `.dk-reg-meta` (`.fee`/`.sep`/`.danger`) / `.dk-reg-act`
+- **Records:** `.dk-register` / `.dk-reg-row` / `.dk-reg-title` / `.dk-reg-meta` (`.fee`/`.sep`/`.danger`/`.warn`/`.pending`) / `.dk-reg-act`
+- **Action menu:** `.dk-menu` — the "⋯" overflow list for a row (`button.d` = destructive, `<hr>` divider); open it from a `.dk-linkbtn` with `aria-expanded`
 - **People:** `.dk-roster` / `.dk-att` (`.who`, `.slug`) + `.dk-week` / `.dk-wd` availability strip
-- **Bits:** `.dk-avatar` + `.dk-stack`, `.dk-tag` (`.warn`/`.ok`/`.mut`/`.acc`), `.dk-linkbtn` (`.d` = danger), `.dk-empty`
+- **Bits:** `.dk-avatar` + `.dk-stack`, `.dk-tag` (`.warn`/`.ok`/`.mut`/`.acc`/`.crit` = red, danger colors), `.dk-linkbtn` (`.d` = danger, `.ico` = with an icon), `.dk-empty`
 - **Layout:** `.dk-cols` + `.dk-rail` (sticky rail — *optional*, only when there's second-order content like a live preview). A two-column page auto-widens past the 1200px reading cap to 1600px via `.page-content:has(.dk-cols)`; single-column pages keep the cap.
 - **Forms:** `.dk-toggle` (slider — wraps a real checkbox), `.dk-hours` / `.dk-hours-row`, `.dk-fieldrow` (`.lead` / `.trio`)
 - **Nested rows:** `.dk-disclosure` (expand chevron) + `.dk-subrows` (`.collapsed`) / `.dk-subrow` — indented sub-items revealed under a register row (e.g. practice-area sub-areas)
