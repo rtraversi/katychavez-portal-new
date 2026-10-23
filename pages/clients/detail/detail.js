@@ -1825,7 +1825,7 @@
         const payload = {
           first_name:              fd.get('first_name')?.trim() || null,
           middle_name:             fd.get('middle_name')?.trim() || null,
-          last_name:               fd.get('last_name')?.trim() || null,
+          last_name:               ContactFormat.upperName(fd.get('last_name')),
           former_maiden_name:      fd.get('former_maiden_name')?.trim() || null,
           dob:                     fd.get('dob') || null,
           place_of_birth:          fd.get('place_of_birth')?.trim() || null,
@@ -2137,7 +2137,7 @@
     const c = client;
     ContactFormat.wire(document.getElementById('form-client-info'));
     document.getElementById('fields-client-info').innerHTML = `
-      ${row2(inp('first_name','First name',c.first_name,'text','required'), inp('last_name','Last name',c.last_name,'text','required'))}
+      ${row2(inp('first_name','First name',c.first_name,'text','required'), inp('last_name','Last name',c.last_name,'text','required data-fmt="upper"'))}
       ${row2(inp('middle_name','Middle name',c.middle_name), inp('former_maiden_name','Former/maiden name',c.former_maiden_name))}
       ${row2(inp('dob','Date of birth',c.dob,'date'), inp('place_of_birth','Place of birth',c.place_of_birth))}
       ${row2(inp('driver_license_number','Driver\'s license #',c.driver_license_number), inp('driver_license_state','DL state',c.driver_license_state,'text','maxlength="2"'))}
@@ -2174,10 +2174,13 @@
 
   function buildComplianceFields() {
     const c = client;
-    document.getElementById('fields-compliance').innerHTML = `
+    const fieldsEl = document.getElementById('fields-compliance');
+    fieldsEl.innerHTML = `
       ${ta('conflict_check_notes','Conflict check notes',c.conflict_check_notes)}
       ${ck('is_dv_confidential','DV / Protective order — address confidential',c.is_dv_confidential,'Restricts address visibility per Texas DV confidentiality rules')}
     `;
+    // D-17: an immigration case keeps these under "More details" (js/case-fold.js).
+    CaseFold.apply(fieldsEl, CaseFold.isFolded(matterPracticeAreaKey()), { names: ['conflict_check_notes', 'is_dv_confidential'] });
   }
 
   function buildCircumstancesFields() {
@@ -2253,16 +2256,25 @@
       ${row2(inp('date_filed','Date filed',m?.date_filed,'date'), sel('assigned_attorney_id','Assigned attorney',attyOpts,m?.assigned_attorney_id))}
       ${row2(sel('billing_type','Billing type',billingOpts,m?.billing_type), inp('retainer_balance','Retainer balance ($)',m?.retainer_balance,'number','min="0" step="0.01"'))}
       ${inp('retainer_requested','Retainer requested ($)',m?.retainer_requested,'number','min="0" step="0.01"')}
-      <p class="section-divider">Suit status</p>
+      <p class="section-divider" data-suit-divider>Suit status</p>
       ${ck('suit_filed','Suit filed',m?.suit_filed)}
       ${sel('been_served','Been served',[['true','Yes'],['false','No']],m?.been_served == null ? '' : String(m.been_served))}
       ${row2(inp('prior_attorney_consulted','Prior attorney consulted',m?.prior_attorney_consulted), inp('prior_attorney_retained','Prior attorney retained',m?.prior_attorney_retained))}
       ${ta('notes','Notes',m?.notes)}
     `;
 
+    // D-17: an immigration case keeps court fields and billing type under
+    // "More details" (js/case-fold.js); the practice area picked here decides.
+    const foldCase = (paId) => CaseFold.apply(fieldsEl, CaseFold.isFolded(practiceAreaMap.get(paId)?.key), {
+      names: ['case_number', 'court_county', 'judge_name', 'date_filed', 'billing_type'],
+      anchor: fieldsEl.querySelector('[data-suit-divider]'),
+    });
+    foldCase(selPaId);
+
     // Dynamically filter case types when practice area changes
     fieldsEl.querySelector('[name=practice_area_id]')?.addEventListener('change', e => {
       const paId  = e.target.value;
+      foldCase(paId);
       const ctSel = fieldsEl.querySelector('[name=case_type_id]');
       const opts  = caseTypesData
         .filter(ct => ct.practice_area_id === paId)
@@ -2669,6 +2681,9 @@
     if (!matter) { Utils.toast('No matter loaded.', 'error'); return; }
     const isJointSponsor = role === 'joint_sponsor';
     const roleLabel = isJointSponsor ? 'joint sponsor' : party2Label().toLowerCase();
+    // D-18: a petitioner's or joint sponsor's last name in capitals; another
+    // practice area's opposing party stays as typed.
+    const capsLast = isJointSponsor || isImmMatter();
     const modalEl = document.getElementById('opposing-modal');
     const op = existing || {};
     modalEl.innerHTML = `
@@ -2680,7 +2695,7 @@
         <form id="opposing-form" novalidate>
           <div class="modal-body">
             <p class="section-divider">Identity</p>
-            ${row2(inp('first_name','First name *',op.first_name||'','text','required'), inp('last_name','Last name',op.last_name||''))}
+            ${row2(inp('first_name','First name *',op.first_name||'','text','required'), inp('last_name','Last name',op.last_name||'','text', capsLast ? 'data-fmt="upper"' : ''))}
             ${row2(inp('middle_name','Middle name',op.middle_name||''), inp('former_maiden_name','Former/maiden',op.former_maiden_name||''))}
             ${row2(inp('dob','Date of birth',op.dob||'','date'), inp('place_of_birth','Place of birth',op.place_of_birth||''))}
             ${row2(inp('driver_license_number','DL number',op.driver_license_number||''), inp('driver_license_state','DL state',op.driver_license_state||'','text','maxlength="2"'))}
@@ -2741,7 +2756,7 @@
         const payload = {
           matter_id:            matter.id,
           first_name:           fd.get('first_name')?.trim(),
-          last_name:            fd.get('last_name')?.trim() || null,
+          last_name:            capsLast ? ContactFormat.upperName(fd.get('last_name')) : (fd.get('last_name')?.trim() || null),
           middle_name:          fd.get('middle_name')?.trim() || null,
           former_maiden_name:   fd.get('former_maiden_name')?.trim() || null,
           dob:                  fd.get('dob') || null,
@@ -3862,9 +3877,28 @@
       executeNamedAction: () => {}, executeSetOCGState: () => {}, goToDestination: async () => {},
     };
 
+    // RT-15: every checkbox widget on the form, for the pick-one groups
+    // (js/pick-one.js). Rebuilt with the pages, so zooming keeps it current.
+    let pickBoxes = [];   // { name, exportValue, id, input, section }
+
+    // Ticking a box of a pick-one group unticks the others in its group, and
+    // each one that was ticked is saved as an edit ("No") like any change.
+    function untickOthers(name) {
+      for (const other of PickOne.othersInGroup(pickBoxes, name)) {
+        const widgets = pickBoxes.filter(b => b.name === other);
+        if (!widgets.some(b => b.input.checked)) continue;
+        widgets.forEach(b => {
+          b.input.checked = false;
+          pdfDoc.annotationStorage.setValue(b.id, { value: false });
+        });
+        recordEdit(other, 'No', widgets[0].section);
+      }
+    }
+
     async function renderAllPages() {
       const scrollEl = overlay.querySelector('#ffe-scroll');
       scrollEl.innerHTML = '';
+      pickBoxes = [];
       for (let n = 1; n <= pdfDoc.numPages; n++) {
         const page = await pdfDoc.getPage(n);
         const viewport = page.getViewport({ scale });
@@ -3926,7 +3960,11 @@
           if (!input) continue;
 
           if (input.matches('input[type=checkbox]')) {
-            input.addEventListener('change', () => recordEdit(ann.fieldName, input.checked ? 'Yes' : 'No', section));
+            pickBoxes.push({ name: ann.fieldName, exportValue: ann.exportValue, id: ann.id, input, section });
+            input.addEventListener('change', () => {
+              recordEdit(ann.fieldName, input.checked ? 'Yes' : 'No', section);
+              if (input.checked) untickOthers(ann.fieldName);
+            });
           } else if (input.matches('input[type=radio]')) {
             input.addEventListener('change', () => {
               if (input.checked) recordEdit(ann.fieldName, String(ann.buttonValue ?? input.value ?? ''), section);
@@ -6313,7 +6351,7 @@
           <form id="imm-member-form" novalidate>
             <div class="detail-grid" style="margin-bottom:var(--space-4)">
               <div class="field"><label>First Name <span class="required">*</span></label><input type="text" name="first_name" value="${Utils.esc(m.first_name||'')}" required></div>
-              <div class="field"><label>Last Name</label><input type="text" name="last_name" value="${Utils.esc(m.last_name||'')}"></div>
+              <div class="field"><label>Last Name</label><input type="text" name="last_name" data-fmt="upper" value="${Utils.esc(m.last_name||'')}"></div>
               <div class="field"><label>Relationship <span class="required">*</span></label>
                 <select name="relationship" required>
                   ${['','Spouse','Child','Parent','Sibling','Other'].map(r =>
@@ -6344,6 +6382,7 @@
     modalEl.classList.remove('hidden');
 
     document.getElementById('imm-member-close').onclick  = () => closeModal(modalEl);
+    ContactFormat.wire(document.getElementById('imm-member-form'));
     document.getElementById('imm-member-cancel').onclick = () => closeModal(modalEl);
 
     if (isEdit) {
@@ -6372,7 +6411,7 @@
           immigration_id:            immigrationData.id,
           matter_id:                 matter.id,
           first_name:                fd.get('first_name')?.trim(),
-          last_name:                 fd.get('last_name')?.trim()          || null,
+          last_name:                 ContactFormat.upperName(fd.get('last_name')),
           relationship:              fd.get('relationship'),
           dob:                       fd.get('dob')                        || null,
           country_of_birth:          fd.get('country_of_birth')?.trim()  || null,

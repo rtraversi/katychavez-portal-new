@@ -105,10 +105,18 @@ async function main() {
   }
   if (richCleared) console.log(`[normalize-form-template] Downgraded ${richCleared} rich-text field(s) to plain text`);
 
-  const fields = form.getFields().map(f => ({
-    name: f.getName(),
-    type: f.constructor.name.replace('PDF', ''),
-  }));
+  // Checkboxes also record each widget's export value, so the field map
+  // validator can find "pick one" groups (js/pick-one.js, RT-15).
+  const fields = form.getFields().map(f => {
+    const entry = { name: f.getName(), type: f.constructor.name.replace('PDF', '') };
+    if (entry.type === 'CheckBox') {
+      entry.exportValues = f.acroField.getWidgets()
+        .map(w => w.getOnValue())
+        .filter(Boolean)
+        .map(v => (typeof v.decodeText === 'function' ? v.decodeText() : String(v).replace(/^\//, '')));
+    }
+    return entry;
+  });
 
   const byType = {};
   fields.forEach(f => { byType[f.type] = (byType[f.type] || 0) + 1; });

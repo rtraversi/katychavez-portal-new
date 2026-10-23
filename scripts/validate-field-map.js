@@ -15,6 +15,8 @@
 //   ERROR   scaffold TODO placeholders left in the migration
 //   WARN    PDF field present in the inventory but absent from the map
 //   WARN    a field that looks like a signature has a non-blank source
+//   WARN    more than one box of a "pick one" group could be ticked at once
+//           (two literal:true, or two data sources; js/pick-one.js, RT-15)
 //
 // Usage:
 //   node scripts/validate-field-map.js i-864
@@ -31,6 +33,7 @@ const NORMALIZED_DIR = path.join(ROOT, 'normalized');
 const MIGRATIONS_DIR = path.join(ROOT, 'supabase', 'migrations');
 
 const formId = (formKey) => formKey.replace(/-/g, '');
+const PickOne = require('../js/pick-one.js');
 
 // Fill-source prefixes understood by resolvePath() in functions/api/_form-fill.js.
 // Adding one is a shared-code change -- escalate, don't extend this list.
@@ -41,7 +44,7 @@ const SOURCE_PREFIXES = [
 // pdf-lib field class -> the type a field_map entry must declare.
 const TYPE_FOR = { TextField: 'text', CheckBox: 'checkbox', Dropdown: 'dropdown' };
 
-function main() {
+async function main() {
   const formKey = process.argv.slice(2).find(a => !a.startsWith('--'));
   if (!formKey) {
     console.error('Usage: node scripts/validate-field-map.js <form-key>');
@@ -152,6 +155,16 @@ function main() {
     }
   }
 
+  // ── Pick-one groups: only one answer may be ticked ─────────────────────────
+  const boxes = await checkboxExportValues(formKey, inventory);
+  if (!boxes) {
+    warns.push(`pick-one groups not checked: no checkbox export values in ${formKey}.fields.json and no normalized/${formKey}.pdf — re-run scripts/normalize-form-template.js ${formKey}`);
+  } else {
+    for (const c of PickOne.mapConflicts(fieldMap, boxes)) {
+      warns.push(`pick-one group "${c.group}": the map can tick more than one answer at once (${c.names.map(n => `"${n}"`).join(', ')}) — keep at most one literal:true or data source`);
+    }
+  }
+
   // ── Coverage: every PDF field should be accounted for ──────────────────────
   // Patch migrations (field_map || '{...}') amend an existing map by design,
   // so partial coverage is correct there and coverage is not checked.
@@ -185,6 +198,29 @@ function main() {
   console.log(`\n  PASSED${warns.length ? ' (with warnings — review them)' : ''}.`);
   console.log(`\n  For the PR description:`);
   console.log(`    ${inventory.length} fields — ${counts.mapped} data-mapped, ${counts.literal} literal, ${counts.blank} deliberately blank.\n`);
+}
+
+// Every checkbox widget's export value, as [{ name, exportValue }]: from the
+// inventory when normalize-form-template.js recorded them (exportValues),
+// otherwise read off normalized/<key>.pdf. null when neither is available.
+async function checkboxExportValues(formKey, inventory) {
+  const recorded = inventory.filter(f => f.type === 'CheckBox' && Array.isArray(f.exportValues));
+  if (recorded.length) return recorded.flatMap(f => f.exportValues.map(v => ({ name: f.name, exportValue: v })));
+  const pdfPath = path.join(NORMALIZED_DIR, `${formKey}.pdf`);
+  if (!fs.existsSync(pdfPath)) return null;
+  const { PDFDocument, PDFCheckBox } = require('pdf-lib');
+  const doc = await PDFDocument.load(fs.readFileSync(pdfPath), { ignoreEncryption: true });
+  return doc.getForm().getFields()
+    .filter(f => f instanceof PDFCheckBox)
+    .flatMap(f => checkboxValues(f).map(v => ({ name: f.getName(), exportValue: v })));
+}
+
+// The "on" value of each widget of a pdf-lib checkbox ("1", "Y", "Yes"...).
+function checkboxValues(field) {
+  return field.acroField.getWidgets()
+    .map(w => w.getOnValue())
+    .filter(Boolean)
+    .map(v => (typeof v.decodeText === 'function' ? v.decodeText() : String(v).replace(/^\//, '')));
 }
 
 // Pulls the field_map jsonb literal out of the migration and parses it.
@@ -228,4 +264,7 @@ function knownTransforms() {
   return [...src.slice(start, end).matchAll(/case '([a-z0-9_]+)':/g)].map(m => m[1]);
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

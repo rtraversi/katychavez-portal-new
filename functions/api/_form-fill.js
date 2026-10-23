@@ -113,13 +113,22 @@ export function applyTransform(value, transform) {
 // cannot. Every USCIS ZIP box takes 5 characters, so a column named "zip" or
 // "*_zip" gives its first 5 digits; phone boxes take bare digits (most take
 // exactly 10), so a column ending in "phone", or "fax", gives its digits only.
+// Drafter 1.0.3 (D-18): Katy's rule is last names and countries in capitals
+// on the forms, whatever the card holds ("Ejemplo" -> "EJEMPLO", "Mexico" ->
+// "MEXICO"). So a column named "last_name" or "*_last_name", or any column
+// whose name contains "country", is written in capitals.
 // Applied by source column, before any transform, wherever a value is written.
 export function cleanForBox(source, value) {
   if (value == null || value === '' || typeof source !== 'string' || source.startsWith('literal:')) return value;
   const col = source.slice(source.lastIndexOf('.') + 1);
   if (col === 'zip' || col.endsWith('_zip')) return String(value).replace(/\D/g, '').slice(0, 5);
   if (col.endsWith('phone') || col === 'fax') return String(value).replace(/\D/g, '');
+  if (isCapitalsColumn(col)) return String(value).toUpperCase();
   return value;
+}
+
+export function isCapitalsColumn(col) {
+  return col === 'last_name' || col.endsWith('_last_name') || col.includes('country');
 }
 
 // Resolves a dotted-path source ("prefix.path") against the fill context.

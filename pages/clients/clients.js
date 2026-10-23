@@ -292,9 +292,10 @@
     modalEl.classList.remove('hidden');
     document.getElementById('client-first-name').focus();
 
-    // Wire PA → case type cascade
+    // Wire PA → case type cascade, and the immigration fold (D-17)
     document.getElementById('matter-practice-area').addEventListener('change', e => {
       document.getElementById('matter-case-type').innerHTML = buildCaseTypeOptions(e.target.value);
+      foldCaseFields(e.target.value);
     });
 
     if (clientId) loadClientIntoForm(clientId);
@@ -310,6 +311,14 @@
   }
 
   function closeModal() { modalEl.classList.add('hidden'); modalEl.innerHTML = ''; }
+
+  // Immigration tucks court fields, billing type, conflict notes and the DV
+  // box into "More details" (js/case-fold.js); other practice areas keep them.
+  function foldCaseFields(paId) {
+    const pa = practiceAreas.find(p => p.id === paId);
+    CaseFold.apply(document.getElementById('client-form'), CaseFold.isFolded(pa?.key),
+      { anchor: document.getElementById('compliance-divider') });
+  }
 
   function buildModalHTML(clientId) {
     const paOptions = practiceAreas.map(pa =>
@@ -343,7 +352,7 @@
             </div>
             <div class="field">
               <label for="client-last-name">Last name <span class="required">*</span></label>
-              <input type="text" id="client-last-name" name="last_name" required autocomplete="family-name">
+              <input type="text" id="client-last-name" name="last_name" required autocomplete="family-name" data-fmt="upper">
             </div>
           </div>
           <div class="field-row">
@@ -479,7 +488,7 @@
             </div>
           </div>
 
-          <p class="section-divider" style="margin-top:var(--space-2)">Compliance</p>
+          <p class="section-divider" id="compliance-divider" style="margin-top:var(--space-2)">Compliance</p>
           <div class="field">
             <label for="client-conflict-notes">Conflict check notes</label>
             <textarea id="client-conflict-notes" name="conflict_check_notes" rows="2"></textarea>
@@ -573,6 +582,7 @@
           ctEl.innerHTML = buildCaseTypeOptions(paId);
           if (ctId) ctEl.value = ctId;
         }
+        foldCaseFields(paId);
       }
     }
   }
@@ -591,7 +601,7 @@
     const clientPayload = {
       first_name:             f.elements['first_name'].value.trim(),
       middle_name:            f.elements['middle_name'].value.trim() || null,
-      last_name:              f.elements['last_name'].value.trim(),
+      last_name:              ContactFormat.upperName(f.elements['last_name'].value) || '',
       dob:                    f.elements['dob'].value || null,
       cell_phone:             f.elements['cell_phone'].value.trim() || null,
       email:                  f.elements['email'].value.trim() || null,

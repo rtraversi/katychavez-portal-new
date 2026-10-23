@@ -5,6 +5,8 @@
 //   State: a dropdown of 2-letter codes, empty by default (no more 'TX').
 //   ZIP:   digits only, at most 9; 9 digits show as 12345-6789 (ZIP+4).
 //   Phone: a US number shows as (919) 388-8328; anything else stays as typed.
+//   Last name: capitals when the input loses focus, and saved that way
+//          (Drafter 1.0.3, D-18: Katy's rule, last names in capitals).
 'use strict';
 
 (function (root) {
@@ -46,8 +48,16 @@
     return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
   }
 
+  // What a last name input saves: trimmed, in capitals, or null when empty.
+  function upperName(v) {
+    const s = v == null ? '' : String(v).trim().toUpperCase();
+    return s || null;
+  }
+
   // Formats inputs marked data-fmt="zip" | "phone" inside root as they are
-  // typed or pasted. Delegated, so it survives re-rendered fields; once per root.
+  // typed or pasted, and data-fmt="upper" when it loses focus (capitals while
+  // typing would move the cursor). Delegated, so it survives re-rendered
+  // fields; once per root.
   function wire(rootEl) {
     if (!rootEl || rootEl.dataset.contactFormat) return;
     rootEl.dataset.contactFormat = '1';
@@ -57,7 +67,13 @@
       const next = fmt === 'zip' ? formatZip(el.value) : fmt === 'phone' ? formatPhone(el.value) : null;
       if (next != null && next !== el.value) el.value = next;
     });
+    rootEl.addEventListener('focusout', (e) => {
+      const el = e.target;
+      if (el?.dataset?.fmt !== 'upper') return;
+      const next = String(el.value ?? '').toUpperCase();
+      if (next !== el.value) el.value = next;
+    });
   }
 
-  root.ContactFormat = { STATES, stateOptions, stateValue, formatZip, formatPhone, wire };
+  root.ContactFormat = { STATES, stateOptions, stateValue, formatZip, formatPhone, upperName, wire };
 })(typeof window !== 'undefined' ? window : globalThis);
