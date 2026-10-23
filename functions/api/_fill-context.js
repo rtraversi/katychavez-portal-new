@@ -12,9 +12,10 @@
 const G28_FORMLIST_EXCLUDE = new Set(['g-28', 'g-1145', 'g-1450', 'g-1650']);
 
 export function packageFormNumbers(activeTemplates) {
-  return activeTemplates
+  // A form on the case twice (1.0.4) is still one form number.
+  return [...new Set(activeTemplates
     .filter(t => !G28_FORMLIST_EXCLUDE.has(t.form_key))
-    .map(t => t.form_key.toUpperCase())
+    .map(t => t.form_key.toUpperCase()))]
     .join(', ');
 }
 
@@ -45,35 +46,73 @@ async function loadCaseTypePackage(admin, caseTypeId) {
 // list is real (matter_forms) or still just the package's suggestion; the
 // add/remove API uses it to decide whether to materialize first.
 // Returns { error } with an http status/message only on a genuine DB failure.
+//
+// Drafter 1.0.4: a form can be on a case twice (two G-1450s), so each entry is
+// one COPY: the template's columns (id = template id) plus
+//   row_id      the matter_forms row, or null while the list is only the
+//               package's suggestion
+//   row_key     row_id, or "item:<package item id>" before seeding; unique
+//   fee_amount  that copy's amount (whole dollars) or null
+// Everything per form (files, versions, edits) belongs to the row.
 export async function loadPackageTemplates(admin, matter) {
   const pkg = await loadCaseTypePackage(admin, matter.case_type_id);
 
   const { data: mfRows, error: mfErr } = await admin
     .from('matter_forms')
-    .select(`sort_order, required, template:form_templates(${TEMPLATE_COLS})`)
+    .select(`id, sort_order, required, fee_amount, template:form_templates(${TEMPLATE_COLS})`)
     .eq('matter_id', matter.id)
     .order('sort_order', { ascending: true });
   if (mfErr) return { error: { status: 500, message: 'Failed to load the matter\'s forms' } };
 
   if (mfRows && mfRows.length) {
-    return { pkg, seeded: true, activeTemplates: mfRows.map(r => r.template).filter(t => t.active) };
+    return {
+      pkg, seeded: true,
+      activeTemplates: mfRows.filter(r => r.template?.active)
+        .map(r => ({ ...r.template, row_id: r.id, row_key: r.id, fee_amount: r.fee_amount ?? null })),
+    };
   }
 
   if (!pkg) return { pkg: null, seeded: false, activeTemplates: [] };
 
   const { data: items, error: itemsErr } = await admin
     .from('form_package_items')
-    .select(`sort_order, required, template:form_templates(${TEMPLATE_COLS})`)
+    .select(`id, sort_order, required, template:form_templates(${TEMPLATE_COLS})`)
     .eq('package_id', pkg.id)
     .order('sort_order', { ascending: true });
   if (itemsErr) return { error: { status: 500, message: 'Failed to load form package items' } };
 
-  return { pkg, seeded: false, activeTemplates: items.map(i => i.template).filter(t => t.active) };
+  return {
+    pkg, seeded: false,
+    activeTemplates: items.filter(i => i.template?.active)
+      .map(i => ({ ...i.template, row_id: null, row_key: `item:${i.id}`, fee_amount: null })),
+  };
+}
+
+// The copies (from loadPackageTemplates) a write targets: row_ids when given,
+// else every copy of the given template_ids, else all. Unknown ids drop out.
+export function pickCopies(copies, { row_ids, template_ids } = {}) {
+  if (Array.isArray(row_ids) && row_ids.length) {
+    const wanted = new Set(row_ids);
+    return copies.filter(c => wanted.has(c.row_id));
+  }
+  if (Array.isArray(template_ids) && template_ids.length) {
+    const wanted = new Set(template_ids);
+    return copies.filter(c => wanted.has(c.id));
+  }
+  return copies;
+}
+
+// The fill context for one copy: the matter's context plus "form", the row
+// being filled (1.0.4: each G-1450 fills its own amount).
+export function contextForCopy(fillContext, copy) {
+  return { ...fillContext, form: { id: copy?.row_id || null, fee_amount: copy?.fee_amount ?? null } };
 }
 
 // Copies the case-type package into matter_forms so the matter owns its list.
-// Idempotent and safe to call concurrently: ON CONFLICT (matter_id,
-// template_id) is a no-op, so a double-click can't duplicate rows.
+// One row per package line, so a package listing G-1450 twice gives the case
+// two G-1450s, both without an amount (D-21). Idempotent and safe to call
+// concurrently: ON CONFLICT (matter_id, package_item_id) is a no-op (1627), so
+// a double-click can't duplicate rows.
 //
 // Callers must be write-authorized — this is the materialize half of
 // materialize-on-write.
@@ -89,25 +128,49 @@ export async function seedMatterForms(admin, matter, userId = null) {
 
   const { data: items } = await admin
     .from('form_package_items')
-    .select('template_id, sort_order, required')
+    .select('id, template_id, sort_order, required')
     .eq('package_id', pkg.id)
     .order('sort_order', { ascending: true });
   if (!items || !items.length) return { seeded: false, inserted: 0 };
 
   const { error } = await admin.from('matter_forms').upsert(
     items.map(i => ({
-      matter_id:   matter.id,
-      template_id: i.template_id,
-      sort_order:  i.sort_order,
-      required:    i.required,
-      source:      'package',
-      added_by:    userId,
+      matter_id:       matter.id,
+      template_id:     i.template_id,
+      package_item_id: i.id,
+      sort_order:      i.sort_order,
+      required:        i.required,
+      source:          'package',
+      added_by:        userId,
     })),
-    { onConflict: 'matter_id,template_id', ignoreDuplicates: true },
+    { onConflict: 'matter_id,package_item_id', ignoreDuplicates: true },
   );
   if (error) return { error: { status: 500, message: 'Failed to set up this matter\'s form list' } };
 
+  await adoptLegacyRows(admin, matter.id);
   return { seeded: true, inserted: items.length };
+}
+
+// Drafts and edits made while a case's list was still the package's
+// suggestion have no matter_forms row (migration 1627 left them NULL). Once
+// the case is seeded they belong to the first copy of their form.
+export async function adoptLegacyRows(admin, matterId) {
+  const { data: rows } = await admin
+    .from('matter_forms')
+    .select('id, template_id, sort_order')
+    .eq('matter_id', matterId)
+    .order('sort_order', { ascending: true });
+  const firstByTemplate = new Map();
+  for (const r of rows || []) if (!firstByTemplate.has(r.template_id)) firstByTemplate.set(r.template_id, r.id);
+  for (const [templateId, rowId] of firstByTemplate) {
+    for (const table of ['generated_forms', 'form_field_edits']) {
+      await admin.from(table)
+        .update({ matter_form_id: rowId })
+        .eq('matter_id', matterId)
+        .eq('template_id', templateId)
+        .is('matter_form_id', null);
+    }
+  }
 }
 
 // RT-16: the new-client form used to save "Phone" to the old phone column,
@@ -159,18 +222,28 @@ export async function buildFillContext(admin, matter, pkg, activeTemplates) {
   };
 }
 
-// Loads manual field edits for a matter, grouped by template_id:
-//   { "<template_id>": { "<field_name>": "<value>", ... }, ... }
-export async function loadManualEdits(admin, matter_id, template_id = null) {
-  let q = admin
+// Loads manual field edits for a matter, grouped by the copy they belong to
+// (Drafter 1.0.4: two G-1450s never share edits):
+//   { "<matter_form_id>": { "<field_name>": "<value>", ... }, ... }
+// Edits from before the case was seeded (matter_form_id NULL) are keyed
+// "template:<template_id>"; editsForCopy() hands them to the first copy.
+export async function loadManualEdits(admin, matter_id) {
+  const { data } = await admin
     .from('form_field_edits')
-    .select('template_id, field_name, value')
+    .select('template_id, matter_form_id, field_name, value')
     .eq('matter_id', matter_id);
-  if (template_id) q = q.eq('template_id', template_id);
-  const { data } = await q;
-  const byTemplate = {};
+  const byRow = {};
   for (const row of data || []) {
-    (byTemplate[row.template_id] ||= {})[row.field_name] = row.value;
+    const key = row.matter_form_id || `template:${row.template_id}`;
+    (byRow[key] ||= {})[row.field_name] = row.value;
   }
-  return byTemplate;
+  return byRow;
+}
+
+// The edits for one copy; legacy (unassigned) edits go to the first copy of
+// the form only.
+export function editsForCopy(byRow, copy, copies) {
+  if (copy.row_id && byRow[copy.row_id]) return byRow[copy.row_id];
+  const first = copies.find(c => c.id === copy.id);
+  return first === copy ? byRow[`template:${copy.id}`] : undefined;
 }

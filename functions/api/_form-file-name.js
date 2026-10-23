@@ -1,10 +1,15 @@
+import { hasFee } from './_form-copies.js';
+
 // The name of a generated USCIS form, for its draft, finalized and signed
 // copies alike (Drafter 1.0.1, RT-12): "<FORM NUMBER> - <CLIENT LAST NAME>.pdf",
 // e.g. "G-28 - EJEMPLO VARGAS.pdf"; just the form number when there is no last
 // name. Characters a file name cannot hold are dropped.
-export function formFileName(formKey, lastName) {
+// Drafter 1.0.4: a G-1450 with an amount carries it, "G-1450 $520 - EJEMPLO.pdf",
+// so a case's two G-1450s download under different names.
+export function formFileName(formKey, lastName, feeAmount = null) {
   const clean = (s) => String(s ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
-  const form = clean(formKey) || 'FORM';
+  const fee = hasFee(formKey) && Number.isInteger(feeAmount) && feeAmount >= 0 ? ` $${feeAmount}` : '';
+  const form = (clean(formKey) || 'FORM') + fee;
   const last = clean(lastName);
   return `${last ? `${form} - ${last}` : form}.pdf`;
 }

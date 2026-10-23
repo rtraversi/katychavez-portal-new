@@ -1,5 +1,8 @@
 // CF Worker: POST /api/form-filler/reset
-// Body: { matter_id, template_ids?: [uuid] }
+// Body: { matter_id, row_ids?: [uuid], template_ids?: [uuid] }
+//
+// Drafter 1.0.4: row_ids resets those copies only (one of a case's two
+// G-1450s); template_ids resets every copy of those forms.
 //
 // Resets USCIS forms back to defaults: deletes the generated_forms rows along
 // with their draft and finalized PDFs in R2, plus the matching manual field
@@ -38,16 +41,20 @@ async function handleRequest(request, env) {
   try { body = await request.json(); }
   catch { return json(400, { error: 'Invalid JSON' }); }
 
-  const { matter_id, template_ids } = body;
+  const { matter_id, template_ids, row_ids } = body;
   if (!matter_id) return json(400, { error: 'matter_id is required' });
 
   // An explicit empty array is a caller bug — it would otherwise fall through
   // to "no scope" and reset the entire matter, which is the opposite of intent.
-  if (template_ids !== undefined) {
-    if (!Array.isArray(template_ids)) return json(400, { error: 'template_ids must be an array' });
-    if (!template_ids.length)         return json(400, { error: 'template_ids cannot be empty' });
+  for (const [name, ids] of [['template_ids', template_ids], ['row_ids', row_ids]]) {
+    if (ids === undefined) continue;
+    if (!Array.isArray(ids)) return json(400, { error: `${name} must be an array` });
+    if (!ids.length)         return json(400, { error: `${name} cannot be empty` });
   }
-  const scoped = Array.isArray(template_ids) && template_ids.length > 0;
+  // The column and ids a scoped reset filters on, or null for the whole matter.
+  const scope = Array.isArray(row_ids) ? ['matter_form_id', row_ids]
+    : Array.isArray(template_ids) ? ['template_id', template_ids]
+    : null;
 
   const admin = makeAdminClient(env);
 
@@ -55,13 +62,13 @@ async function handleRequest(request, env) {
     .from('generated_forms')
     .select('id, r2_key, finalized_r2_key')
     .eq('matter_id', matter_id);
-  if (scoped) genQuery = genQuery.in('template_id', template_ids);
+  if (scope) genQuery = genQuery.in(...scope);
 
   const { data: rows, error } = await genQuery;
   if (error) return json(500, { error: 'Failed to load generated forms.' });
 
   let editQuery = admin.from('form_field_edits').delete().eq('matter_id', matter_id);
-  if (scoped) editQuery = editQuery.in('template_id', template_ids);
+  if (scope) editQuery = editQuery.in(...scope);
   await editQuery;
 
   if (!rows || rows.length === 0) return json(200, { ok: true, deleted: 0 });
@@ -72,7 +79,7 @@ async function handleRequest(request, env) {
   if (keys.length) await env.R2.delete(keys);
 
   let delQuery = admin.from('generated_forms').delete().eq('matter_id', matter_id);
-  if (scoped) delQuery = delQuery.in('template_id', template_ids);
+  if (scope) delQuery = delQuery.in(...scope);
 
   const { error: delErr } = await delQuery;
   if (delErr) return json(500, { error: 'Failed to delete generated form records.' });

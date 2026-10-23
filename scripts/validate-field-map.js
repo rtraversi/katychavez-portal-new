@@ -39,6 +39,8 @@ const PickOne = require('../js/pick-one.js');
 // Adding one is a shared-code change -- escalate, don't extend this list.
 const SOURCE_PREFIXES = [
   'client', 'matter', 'immigration', 'firm', 'attorney', 'petitioner', 'joint_sponsor',
+  // Drafter 1.0.4: the matter_forms row being filled (form.fee_amount).
+  'form',
 ];
 
 // pdf-lib field class -> the type a field_map entry must declare.

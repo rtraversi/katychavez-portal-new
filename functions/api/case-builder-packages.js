@@ -8,6 +8,7 @@
 // privileged than editing one matter's list (that's can_write, matter_forms).
 
 import { verifyAuth, json } from './_helpers.js';
+import { canRepeat } from './_form-copies.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -72,6 +73,8 @@ async function handle(request, env) {
   const templates = (tmplRes.data || []).map(t => ({
     id: t.id, form_key: t.form_key, label: t.label, agency: t.agency,
     active: t.active, practice_area_id: t.practice_area_id, uploaded: !!t.r2_key,
+    // 1.0.4: a package may list this form twice (the DACA package's G-1450s).
+    repeatable: canRepeat(t.form_key),
   }));
 
   return json(200, { practice_areas: immigration ? [immigration] : [], case_types, templates });

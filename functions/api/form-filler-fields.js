@@ -1,12 +1,16 @@
 // CF Worker: /api/form-filler/fields — backing API for the in-portal form
 // editor (Prima-style editing + reverse autofill).
 //
-// GET  ?matter_id=&template_id=
+// Drafter 1.0.4: both verbs take row_id, the copy of the form being edited
+// (a case can hold two G-1450s, and they never share edits). template_id
+// alone means the form's first copy.
+//
+// GET  ?matter_id=&template_id=&row_id=
 //   Returns the template's mapped fields with, per field: the map descriptor,
 //   what autofill currently resolves to, any per-matter manual edit, and
 //   whether the field is eligible for reverse autofill (write-back).
 //
-// POST { matter_id, template_id, edits: [ { field_name, value, write_back? } ] }
+// POST { matter_id, template_id, row_id, edits: [ { field_name, value, write_back? } ] }
 //   value: string   -> upsert a manual edit (checkboxes 'Yes'/'No'; '' blanks)
 //   value: null     -> revert to autofill (delete the manual edit row)
 //   write_back:true -> instead of storing an edit, write the value THROUGH to
@@ -19,7 +23,7 @@
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 import { resolvePath, applyTransform, cleanForBox } from './_form-fill.js';
-import { loadPackageTemplates, buildFillContext, loadManualEdits } from './_fill-context.js';
+import { loadPackageTemplates, seedMatterForms, buildFillContext, loadManualEdits, contextForCopy, editsForCopy } from './_fill-context.js';
 
 // Buckets reverse autofill may write to, and how to address their rows.
 const WRITEBACK_BUCKETS = new Set(['client', 'immigration', 'petitioner', 'joint_sponsor']);
@@ -52,7 +56,10 @@ function writebackTarget(descriptor) {
   return { bucket: prefix, column: rest };
 }
 
-async function resolveMatterTemplate(admin, matter_id, template_id) {
+// The matter and the copy of the form being edited: row_id when given, else
+// the first copy of template_id. seed: a write materializes the case's list
+// first, so the edit has a row to belong to.
+async function resolveMatterTemplate(admin, matter_id, template_id, row_id = null, { seed = false, userId = null } = {}) {
   const { data: matter } = await admin
     .from('matters')
     .select('id, client_id, case_type_id, assigned_attorney_id')
@@ -60,11 +67,20 @@ async function resolveMatterTemplate(admin, matter_id, template_id) {
     .single();
   if (!matter) return { error: { status: 404, message: 'Matter not found' } };
 
+  if (seed) {
+    const seedResult = await seedMatterForms(admin, matter, userId);
+    if (seedResult.error) return { error: seedResult.error };
+  }
+
   const pkgResult = await loadPackageTemplates(admin, matter);
   if (pkgResult.error) return { error: pkgResult.error };
 
-  const template = pkgResult.activeTemplates.find(t => t.id === template_id);
-  if (!template) return { error: { status: 404, message: 'That form is not on this matter.' } };
+  const template = row_id
+    ? pkgResult.activeTemplates.find(t => t.row_id === row_id)
+    : pkgResult.activeTemplates.find(t => t.id === template_id);
+  if (!template || (template_id && template.id !== template_id)) {
+    return { error: { status: 404, message: 'That form is not on this matter.' } };
+  }
 
   return { matter, pkg: pkgResult.pkg, activeTemplates: pkgResult.activeTemplates, template };
 }
@@ -76,18 +92,20 @@ async function handleGet(request, env) {
   const url = new URL(request.url);
   const matter_id   = url.searchParams.get('matter_id');
   const template_id = url.searchParams.get('template_id');
+  const row_id      = url.searchParams.get('row_id');
   if (!matter_id || !template_id) return json(400, { error: 'matter_id and template_id are required' });
 
   const admin = makeAdminClient(env);
-  const resolved = await resolveMatterTemplate(admin, matter_id, template_id);
+  const resolved = await resolveMatterTemplate(admin, matter_id, template_id, row_id);
   if (resolved.error) return json(resolved.error.status, { error: resolved.error.message });
   const { matter, pkg, activeTemplates, template } = resolved;
 
-  const [fillContext, editsByTemplate] = await Promise.all([
+  const [baseContext, editsByRow] = await Promise.all([
     buildFillContext(admin, matter, pkg, activeTemplates),
-    loadManualEdits(admin, matter_id, template_id),
+    loadManualEdits(admin, matter_id),
   ]);
-  const manualEdits = editsByTemplate[template_id] || {};
+  const fillContext = contextForCopy(baseContext, template);
+  const manualEdits = editsForCopy(editsByRow, template, activeTemplates) || {};
 
   const effectiveMap = { ...(template.field_map || {}), ...(template.firm_overrides || {}) };
   const fields = Object.entries(effectiveMap).map(([name, descriptor]) => {
@@ -113,7 +131,7 @@ async function handleGet(request, env) {
   });
 
   return json(200, {
-    template: { id: template.id, form_key: template.form_key, label: template.label },
+    template: { id: template.id, row_id: template.row_id, form_key: template.form_key, label: template.label },
     fields,
   });
 }
@@ -193,15 +211,16 @@ async function handlePost(request, env) {
   try { body = await request.json(); }
   catch { return json(400, { error: 'Invalid JSON' }); }
 
-  const { matter_id, template_id, edits } = body;
+  const { matter_id, template_id, row_id, edits } = body;
   if (!matter_id || !template_id) return json(400, { error: 'matter_id and template_id are required' });
   if (!Array.isArray(edits) || !edits.length) return json(400, { error: 'edits array is required' });
   if (edits.length > 500) return json(400, { error: 'Too many edits in one request.' });
 
   const admin = makeAdminClient(env);
-  const resolved = await resolveMatterTemplate(admin, matter_id, template_id);
+  const resolved = await resolveMatterTemplate(admin, matter_id, template_id, row_id, { seed: true, userId: auth.profile?.id || null });
   if (resolved.error) return json(resolved.error.status, { error: resolved.error.message });
   const { matter, template } = resolved;
+  const matter_form_id = template.row_id;
 
   const effectiveMap = { ...(template.field_map || {}), ...(template.firm_overrides || {}) };
 
@@ -220,19 +239,19 @@ async function handlePost(request, env) {
         await applyWriteback(admin, matter, target, stored);
         // Autofill now supplies this value — a stored manual edit would shadow it.
         await admin.from('form_field_edits').delete()
-          .eq('matter_id', matter_id).eq('template_id', template_id).eq('field_name', fieldName);
+          .eq('matter_form_id', matter_form_id).eq('field_name', fieldName);
         written_back++;
       } else if (edit.value === null) {
         await admin.from('form_field_edits').delete()
-          .eq('matter_id', matter_id).eq('template_id', template_id).eq('field_name', fieldName);
+          .eq('matter_form_id', matter_form_id).eq('field_name', fieldName);
         reverted++;
       } else {
         const value = String(edit.value);
         if (value.length > 4000) throw new Error('Value too long.');
         const { error } = await admin.from('form_field_edits').upsert({
-          matter_id, template_id, field_name: fieldName, value,
+          matter_id, template_id, matter_form_id, field_name: fieldName, value,
           updated_by: auth.profile?.id || null,
-        }, { onConflict: 'matter_id,template_id,field_name' });
+        }, { onConflict: 'matter_form_id,field_name' });
         if (error) throw new Error(error.message);
         saved++;
       }

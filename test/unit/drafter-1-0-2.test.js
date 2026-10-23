@@ -190,9 +190,11 @@ describe('edition status without edition_notices (D-16, production today)', () =
 // ── Package API ──────────────────────────────────────────────────────────────
 
 describe('/api/form-filler/package — editions and finalized copies', () => {
-  const T1 = { id: 't1', form_key: 'g-28', label: 'Form G-28', r2_key: 'tpl/g-28.pdf', active: true };
-  const T2 = { id: 't2', form_key: 'i-485', label: 'Form I-485', r2_key: 'tpl/i-485.pdf', active: true };
-  const T3 = { id: 't3', form_key: 'g-1450', label: 'Form G-1450', r2_key: null, active: true };
+  // One copy each, as loadPackageTemplates returns them since 1.0.4.
+  const copy = (t, row) => ({ ...t, row_id: row, row_key: row, fee_amount: null });
+  const T1 = copy({ id: 't1', form_key: 'g-28', label: 'Form G-28', r2_key: 'tpl/g-28.pdf', active: true }, 'mf1');
+  const T2 = copy({ id: 't2', form_key: 'i-485', label: 'Form I-485', r2_key: 'tpl/i-485.pdf', active: true }, 'mf2');
+  const T3 = copy({ id: 't3', form_key: 'g-1450', label: 'Form G-1450', r2_key: null, active: true }, 'mf3');
 
   async function call(tables) {
     const admin = makeAdmin({ matters: [{ id: 'm1', case_type_id: null }], form_templates: [], ...tables });
@@ -217,8 +219,8 @@ describe('/api/form-filler/package — editions and finalized copies', () => {
   it('keeps an older finalized version reachable after a newer draft', async () => {
     const { body } = await call({
       generated_forms: [
-        { id: 'g2', matter_id: 'm1', template_id: 't1', status: 'draft', version_num: 2, r2_key: 'd2' },
-        { id: 'g1', matter_id: 'm1', template_id: 't1', status: 'finalized', version_num: 1, r2_key: 'd1', finalized_r2_key: 'f1' },
+        { id: 'g2', matter_id: 'm1', template_id: 't1', matter_form_id: 'mf1', status: 'draft', version_num: 2, r2_key: 'd2' },
+        { id: 'g1', matter_id: 'm1', template_id: 't1', matter_form_id: 'mf1', status: 'finalized', version_num: 1, r2_key: 'd1', finalized_r2_key: 'f1' },
       ],
     });
     const f = body.forms[0];
@@ -385,8 +387,8 @@ describe('Remove is still refused for a form with a finalized copy', () => {
       matter_forms: [{ id: 'mf1', matter_id: 'm1', template_id: 't1', sort_order: 10 }],
       form_templates: [{ id: 't1', form_key: 'g-28', label: 'Form G-28', r2_key: 'tpl/g-28.pdf', active: true }],
       generated_forms: [
-        { id: 'g2', matter_id: 'm1', template_id: 't1', status: 'draft', r2_key: 'd2' },
-        { id: 'g1', matter_id: 'm1', template_id: 't1', status: 'finalized', r2_key: 'd1', finalized_r2_key: 'f1' },
+        { id: 'g2', matter_id: 'm1', template_id: 't1', matter_form_id: 'mf1', status: 'draft', r2_key: 'd2' },
+        { id: 'g1', matter_id: 'm1', template_id: 't1', matter_form_id: 'mf1', status: 'finalized', r2_key: 'd1', finalized_r2_key: 'f1' },
       ],
     });
     helpersMock.makeAdminClient.mockReturnValue(admin);

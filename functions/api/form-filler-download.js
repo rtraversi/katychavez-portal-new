@@ -46,7 +46,7 @@ async function handleRequest(request, env) {
   const { data: row, error } = await admin
     .from('generated_forms')
     .select(asDownload
-      ? 'r2_key, finalized_r2_key, signed_r2_key, file_name, status, template:form_templates(form_key), matter:matters(client:clients(last_name))'
+      ? 'r2_key, finalized_r2_key, signed_r2_key, file_name, status, template:form_templates(form_key), matter:matters(client:clients(last_name)), copy:matter_forms(fee_amount)'
       : 'r2_key, finalized_r2_key, signed_r2_key, file_name, status')
     .eq('id', id)
     .single();
@@ -80,8 +80,9 @@ async function handleRequest(request, env) {
 }
 
 // Rows generated before 1.0.1 stored "<label> (v3).pdf"; a download is always
-// named by today's rule, from the form and the client card.
+// named by today's rule, from the form, the client card and (1.0.4) the
+// G-1450 copy's amount: "G-1450 $520 - LASTNAME.pdf".
 export function downloadName(row) {
   const formKey = row.template?.form_key;
-  return formKey ? formFileName(formKey, row.matter?.client?.last_name) : row.file_name;
+  return formKey ? formFileName(formKey, row.matter?.client?.last_name, row.copy?.fee_amount ?? null) : row.file_name;
 }

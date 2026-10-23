@@ -1,7 +1,11 @@
 // CF Worker: /api/form-filler/matter-forms
 //
-//   POST   { matter_id, template_id }  — add a form to the matter
-//   DELETE { matter_id, template_id }  — remove a form from the matter
+//   POST   { matter_id, template_id }          — add a form to the matter
+//   DELETE { matter_id, row_id | template_id } — remove one copy of a form
+//
+// Drafter 1.0.4: a G-1450 may be on a case twice (_form-copies.js); every
+// other form is still refused a second time. Remove takes the copy's row_id;
+// template_id alone still works while the form is on the case once.
 //
 // Migration 1605 made the case-type package a starting point rather than a
 // rule: a real filing isn't always the same set of forms. An adjustment-of-
@@ -19,6 +23,7 @@
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 import { seedMatterForms } from './_fill-context.js';
+import { canRepeat } from './_form-copies.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -42,8 +47,8 @@ async function handleRequest(request, env) {
   try { body = await request.json(); }
   catch { return json(400, { error: 'Invalid JSON' }); }
 
-  const { matter_id, template_id } = body;
-  if (!matter_id || !template_id) {
+  const { matter_id, template_id, row_id } = body;
+  if (!matter_id || (!template_id && !(request.method === 'DELETE' && row_id))) {
     return json(400, { error: 'matter_id and template_id are required' });
   }
 
@@ -63,7 +68,7 @@ async function handleRequest(request, env) {
 
   return request.method === 'POST'
     ? addForm(admin, env, matter, template_id, userId)
-    : removeForm(admin, env, matter, template_id);
+    : removeForm(admin, env, matter, { template_id, row_id });
 }
 
 // ── Add ───────────────────────────────────────────────────────────────────────
@@ -82,9 +87,10 @@ async function addForm(admin, env, matter, template_id, userId) {
     .from('matter_forms')
     .select('id')
     .eq('matter_id', matter.id)
-    .eq('template_id', template_id)
-    .maybeSingle();
-  if (existing) return json(409, { error: 'That form is already on this matter.' });
+    .eq('template_id', template_id);
+  if ((existing || []).length && !canRepeat(tmpl.form_key)) {
+    return json(409, { error: 'That form is already on this matter.' });
+  }
 
   // Append to the end of the current order.
   const { data: last } = await admin
@@ -110,20 +116,19 @@ async function addForm(admin, env, matter, template_id, userId) {
 
 // ── Remove ────────────────────────────────────────────────────────────────────
 
-async function removeForm(admin, env, matter, template_id) {
-  const { data: row } = await admin
-    .from('matter_forms')
-    .select('id')
-    .eq('matter_id', matter.id)
-    .eq('template_id', template_id)
-    .maybeSingle();
-  if (!row) return json(404, { error: 'That form is not on this matter.' });
+async function removeForm(admin, env, matter, { template_id, row_id }) {
+  let q = admin.from('matter_forms').select('id, template_id').eq('matter_id', matter.id);
+  q = row_id ? q.eq('id', row_id) : q.eq('template_id', template_id);
+  const { data: rows } = await q;
+  if (!rows || !rows.length) return json(404, { error: 'That form is not on this matter.' });
+  if (rows.length > 1) return json(400, { error: 'That form is on this matter more than once; say which copy (row_id).' });
+  const row = rows[0];
 
   const { data: generated, error: genErr } = await admin
     .from('generated_forms')
     .select('id, status, r2_key, finalized_r2_key')
     .eq('matter_id', matter.id)
-    .eq('template_id', template_id);
+    .eq('matter_form_id', row.id);
   if (genErr) return json(500, { error: 'Failed to check generated forms.' });
 
   // A finalized form is part of a real filing — refuse rather than destroy it.
@@ -144,17 +149,17 @@ async function removeForm(admin, env, matter, template_id) {
       .from('generated_forms')
       .delete()
       .eq('matter_id', matter.id)
-      .eq('template_id', template_id);
+      .eq('matter_form_id', row.id);
     if (delGenErr) return json(500, { error: 'Failed to delete generated form records.' });
   }
 
   await admin.from('form_field_edits')
     .delete()
     .eq('matter_id', matter.id)
-    .eq('template_id', template_id);
+    .eq('matter_form_id', row.id);
 
   const { error: delErr } = await admin.from('matter_forms').delete().eq('id', row.id);
   if (delErr) return json(500, { error: 'Failed to remove the form.' });
 
-  return json(200, { ok: true, removed: template_id, deleted_versions: (generated || []).length });
+  return json(200, { ok: true, removed: row.template_id, row_id: row.id, deleted_versions: (generated || []).length });
 }

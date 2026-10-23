@@ -89,21 +89,29 @@ async function handle(request, env) {
     }
   } catch { /* form_editions missing — form_templates fallback already applied */ }
 
+  // A case can hold a form twice (1.0.4: two G-1450s). Pages are routed by
+  // form number, so the first copy in the case's list stands for the form.
   const candidateByKey = {};
-  for (const t of candidates) candidateByKey[t.form_key] = t;
+  for (const t of candidates) if (!candidateByKey[t.form_key]) candidateByKey[t.form_key] = t;
 
   // Splice target = the LATEST generated version of each form on this matter,
   // draft OR finalized (the user's choice — no need to finalize first). A routed
   // page whose form was never generated has nothing to replace into.
+  // With two copies: the first copy in list order that has a draft.
   const { data: genRows } = await admin
     .from('generated_forms')
-    .select('id, template_id, version_num, status, form:form_templates(form_key)')
+    .select('id, template_id, matter_form_id, version_num, status, form:form_templates(form_key)')
     .eq('matter_id', matter_id)
     .order('version_num', { ascending: false });
-  const targetByKey = {};
+  const latestByCopy = {};
   for (const g of genRows || []) {
-    const k = g.form?.form_key;
-    if (k && !targetByKey[k]) targetByKey[k] = g;   // first seen = highest version_num
+    const k = g.matter_form_id || `template:${g.template_id}`;
+    if (!latestByCopy[k]) latestByCopy[k] = g;   // first seen = highest version_num
+  }
+  const targetByKey = {};
+  for (const c of candidates) {
+    const g = latestByCopy[c.row_id] || latestByCopy[`template:${c.id}`];
+    if (g && !targetByKey[c.form_key]) targetByKey[c.form_key] = g;
   }
 
   // ── Load the uploaded documents' bytes from R2 ────────────────────────────

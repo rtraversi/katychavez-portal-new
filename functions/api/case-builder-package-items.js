@@ -14,6 +14,7 @@
 // and matters only once packages back live matters. Tracked as a follow-up.
 
 import { verifyAuth, json } from './_helpers.js';
+import { canRepeat } from './_form-copies.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -44,15 +45,20 @@ async function handle(request, env) {
 
   const ids = items.map(i => i && i.template_id).filter(Boolean);
   if (ids.length !== items.length) return json(400, { error: 'Every item needs a template_id.' });
-  if (new Set(ids).size !== ids.length) return json(400, { error: 'The same form appears more than once in the list.' });
+  const unique = [...new Set(ids)];
 
   // Every referenced template must exist (allow inactive here — an admin may be
   // curating a package for later; the per-matter add path is what blocks adding
   // an inactive/unuploaded form to a real filing).
-  if (ids.length) {
-    const { data: found, error: tErr } = await admin.from('form_templates').select('id').in('id', ids);
+  if (unique.length) {
+    const { data: found, error: tErr } = await admin.from('form_templates').select('id, form_key').in('id', unique);
     if (tErr) return json(500, { error: tErr.message });
-    if ((found || []).length !== ids.length) return json(422, { error: 'One or more forms in the list no longer exist.' });
+    if ((found || []).length !== unique.length) return json(422, { error: 'One or more forms in the list no longer exist.' });
+    // 1.0.4: only a form that may repeat (G-1450) can be listed twice.
+    const keyById = Object.fromEntries(found.map(t => [t.id, t.form_key]));
+    if (unique.some(id => ids.filter(x => x === id).length > 1 && !canRepeat(keyById[id]))) {
+      return json(400, { error: 'The same form appears more than once in the list.' });
+    }
   }
 
   // Replace the list. Delete-then-insert isn't a single transaction via the JS
