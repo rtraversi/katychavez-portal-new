@@ -2936,31 +2936,53 @@
     _subtabLoaders['uscis-forms'] = async () => {
       if (_formFillerLoaded) return;
       _formFillerLoaded = true;
-      await loadFormFiller();
+      await loadFormFiller({ autofill: true });
     };
   }
 
-  // Docket kit tags (DESIGN-SYSTEM.md) — token-driven, so light/dark is free.
-  const FORM_FILLER_STATUS_TAG = {
-    draft:        () => DK.tag('Draft', 'acc'),
-    needs_review: () => DK.tag('Needs review', 'warn'),
-    finalized:    () => DK.tag('Finalized', 'ok'),
+  // ── Drafter 1.0.2: one row per form ─────────────────────────────────────────
+  // Label + edition badge; a second line only for "Autofilling…", an edition
+  // warning or a missing template (D-10, D-11, D-14). Edit and Download on the
+  // row, everything else in the "⋯" menu (RT-11, D-5, D-15). Forms that can
+  // fill and have not are autofilled on their own (RT-10).
+  const FF_ICON = {
+    edit:      '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    download:  '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    more:      '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',
+    autofill:  '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/>',
+    flatten:   '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+    finalized: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/>',
+    signed:    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/>',
+    reset:     '<polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/>',
+    remove:    '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>',
+    warning:   '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
   };
+  const ffIcon = (name, size = 15) =>
+    `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${FF_ICON[name]}</svg>`;
 
-  async function loadFormFiller() {
+  let _ffData = null;                   // last package response, for re-renders
+  const _ffAutofilling = new Set();     // template_ids being generated right now
+
+  async function fetchFormFillerPackage() {
+    const session = await Auth.getSession();
+    const res = await fetch(`/api/form-filler/package?matter_id=${encodeURIComponent(matter.id)}`, {
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    });
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+    return res.json();
+  }
+
+  // autofill: true when the tab opens and right after a form is added or
+  // reset; every form whose template is ready and has no draft is generated.
+  async function loadFormFiller({ autofill = false } = {}) {
     const container = document.getElementById('uscis-forms-panel-content');
     if (!container || !matter) return;
 
-    container.innerHTML = `<div class="dk-empty">Loading forms…</div>`;
+    if (!container.querySelector('#ff-list-mount')) container.innerHTML = `<div class="dk-empty">Loading forms…</div>`;
 
     let data;
     try {
-      const session = await Auth.getSession();
-      const res = await fetch(`/api/form-filler/package?matter_id=${encodeURIComponent(matter.id)}`, {
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
-      });
-      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
-      data = await res.json();
+      data = await fetchFormFillerPackage();
     } catch (err) {
       container.innerHTML = `<div class="dk-empty" style="color:var(--color-danger)">Failed to load: ${Utils.esc(err.message)}</div>`;
       return;
@@ -2970,6 +2992,11 @@
     // case type only supplies a STARTING SET — a matter with no case type, or a
     // case type with no package, still gets a working tab it can add forms to.
     renderFormFillerPanel(container, data);
+
+    if (autofill) {
+      const missing = FormFillerRows.needsAutofill(data.forms, _ffAutofilling);
+      if (missing.length) await runFormFillerGenerate({ matter_id: matter.id, template_ids: missing }, { auto: true });
+    }
   }
 
   // POST/DELETE against /api/form-filler/matter-forms, then reload the tab.
@@ -2993,93 +3020,80 @@
       body:    JSON.stringify({ matter_id: matter.id, ...(template_ids ? { template_ids } : {}) }),
     });
     if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
-    Utils.toast(label ? `${label} reset — back to Not Generated.` : 'All forms reset — back to Not Generated.', 'success');
+    Utils.toast(label ? `${label} reset.` : 'All forms reset.', 'success');
     _formFillerLoaded = false;
-    await loadFormFiller();
+    await loadFormFiller({ autofill: true });
   }
 
-  function renderFormFillerPanel(container, data) {
-    const rows = data.forms.map(f => {
-      const tag = f.status
-        ? (FORM_FILLER_STATUS_TAG[f.status]?.() || '')
-        : DK.tag('Not generated', 'mut');
+  // Edition badge and warning line come from the package API (edition_status).
+  function formEditionTag(f) {
+    const tag = f.edition_status?.tag || { label: 'Edition unknown', kind: 'warn' };
+    return DK.tag(Utils.esc(tag.label), tag.kind);
+  }
 
-      // Meta line: autofill coverage, then why the form can't be generated.
-      const meta = [];
-      if (f.fields_filled != null && f.fields_total != null) {
-        meta.push(`<span>${f.fields_filled}/${f.fields_total} autofilled</span>`);
-      }
-      if (!f.template_ready) {
-        meta.push(`<span class="danger">Template not yet uploaded</span>`);
-      }
+  function formEditionWarning(f) {
+    const w = f.edition_status?.warning;
+    if (!w) return '';
+    return `<span class="${w.level === 'danger' ? 'danger' : 'warn'}">${ffIcon('warning', 13)} ${Utils.esc(w.text)}</span>`;
+  }
 
-      const t   = Utils.esc(f.template_id);
-      const lbl = Utils.esc(f.label);
-      const act = [];
+  function formRowHtml(f) {
+    const t   = Utils.esc(f.template_id);
+    const lbl = Utils.esc(f.label);
+    const filling = _ffAutofilling.has(f.template_id);
 
-      if (f.generated_form_id && f.status !== 'finalized') {
-        act.push(`<button class="dk-linkbtn ff-edit-btn" data-id="${Utils.esc(f.generated_form_id)}" data-template-id="${t}" data-label="${lbl}">Edit</button>`);
-      }
-      if (f.generated_form_id) {
-        act.push(`<button class="dk-linkbtn ff-download-btn" data-id="${Utils.esc(f.generated_form_id)}" data-final="${f.status === 'finalized' ? '1' : '0'}">Open</button>`);
-      }
-      if (f.has_signed) {
-        act.push(`<button class="dk-linkbtn ff-open-signed-btn" data-id="${Utils.esc(f.generated_form_id)}">Open signed</button>`);
-      }
-      if (f.generated_form_id && f.status !== 'finalized') {
-        act.push(`<button class="dk-linkbtn ff-finalize-btn" data-id="${Utils.esc(f.generated_form_id)}">Finalize</button>`);
-      }
-      if (f.template_ready) {
-        act.push(`<button class="dk-linkbtn ff-regen-btn" data-template-id="${t}" data-has-final="${f.status === 'finalized'}">${f.generated_form_id ? 'Regenerate' : 'Generate'}</button>`);
-      }
+    const meta = [];
+    if (filling) meta.push(`<span class="pending">Autofilling…</span>`);
+    const warning = formEditionWarning(f);
+    if (warning) meta.push(warning);
+    if (!f.template_ready) meta.push(`<span class="danger">Template not yet uploaded</span>`);
 
-      // Destructive actions sit after a hairline divider so they never read as
-      // part of the routine Edit/Open/Generate run.
-      const destructive = [];
-      if (f.generated_form_id) {
-        destructive.push(`<button class="dk-linkbtn d ff-reset-form-btn" data-template-id="${t}" data-label="${lbl}" data-final="${f.status === 'finalized' ? '1' : '0'}">Reset</button>`);
+    const act = [];
+    if (f.generated_form_id && !filling) {
+      // A form finalized before 1.0.2 keeps today's rule: no editing until it
+      // is autofilled into a new draft.
+      if (f.status !== 'finalized') {
+        act.push(`<button class="dk-linkbtn ico ff-edit-btn" data-template-id="${t}">${ffIcon('edit')}Edit</button>`);
       }
-      // A finalized form is part of a real filing — the API refuses to remove
-      // it, so say so here rather than letting the click fail.
-      destructive.push(f.status === 'finalized'
-        ? `<button class="dk-linkbtn" disabled title="Finalized forms can't be removed. Reset this form first if you really need to." style="opacity:.4;cursor:not-allowed">Remove</button>`
-        : `<button class="dk-linkbtn d ff-remove-form-btn" data-template-id="${t}" data-label="${lbl}" data-generated="${f.generated_form_id ? '1' : '0'}">Remove</button>`);
+      act.push(`<button class="dk-linkbtn ico ff-download-btn" data-template-id="${t}">${ffIcon('download')}Download</button>`);
+    }
+    act.push(`<button class="dk-linkbtn ico ff-more-btn" data-template-id="${t}" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="More">${ffIcon('more')}</button>`);
 
-      const divider = act.length
-        ? `<span aria-hidden="true" style="width:1px;align-self:stretch;margin:0 2px;background:var(--line)"></span>`
-        : '';
+    return `
+      <div class="dk-reg-row">
+        <div style="min-width:0">
+          <div class="dk-reg-title"><span>${lbl}</span>${formEditionTag(f)}</div>
+          ${meta.length ? `<div class="dk-reg-meta">${meta.join('<span class="sep">·</span>')}</div>` : ''}
+        </div>
+        <div class="dk-reg-act">${act.join('')}</div>
+      </div>`;
+  }
 
-      return `
-        <div class="dk-reg-row">
-          <div style="min-width:0">
-            <div class="dk-reg-title"><span>${lbl}</span>${tag}</div>
-            ${meta.length ? `<div class="dk-reg-meta">${meta.join('<span class="sep">·</span>')}</div>` : ''}
-          </div>
-          <div class="dk-reg-act">${act.join('')}${divider}${destructive.join('')}</div>
-        </div>`;
-    }).join('');
+  // Just the list, so "Autofilling…" can come and go without remounting
+  // Package Builder underneath.
+  function renderFormList() {
+    const mount = document.getElementById('ff-list-mount');
+    const data  = _ffData;
+    if (!mount || !data) return;
+    closeFormMenu();
 
     const anyGenerated = data.forms.some(f => f.generated_form_id);
-    const anyFinalized = data.forms.some(f => f.status === 'finalized');
     const canAdd       = (data.available || []).length > 0;
 
     // The case-type package is now just the heading — the matter owns its list.
     const heading = data.package ? Utils.esc(data.package.name) : 'USCIS Forms';
 
     const body = data.forms.length
-      ? `<div class="dk-register">${rows}</div>`
+      ? `<div class="dk-register">${data.forms.map(formRowHtml).join('')}</div>`
       : `<div class="dk-empty">No forms on this matter yet.${canAdd ? ' Use <strong>Add form</strong> to start building the package.' : ''}</div>`;
 
-    // Footer actions are package-wide and deliberately quiet: per-form generate
-    // is the primary path now, so "Generate all" is no longer a primary button.
-    const footer = data.forms.length
+    const footer = anyGenerated
       ? `<div style="display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-3)">
-           ${anyGenerated ? '<button id="ff-reset-package-btn" class="dk-linkbtn d">Reset all</button>' : ''}
-           <button id="ff-generate-package-btn" class="btn btn--secondary btn--sm">Generate all</button>
+           <button id="ff-reset-package-btn" class="dk-linkbtn d">Reset all</button>
          </div>`
       : '';
 
-    container.innerHTML = `
+    mount.innerHTML = `
       <div class="dk-sec">
         <div class="dk-sec-head">
           <h2>${heading}</h2>
@@ -3089,21 +3103,17 @@
         </div>
         ${body}
         ${footer}
-      </div>
-      <div id="pb-mount"></div>`;
+      </div>`;
 
-    document.getElementById('ff-generate-package-btn')?.addEventListener('click', async (e) => {
-      await runFormFillerGenerate({ matter_id: matter.id }, e.currentTarget);
-    });
-
-    document.getElementById('ff-add-form-btn')?.addEventListener('click', () => {
+    mount.querySelector('#ff-add-form-btn')?.addEventListener('click', () => {
       openAddFormPicker(data.available);
     });
 
-    document.getElementById('ff-reset-package-btn')?.addEventListener('click', async () => {
+    mount.querySelector('#ff-reset-package-btn')?.addEventListener('click', async () => {
+      const anyFinalized = data.forms.some(f => f.has_finalized);
       const warning = anyFinalized
-        ? 'Reset every form on this matter? All generated forms will be deleted — including manual edits AND finalized PDFs — and each returns to Not Generated. The list of forms itself, client data, and template defaults are not affected.'
-        : 'Reset every form on this matter? All generated forms and any manual edits will be deleted, and each returns to Not Generated. The list of forms itself, client data, and template defaults are not affected.';
+        ? 'Reset every form on this matter? All generated forms will be deleted — including manual edits AND finalized PDFs — and each autofills again from the client card. The list of forms itself, client data, and template defaults are not affected.'
+        : 'Reset every form on this matter? All generated forms and any manual edits will be deleted, and each autofills again from the client card. The list of forms itself, client data, and template defaults are not affected.';
       if (!await Utils.confirm(warning, { confirmLabel: 'Reset all', danger: true })) return;
       const btn = document.getElementById('ff-reset-package-btn');
       btn.disabled = true;
@@ -3115,115 +3125,179 @@
       }
     });
 
-    container.querySelectorAll('.ff-reset-form-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const label = btn.dataset.label;
-        const warning = btn.dataset.final === '1'
-          ? `Reset ${label}? Its finalized PDF, draft, and manual edits will be deleted and it returns to Not Generated. Other forms on this matter are not affected.`
-          : `Reset ${label}? Its generated draft and manual edits will be deleted and it returns to Not Generated. Other forms on this matter are not affected.`;
-        if (!await Utils.confirm(warning, { confirmLabel: 'Reset form', danger: true })) return;
-        btn.disabled = true;
-        try {
-          await resetFormFiller({ template_ids: [btn.dataset.templateId], label });
-        } catch (err) {
-          Utils.toast(err.message || 'Failed to reset the form.', 'error');
-          btn.disabled = false;
-        }
-      });
-    });
+    const formOf = (btn) => data.forms.find(f => f.template_id === btn.dataset.templateId);
 
-    container.querySelectorAll('.ff-remove-form-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const label = btn.dataset.label;
-        const warning = btn.dataset.generated === '1'
-          ? `Remove ${label} from this matter? Its generated draft and manual edits will be deleted too. You can add the form back later, but the filled-in work will be gone.`
-          : `Remove ${label} from this matter? You can add it back later.`;
-        if (!await Utils.confirm(warning, { confirmLabel: 'Remove form', danger: true })) return;
-        btn.disabled = true;
-        try {
-          await matterFormsRequest('DELETE', btn.dataset.templateId);
-          Utils.toast(`${label} removed from this matter.`, 'success');
-          _formFillerLoaded = false;
-          await loadFormFiller();
-        } catch (err) {
-          Utils.toast(err.message || 'Failed to remove the form.', 'error');
-          btn.disabled = false;
-        }
-      });
-    });
-
-    container.querySelectorAll('.ff-regen-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const force = btn.dataset.hasFinal === 'true'
-          ? await Utils.confirm('This form was already finalized. Regenerate a new draft version anyway?', { confirmLabel: 'Regenerate' })
-          : true;
-        if (!force) return;
-        await runFormFillerGenerate(
-          { matter_id: matter.id, template_ids: [btn.dataset.templateId], force: btn.dataset.hasFinal === 'true' },
-          btn,
-        );
-      });
-    });
-
-    container.querySelectorAll('.ff-finalize-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!await Utils.confirm('Finalize this form? It will be flattened to a static PDF; the fillable draft stays available separately.', { confirmLabel: 'Finalize' })) return;
-        btn.disabled = true;
-        try {
-          const session = await Auth.getSession();
-          const res = await fetch('/api/form-filler/finalize', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-            body:    JSON.stringify({ generated_form_id: btn.dataset.id }),
-          });
-          if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
-          Utils.toast('Form finalized.', 'success');
-          _formFillerLoaded = false;
-          await loadFormFiller();
-        } catch (err) {
-          Utils.toast(err.message || 'Failed to finalize.', 'error');
-          btn.disabled = false;
-        }
-      });
-    });
-
-    container.querySelectorAll('.ff-edit-btn').forEach(btn => {
+    mount.querySelectorAll('.ff-edit-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        openFormEditor(btn.dataset.templateId, btn.dataset.id, btn.dataset.label);
+        const f = formOf(btn);
+        if (f) openFormEditor(f.template_id, f.generated_form_id, f.label);
       });
     });
 
-    container.querySelectorAll('.ff-open-signed-btn').forEach(btn => {
-      btn.addEventListener('click', () => openSignedForm(btn));
-    });
-
-    container.querySelectorAll('.ff-download-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const orig = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = 'Opening…';
-        try {
-          const session = await Auth.getSession();
-          const finalParam = btn.dataset.final === '1' ? '&final=1' : '';
-          const res = await fetch(`/api/form-filler/download?id=${encodeURIComponent(btn.dataset.id)}${finalParam}`, {
-            headers: { 'Authorization': `Bearer ${session.access_token}` },
-          });
-          if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
-          const blob = await res.blob();
-          const url  = URL.createObjectURL(blob);
-          window.open(url, '_blank');
-          setTimeout(() => URL.revokeObjectURL(url), 60000);
-        } catch (err) {
-          Utils.toast(err.message || 'Failed to open document.', 'error');
-        } finally {
-          btn.disabled = false;
-          btn.textContent = orig;
-        }
+    mount.querySelectorAll('.ff-download-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const f = formOf(btn);
+        if (f) downloadGeneratedForm(btn, f.generated_form_id);
       });
     });
 
+    mount.querySelectorAll('.ff-more-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const f = formOf(btn);
+        if (!f) return;
+        if (_ffMenu?.anchor === btn) closeFormMenu();
+        else openFormMenu(btn, f);
+      });
+    });
+  }
+
+  function renderFormFillerPanel(container, data) {
+    _ffData = data;
+    container.innerHTML = `<div id="ff-list-mount"></div><div id="pb-mount"></div>`;
+    renderFormList();
     mountPackageBuilder(container.querySelector('#pb-mount'), data);
   }
+
+  // ── The "⋯" menu ────────────────────────────────────────────────────────────
+  let _ffMenu = null;   // { el, anchor }
+
+  function closeFormMenu({ focusAnchor = false } = {}) {
+    if (!_ffMenu) return;
+    const { el, anchor } = _ffMenu;
+    _ffMenu = null;
+    el.remove();
+    anchor.setAttribute('aria-expanded', 'false');
+    if (focusAnchor && anchor.isConnected) anchor.focus();
+  }
+
+  function openFormMenu(anchor, f) {
+    closeFormMenu();
+    const el = document.createElement('div');
+    el.className = 'dk-menu';
+    el.setAttribute('role', 'menu');
+    el.setAttribute('aria-label', `${f.label} actions`);
+    el.innerHTML = FormFillerRows.menuItems(f).map(i => i.k === 'hr'
+      ? '<hr>'
+      : `<button type="button" role="menuitem" data-k="${i.k}" class="${i.danger ? 'd' : ''}"${i.disabled ? ' disabled' : ''}${i.title ? ` title="${Utils.esc(i.title)}"` : ''}>${ffIcon(i.k)}${i.label}</button>`,
+    ).join('');
+    document.body.appendChild(el);
+    const r = anchor.getBoundingClientRect();
+    el.style.top  = `${window.scrollY + r.bottom + 4}px`;
+    el.style.left = `${Math.max(8, window.scrollX + r.right - el.offsetWidth)}px`;
+    anchor.setAttribute('aria-expanded', 'true');
+    _ffMenu = { el, anchor };
+    el.querySelector('button:not(:disabled)')?.focus();
+
+    el.addEventListener('click', async (e) => {
+      const item = e.target.closest('button[data-k]');
+      if (!item || item.disabled) return;
+      closeFormMenu();
+      await runFormMenuAction(item.dataset.k, f);
+    });
+  }
+
+  // Outside click, Escape, and arrow keys between items. Global delegates:
+  // the router re-runs this page script on every visit, so remove the prior
+  // ones first (same as __trustCopyClick), and drop a menu left open when the
+  // page changes.
+  if (document.__ffMenuClick)  document.removeEventListener('click', document.__ffMenuClick);
+  if (document.__ffMenuKey)    document.removeEventListener('keydown', document.__ffMenuKey);
+  if (window.__ffMenuDismiss) {
+    window.removeEventListener('resize', window.__ffMenuDismiss);
+    window.removeEventListener('hashchange', window.__ffMenuDismiss);
+  }
+  document.querySelectorAll('body > .dk-menu').forEach(el => el.remove());
+  document.__ffMenuClick = (e) => {
+    if (_ffMenu && !_ffMenu.el.contains(e.target) && !_ffMenu.anchor.contains(e.target)) closeFormMenu();
+  };
+  document.__ffMenuKey = (e) => {
+    if (!_ffMenu) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeFormMenu({ focusAnchor: true }); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const items = [..._ffMenu.el.querySelectorAll('button:not(:disabled)')];
+      if (!items.length) return;
+      e.preventDefault();
+      const at = items.indexOf(document.activeElement);
+      const next = e.key === 'ArrowDown' ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
+      items[next].focus();
+    }
+  };
+  window.__ffMenuDismiss = () => closeFormMenu();
+  document.addEventListener('click', document.__ffMenuClick);
+  document.addEventListener('keydown', document.__ffMenuKey);
+  window.addEventListener('resize', window.__ffMenuDismiss);
+  window.addEventListener('hashchange', window.__ffMenuDismiss);
+
+  async function runFormMenuAction(k, f) {
+    if (k === 'autofill') {
+      // A form finalized before 1.0.2: autofilling writes a new draft version
+      // over it; the finalized copy stays downloadable (D-15).
+      const force = f.status === 'finalized';
+      if (force && !await Utils.confirm('This form was already finalized. Autofill a new draft anyway? The finalized copy stays available.', { confirmLabel: 'Autofill' })) return;
+      await runFormFillerGenerate({ matter_id: matter.id, template_ids: [f.template_id], ...(force ? { force: true } : {}) });
+    } else if (k === 'flatten') {
+      await downloadGeneratedForm(null, f.generated_form_id, { flatten: true });
+    } else if (k === 'finalized') {
+      await downloadGeneratedForm(null, f.finalized_form_id, { final: true });
+    } else if (k === 'signed') {
+      const b = document.createElement('button');
+      b.dataset.id = f.generated_form_id;
+      await openSignedForm(b);
+    } else if (k === 'reset') {
+      // D-13: Max's wording.
+      if (!await Utils.confirm(FormFillerRows.resetPrompt(f), { confirmLabel: 'Reset form', danger: true })) return;
+      try {
+        await resetFormFiller({ template_ids: [f.template_id], label: f.label });
+      } catch (err) {
+        Utils.toast(err.message || 'Failed to reset the form.', 'error');
+      }
+    } else if (k === 'remove') {
+      const warning = f.generated_form_id
+        ? `Remove ${f.label} from this matter? Its generated draft and manual edits will be deleted too. You can add the form back later, but the filled-in work will be gone.`
+        : `Remove ${f.label} from this matter? You can add it back later.`;
+      if (!await Utils.confirm(warning, { confirmLabel: 'Remove form', danger: true })) return;
+      try {
+        await matterFormsRequest('DELETE', f.template_id);
+        Utils.toast(`${f.label} removed from this matter.`, 'success');
+        _formFillerLoaded = false;
+        await loadFormFiller();
+      } catch (err) {
+        Utils.toast(err.message || 'Failed to remove the form.', 'error');
+      }
+    }
+  }
+
+  // D-5: the draft (or, with final, the stored finalized copy) as a file
+  // download, named by the server ("G-28 - LASTNAME.pdf"). flatten flattens
+  // the draft on the way out; nothing is stored and the status is unchanged.
+  async function downloadGeneratedForm(btn, generatedFormId, { flatten = false, final = false } = {}) {
+    if (btn) btn.disabled = true;
+    try {
+      const session = await Auth.getSession();
+      const params = new URLSearchParams({ id: generatedFormId, dl: '1' });
+      if (flatten) params.set('flatten', '1');
+      if (final) params.set('final', '1');
+      const res = await fetch(`/api/form-filler/download?${params}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = FormFillerRows.fileNameFromDisposition(res.headers.get('Content-Disposition')) || 'form.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      Utils.toast(err.message || 'Failed to download the form.', 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
 
   // ── Package Builder (upload signed pages → AI routes → replace pages) ──────
   // Staff uploads whatever the client sent back (one combined signed PDF or
@@ -3522,7 +3596,7 @@
             Utils.toast(`${btn.dataset.label} added to this matter.`, 'success');
             close();
             _formFillerLoaded = false;
-            await loadFormFiller();
+            await loadFormFiller({ autofill: true });
           } catch (err) {
             Utils.toast(err.message || 'Failed to add the form.', 'error');
             btn.disabled = false;
@@ -3541,13 +3615,14 @@
     filter.focus();
   }
 
-  // trigger: the button that was actually clicked — the per-form Generate or
-  // the footer Generate all. Falls back to the footer button so a caller that
-  // doesn't pass one still shows progress somewhere.
-  async function runFormFillerGenerate(body, trigger = null) {
-    const btn  = trigger || document.getElementById('ff-generate-package-btn');
-    const orig = btn?.textContent;
-    if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  // The existing generate call, for autofill (RT-10) and the editor's re-burn.
+  // The forms it fills show "Autofilling…" until the list reloads. auto: the
+  // tab started it on its own, so a user who may only read the tab (403) is
+  // not shown an error for something they did not click.
+  async function runFormFillerGenerate(body, { auto = false } = {}) {
+    const ids = body.template_ids || (_ffData?.forms || []).map(f => f.template_id);
+    ids.forEach(id => _ffAutofilling.add(id));
+    renderFormList();
     try {
       const session = await Auth.getSession();
       const res = await fetch('/api/form-filler/generate', {
@@ -3556,23 +3631,24 @@
         body:    JSON.stringify(body),
       });
       const result = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(result.error || `Error ${res.status}`);
+      if (!res.ok) {
+        if (auto && res.status === 403) return;
+        throw new Error(result.error || `Error ${res.status}`);
+      }
 
       const errors = (result.results || []).filter(r => r.status === 'error' || r.status === 'skipped');
       if (errors.length) {
-        Utils.toast(`Generated with ${errors.length} issue(s) — see console.`, 'error');
+        Utils.toast(`Autofilled with ${errors.length} issue(s) — see console.`, 'error');
         console.warn('[form-filler] generate issues:', errors);
-      } else {
-        Utils.toast('Forms generated.', 'success');
+      } else if (!auto) {
+        Utils.toast('Form updated.', 'success');
       }
+    } catch (err) {
+      Utils.toast(err.message || 'Failed to autofill.', 'error');
+    } finally {
+      ids.forEach(id => _ffAutofilling.delete(id));
       _formFillerLoaded = false;
       await loadFormFiller();
-    } catch (err) {
-      Utils.toast(err.message || 'Failed to generate forms.', 'error');
-    } finally {
-      // The tab re-renders on success, so this only matters on the error path —
-      // restore whatever the button actually said rather than a fixed label.
-      if (btn) { btn.disabled = false; if (orig != null) btn.textContent = orig; }
     }
   }
 

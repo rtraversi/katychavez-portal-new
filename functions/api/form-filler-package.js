@@ -2,6 +2,9 @@
 //
 // Returns the matter's ordered form list with each form's latest
 // generated_forms status, plus the catalog of forms available to add.
+// Drafter 1.0.2: each form also carries its form_editions row and whether
+// USCIS accepts that edition today (D-11, D-12, D-16), and its finalized copy
+// from before 1.0.2, if any (D-15).
 //
 // Since migration 1605 the list comes from matter_forms when it exists,
 // falling back to the case-type package as a suggestion when it doesn't.
@@ -11,6 +14,7 @@
 
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 import { loadPackageTemplates } from './_fill-context.js';
+import { editionStatus } from './_form-edition-status.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -49,19 +53,34 @@ async function handleRequest(request, env) {
 
   const { data: generated } = await admin
     .from('generated_forms')
-    .select('id, template_id, status, version_num, fields_filled, fields_total, finalized_at, created_at, signed_r2_key, signed_at')
+    .select('id, template_id, status, version_num, fields_filled, fields_total, finalized_at, finalized_r2_key, created_at, signed_r2_key, signed_at')
     .eq('matter_id', matterId)
     .in('template_id', templateIds.length ? templateIds : ['00000000-0000-0000-0000-000000000000'])
     .order('version_num', { ascending: false });
 
-  // Latest version per template_id (rows are already version_num desc).
+  // Latest version per template_id (rows are already version_num desc), and
+  // the newest finalized version: Autofill after a finalize writes a new draft
+  // version, and the finalized copy must stay reachable (D-15).
   const latestByTemplate = {};
+  const finalizedByTemplate = {};
   for (const row of generated || []) {
     if (!latestByTemplate[row.template_id]) latestByTemplate[row.template_id] = row;
+    if (!finalizedByTemplate[row.template_id] && row.status === 'finalized') finalizedByTemplate[row.template_id] = row;
   }
 
+  // select('*'): edition_notices only exists once the checker's migration 2005
+  // is applied, and naming it would fail the whole query before then.
+  const formNumbers = [...new Set(activeTemplates.map(t => String(t.form_key || '').toUpperCase()))];
+  const { data: editionRows } = formNumbers.length
+    ? await admin.from('form_editions').select('*').in('form_number', formNumbers)
+    : { data: [] };
+  const editionByNumber = Object.fromEntries((editionRows || []).map(r => [r.form_number, r]));
+  const today = new Date().toISOString().slice(0, 10);
+
   const forms = activeTemplates.map(tmpl => {
-    const latest = latestByTemplate[tmpl.id] || null;
+    const latest    = latestByTemplate[tmpl.id] || null;
+    const finalized = finalizedByTemplate[tmpl.id] || null;
+    const edition   = editionByNumber[String(tmpl.form_key || '').toUpperCase()] || null;
     return {
       template_id:       tmpl.id,
       form_key:          tmpl.form_key,
@@ -77,6 +96,13 @@ async function handleRequest(request, env) {
       // it's reachable from the form row, not just the transient builder panel.
       has_signed:        !!latest?.signed_r2_key,
       signed_at:         latest?.signed_at || null,
+      // A form with a finalized version is part of a filing: it cannot be
+      // removed (form-filler-matter-forms.js refuses), and its stored flattened
+      // PDF downloads from the ⋯ menu.
+      has_finalized:     !!finalized,
+      finalized_form_id: finalized?.finalized_r2_key ? finalized.id : null,
+      edition,
+      edition_status:    editionStatus(edition, today),
     };
   });
 
