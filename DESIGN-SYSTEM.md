@@ -27,7 +27,7 @@ Reference implementation: `pages/settings/scheduling/` (+ the kit in `css/portal
 - **Records:** `.dk-register` / `.dk-reg-row` / `.dk-reg-title` / `.dk-reg-meta` (`.fee`/`.sep`/`.danger`/`.warn`/`.pending`) / `.dk-reg-act`
 - **Action menu:** `.dk-menu` — the "⋯" overflow list for a row (`button.d` = destructive, `<hr>` divider); open it from a `.dk-linkbtn` with `aria-expanded`
 - **People:** `.dk-roster` / `.dk-att` (`.who`, `.slug`) + `.dk-week` / `.dk-wd` availability strip
-- **Bits:** `.dk-avatar` + `.dk-stack`, `.dk-tag` (`.warn`/`.ok`/`.mut`/`.acc`/`.crit` = red, danger colors), `.dk-linkbtn` (`.d` = danger, `.ico` = with an icon), `.dk-empty`
+- **Bits:** `.dk-avatar` + `.dk-stack`, `.dk-tag` (`.warn`/`.ok`/`.mut`/`.acc`/`.crit` = red, danger colors), `.dk-tagbtn` (a tag you can click), `.dk-inline-edit` (a small in-place form under a row's title), `.dk-linkbtn` (`.d` = danger, `.ico` = with an icon), `.dk-empty`
 - **Layout:** `.dk-cols` + `.dk-rail` (sticky rail — *optional*, only when there's second-order content like a live preview). A two-column page auto-widens past the 1200px reading cap to 1600px via `.page-content:has(.dk-cols)`; single-column pages keep the cap.
 - **Forms:** `.dk-toggle` (slider — wraps a real checkbox), `.dk-hours` / `.dk-hours-row`, `.dk-fieldrow` (`.lead` / `.trio`)
 - **Form fold:** `.dk-formfold` (native `<details>` + `.dk-formfold-body`) — fields a case rarely needs, one click away (`js/case-fold.js`)

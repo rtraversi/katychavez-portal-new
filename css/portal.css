@@ -2109,6 +2109,15 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .dk-tag.mut  { background: var(--paper-deep); color: var(--ink-soft); border: 1px solid var(--line); }
 .dk-tag.acc  { background: var(--daily-tint); color: var(--daily); }
 .dk-tag.crit { background: var(--color-danger-bg); color: var(--color-danger); }
+.dk-tagbtn { border: 0; cursor: pointer; font-family: inherit; line-height: inherit; }
+.dk-tagbtn:hover { filter: brightness(.95); }
+.dk-tagbtn:focus-visible { outline: 2px solid var(--daily); outline-offset: 1px; }
+
+/* Inline edit — a small form opened in place under a register row's title
+   (e.g. a G-1450's amount: Amount, Save, Cancel). */
+.dk-inline-edit { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 8px; padding: 10px 12px; border-radius: 9px; background: var(--paper-deep); }
+.dk-inline-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.dk-inline-edit input { font: inherit; font-size: 13.5px; width: 100px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
 
 /* Roster — people cards with a hue accent + weekly availability strip */
 .dk-roster { display: flex; flex-direction: column; gap: 12px; }

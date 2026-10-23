@@ -415,7 +415,7 @@
             <button class="dk-linkbtn cb-move" data-pkg="${Utils.esc(pkg.id)}" data-i="${i}" data-dir="-1" ${i === 0 ? 'disabled style="opacity:.35"' : ''} title="Move up">↑</button>
             <button class="dk-linkbtn cb-move" data-pkg="${Utils.esc(pkg.id)}" data-i="${i}" data-dir="1" ${i === items.length - 1 ? 'disabled style="opacity:.35"' : ''} title="Move down">↓</button>
             <span aria-hidden="true" style="width:1px;align-self:stretch;margin:0 2px;background:var(--line)"></span>
-            <button class="dk-linkbtn d cb-remove" data-pkg="${Utils.esc(pkg.id)}" data-tid="${Utils.esc(it.template_id)}">Remove</button>
+            <button class="dk-linkbtn d cb-remove" data-pkg="${Utils.esc(pkg.id)}" data-i="${i}">Remove</button>
           </div>
         </div>`;
     }).join('');
@@ -467,7 +467,7 @@
     root.querySelectorAll('.cb-addforms').forEach(b =>
       b.addEventListener('click', () => addForms(b.dataset.id)));
     root.querySelectorAll('.cb-remove').forEach(b =>
-      b.addEventListener('click', () => removeForm(b.dataset.pkg, b.dataset.tid)));
+      b.addEventListener('click', () => removeForm(b.dataset.pkg, +b.dataset.i)));
     root.querySelectorAll('.cb-move').forEach(b =>
       b.addEventListener('click', () => moveForm(b.dataset.pkg, +b.dataset.i, +b.dataset.dir)));
   }
@@ -498,7 +498,10 @@
   function addForms(packageId) {
     const pkg = pkgById(packageId);
     if (!pkg) return;
-    const have = new Set((pkg.items || []).map(i => i.template_id));
+    // A form already in the package is not offered again, unless it may
+    // repeat (1.0.4: the DACA package lists G-1450 twice).
+    const have = new Set((pkg.items || []).map(i => i.template_id)
+      .filter(id => !templateById[id]?.repeatable));
     FormPicker.open({
       title: `Add forms to “${pkg.name}”`,
       templates: data.templates,
@@ -512,10 +515,11 @@
     });
   }
 
-  async function removeForm(packageId, templateId) {
+  // By position: a package can list the same form twice (1.0.4).
+  async function removeForm(packageId, index) {
     const pkg = pkgById(packageId);
     if (!pkg) return;
-    const items = orderedItems(pkg).filter(it => it.template_id !== templateId);
+    const items = orderedItems(pkg).filter((_, i) => i !== index);
     try { await saveItems(packageId, items); }
     catch (err) { Utils.toast(err.message, 'error'); }
   }

@@ -13,14 +13,17 @@
 //       "source": "client.<col>" | "matter.<col>" | "immigration.<col>" |
 //                 "immigration.family.<n>.<col>" | "firm.<col>" | "attorney.<col>" |
 //                 "petitioner.<col>" | "joint_sponsor.<col>" |
-//                 "literal:<value>" | "blank",
+//                 "form.<col>" | "literal:<value>" | "blank",
 //       "transform"?: "state_abbrev" | "yes_no" | "date_mmddyyyy" | "date_slash"
 //     },
 //     ...
 //   }
 //
 // fill context shape: { client, matter, immigration, familyMembers, firm,
-//                       attorney, petitioner, joint_sponsor }
+//                       attorney, petitioner, joint_sponsor, form }
+//
+// "form" is the matter_forms row being filled (Drafter 1.0.4): a case can hold
+// two G-1450s, and each fills its own fee_amount.
 //
 // "petitioner" is the matter's primary opposing_parties row (migration 1602):
 // in immigration matters the client is the beneficiary and this record is the
@@ -96,6 +99,12 @@ export function applyTransform(value, transform) {
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
       return `${mm}${dd}${d.getFullYear()}`;
+    }
+    // Drafter 1.0.4: the G-1450 amount box wants whole dollars, no "$" and no
+    // cents ("1234 or 1,234", 7 characters). The card stores whole dollars.
+    case 'whole_dollars': {
+      const n = Number(String(value).replace(/[$,\s]/g, ''));
+      return Number.isFinite(n) ? String(Math.trunc(n)) : value;
     }
     case 'date_slash': {
       const d = new Date(`${value}T12:00:00`);

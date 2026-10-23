@@ -114,7 +114,9 @@ async function handle(request, env) {
       const appliedIds = results.filter(r => r.status === 'applied' && groupPages.some(g => g.id === r.page_id)).map(r => r.page_id);
       if (!appliedIds.length) continue;   // nothing spliced for this form — don't write an unchanged copy
 
-      const signedKey = `signed-forms/${gf.matter_id}/${gf.batch_id}/${gf.template.form_key}_signed.pdf`;
+      // The generated form's id keeps two copies of a form (1.0.4: two
+      // G-1450s filled in one batch) from sharing a signed file.
+      const signedKey = `signed-forms/${gf.matter_id}/${gf.batch_id}/${gf.template.form_key}_${gf.id}_signed.pdf`;
       const outBytes  = await targetDoc.save();
       await env.R2.put(signedKey, outBytes, { httpMetadata: { contentType: 'application/pdf' } });
 

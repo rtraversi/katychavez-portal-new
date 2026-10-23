@@ -5,6 +5,8 @@
 // Drafter 1.0.2: each form also carries its form_editions row and whether
 // USCIS accepts that edition today (D-11, D-12, D-16), and its finalized copy
 // from before 1.0.2, if any (D-15).
+// Drafter 1.0.4: one entry per COPY of a form (a DACA case has two G-1450s),
+// told apart by row_key; each copy's drafts are its own (matter_form_id).
 //
 // Since migration 1605 the list comes from matter_forms when it exists,
 // falling back to the case-type package as a suggestion when it doesn't.
@@ -15,6 +17,7 @@
 import { verifyAuth, makeAdminClient, json } from './_helpers.js';
 import { loadPackageTemplates } from './_fill-context.js';
 import { editionStatus } from './_form-edition-status.js';
+import { canRepeat, hasFee } from './_form-copies.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -53,19 +56,25 @@ async function handleRequest(request, env) {
 
   const { data: generated } = await admin
     .from('generated_forms')
-    .select('id, template_id, status, version_num, fields_filled, fields_total, finalized_at, finalized_r2_key, created_at, signed_r2_key, signed_at')
+    .select('id, template_id, matter_form_id, status, version_num, fields_filled, fields_total, finalized_at, finalized_r2_key, created_at, signed_r2_key, signed_at')
     .eq('matter_id', matterId)
     .in('template_id', templateIds.length ? templateIds : ['00000000-0000-0000-0000-000000000000'])
     .order('version_num', { ascending: false });
 
-  // Latest version per template_id (rows are already version_num desc), and
-  // the newest finalized version: Autofill after a finalize writes a new draft
-  // version, and the finalized copy must stay reachable (D-15).
-  const latestByTemplate = {};
-  const finalizedByTemplate = {};
+  // Latest version per copy (rows are already version_num desc), and the
+  // newest finalized version: Autofill after a finalize writes a new draft
+  // version, and the finalized copy must stay reachable (D-15). Drafts from
+  // before the case was seeded (matter_form_id NULL) count for the first copy
+  // of their form.
+  const firstCopy = new Map();
+  for (const c of activeTemplates) if (!firstCopy.has(c.id)) firstCopy.set(c.id, c.row_key);
+  const keyOf = (row) => row.matter_form_id || firstCopy.get(row.template_id);
+  const latestByCopy = {};
+  const finalizedByCopy = {};
   for (const row of generated || []) {
-    if (!latestByTemplate[row.template_id]) latestByTemplate[row.template_id] = row;
-    if (!finalizedByTemplate[row.template_id] && row.status === 'finalized') finalizedByTemplate[row.template_id] = row;
+    const k = keyOf(row);
+    if (!latestByCopy[k]) latestByCopy[k] = row;
+    if (!finalizedByCopy[k] && row.status === 'finalized') finalizedByCopy[k] = row;
   }
 
   // select('*'): edition_notices only exists once the checker's migration 2005
@@ -78,12 +87,17 @@ async function handleRequest(request, env) {
   const today = new Date().toISOString().slice(0, 10);
 
   const forms = activeTemplates.map(tmpl => {
-    const latest    = latestByTemplate[tmpl.id] || null;
-    const finalized = finalizedByTemplate[tmpl.id] || null;
+    const latest    = latestByCopy[tmpl.row_key] || null;
+    const finalized = finalizedByCopy[tmpl.row_key] || null;
     const edition   = editionByNumber[String(tmpl.form_key || '').toUpperCase()] || null;
     return {
       template_id:       tmpl.id,
+      row_id:            tmpl.row_id,
+      row_key:           tmpl.row_key,
       form_key:          tmpl.form_key,
+      // 1.0.4 (D-19): a G-1450's amount, whole dollars; null = "Set fee".
+      has_fee:           hasFee(tmpl.form_key),
+      fee_amount:        tmpl.fee_amount ?? null,
       label:             tmpl.label,
       template_ready:    !!tmpl.r2_key && tmpl.active,
       generated_form_id: latest?.id || null,
@@ -107,7 +121,8 @@ async function handleRequest(request, env) {
   });
 
   // Catalog for the "Add form" picker: every ready template not already on the
-  // matter. Templates without an r2_key aren't offered — they can't generate.
+  // matter, plus the ones a case may hold twice (G-1450, 1.0.4). Templates
+  // without an r2_key aren't offered — they can't generate.
   const onMatter = new Set(templateIds);
   const { data: allTemplates } = await admin
     .from('form_templates')
@@ -116,7 +131,7 @@ async function handleRequest(request, env) {
     .order('form_key', { ascending: true });
 
   const available = (allTemplates || [])
-    .filter(t => !onMatter.has(t.id) && !!t.r2_key)
+    .filter(t => (!onMatter.has(t.id) || canRepeat(t.form_key)) && !!t.r2_key)
     .map(t => ({ template_id: t.id, form_key: t.form_key, label: t.label }));
 
   return json(200, {

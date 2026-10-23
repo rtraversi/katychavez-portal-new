@@ -33,6 +33,7 @@ const SOURCE_TABLE = {
   joint_sponsor: 'opposing_parties',
   firm:          'firm_settings',
   attorney:      'users',
+  form:          'matter_forms',   // the copy of the form being filled (1.0.4)
 };
 
 // Not real columns — resolvePath() synthesizes these.

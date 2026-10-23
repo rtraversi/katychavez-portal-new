@@ -132,6 +132,7 @@ import { onRequest as formFillerReset }            from './functions/api/form-fi
 import { onRequest as formFillerTemplateDefaults } from './functions/api/form-filler-template-defaults.js';
 import { onRequest as formFillerFields }           from './functions/api/form-filler-fields.js';
 import { onRequest as formFillerMatterForms }      from './functions/api/form-filler-matter-forms.js';
+import { onRequest as formFillerRowFee }          from './functions/api/form-filler-row-fee.js';
 import { onRequest as packageBuilderAnalyze }      from './functions/api/package-builder-analyze.js';
 import { onRequest as packageBuilderApply }        from './functions/api/package-builder-apply.js';
 import { onRequest as caseBuilderPackages }        from './functions/api/case-builder-packages.js';
@@ -165,6 +166,7 @@ export const routes = {
   '/api/form-filler/template-defaults': formFillerTemplateDefaults,
   '/api/form-filler/fields':   formFillerFields,
   '/api/form-filler/matter-forms': formFillerMatterForms,
+  '/api/form-filler/row-fee':  formFillerRowFee,
   '/api/package-builder/analyze':  packageBuilderAnalyze,
   '/api/package-builder/apply':    packageBuilderApply,
   '/api/form-editions/verify':          formEditionsVerify,

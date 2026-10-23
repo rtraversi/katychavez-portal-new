@@ -187,7 +187,7 @@ describe('/api/form-filler/matter-forms — remove', () => {
       matters:         [MATTER],
       matter_forms:    [ON_MATTER],
       generated_forms: [
-        { id: 'g1', matter_id: 'm1', template_id: 't1', status: 'draft', r2_key: 'gen/a.pdf', finalized_r2_key: null },
+        { id: 'g1', matter_id: 'm1', template_id: 't1', matter_form_id: 'mf1', status: 'draft', r2_key: 'gen/a.pdf', finalized_r2_key: null },
       ],
     });
     helpersMock.makeAdminClient.mockReturnValue(a);
@@ -207,7 +207,7 @@ describe('/api/form-filler/matter-forms — remove', () => {
       matters:         [MATTER],
       matter_forms:    [ON_MATTER],
       generated_forms: [
-        { id: 'g1', matter_id: 'm1', template_id: 't1', status: 'finalized', r2_key: 'gen/a.pdf', finalized_r2_key: 'gen/a-final.pdf' },
+        { id: 'g1', matter_id: 'm1', template_id: 't1', matter_form_id: 'mf1', status: 'finalized', r2_key: 'gen/a.pdf', finalized_r2_key: 'gen/a-final.pdf' },
       ],
     });
     helpersMock.makeAdminClient.mockReturnValue(a);

@@ -2970,13 +2970,15 @@
     signed:    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/>',
     reset:     '<polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/>',
     remove:    '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>',
+    fee:       '<line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
     warning:   '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
   };
   const ffIcon = (name, size = 15) =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${FF_ICON[name]}</svg>`;
 
   let _ffData = null;                   // last package response, for re-renders
-  const _ffAutofilling = new Set();     // template_ids being generated right now
+  const _ffAutofilling = new Set();     // row keys being generated right now
+  let _ffEditingFee = null;             // row key whose amount editor is open (1.0.4)
 
   async function fetchFormFillerPackage() {
     const session = await Auth.getSession();
@@ -3010,29 +3012,32 @@
 
     if (autofill) {
       const missing = FormFillerRows.needsAutofill(data.forms, _ffAutofilling);
-      if (missing.length) await runFormFillerGenerate({ matter_id: matter.id, template_ids: missing }, { auto: true });
+      const rows = data.forms.filter(f => missing.includes(f.row_key || f.template_id));
+      if (rows.length) await runFormFillerGenerate({ matter_id: matter.id, ...FormFillerRows.scopeFor(rows) }, { auto: true });
     }
   }
 
   // POST/DELETE against /api/form-filler/matter-forms, then reload the tab.
-  async function matterFormsRequest(method, template_id) {
+  // row_id: which copy to remove, when a form is on the case twice (1.0.4).
+  async function matterFormsRequest(method, template_id, row_id = null) {
     const session = await Auth.getSession();
     const res = await fetch('/api/form-filler/matter-forms', {
       method,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body:    JSON.stringify({ matter_id: matter.id, template_id }),
+      body:    JSON.stringify({ matter_id: matter.id, template_id, ...(row_id ? { row_id } : {}) }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Error ${res.status}`);
     return body;
   }
 
-  async function resetFormFiller({ template_ids = null, label = null } = {}) {
+  // scope: { row_ids } or { template_ids } (FormFillerRows.scopeFor); none = all.
+  async function resetFormFiller({ scope = null, label = null } = {}) {
     const session = await Auth.getSession();
     const res = await fetch('/api/form-filler/reset', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body:    JSON.stringify({ matter_id: matter.id, ...(template_ids ? { template_ids } : {}) }),
+      body:    JSON.stringify({ matter_id: matter.id, ...(scope || {}) }),
     });
     if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || `Error ${res.status}`);
     Utils.toast(label ? `${label} reset.` : 'All forms reset.', 'success');
@@ -3052,10 +3057,29 @@
     return `<span class="${w.level === 'danger' ? 'danger' : 'warn'}">${ffIcon('warning', 13)} ${Utils.esc(w.text)}</span>`;
   }
 
+  // 1.0.4 (D-19): a G-1450 copy's amount, "$520", or "Set fee" in amber.
+  // Clicking it opens the amount editor in place.
+  function formFeeChip(f) {
+    if (!f.has_fee) return '';
+    const set = Number.isInteger(f.fee_amount);
+    const label = Utils.esc(FormFillerRows.feeLabel(f));
+    if (!f.row_id) return DK.tag(label, set ? 'acc' : 'warn');
+    return `<button type="button" class="dk-tag ${set ? 'acc' : 'warn'} dk-tagbtn ff-fee-btn" data-row="${Utils.esc(f.row_key)}"${set ? ' title="Change fee"' : ''}>${label}</button>`;
+  }
+
+  function formFeeEditor(f) {
+    return `
+      <div class="dk-inline-edit">
+        <label>Amount<input type="text" inputmode="numeric" class="ff-fee-input" value="${Number.isInteger(f.fee_amount) ? f.fee_amount : ''}" autocomplete="off"></label>
+        <button type="button" class="btn btn--primary btn--sm ff-fee-save" data-row="${Utils.esc(f.row_key)}">Save</button>
+        <button type="button" class="dk-linkbtn ff-fee-cancel">Cancel</button>
+      </div>`;
+  }
+
   function formRowHtml(f) {
-    const t   = Utils.esc(f.template_id);
+    const t   = Utils.esc(f.row_key || f.template_id);
     const lbl = Utils.esc(f.label);
-    const filling = _ffAutofilling.has(f.template_id);
+    const filling = _ffAutofilling.has(f.row_key || f.template_id);
 
     const meta = [];
     if (filling) meta.push(`<span class="pending">Autofilling…</span>`);
@@ -3068,17 +3092,18 @@
       // A form finalized before 1.0.2 keeps today's rule: no editing until it
       // is autofilled into a new draft.
       if (f.status !== 'finalized') {
-        act.push(`<button class="dk-linkbtn ico ff-edit-btn" data-template-id="${t}">${ffIcon('edit')}Edit</button>`);
+        act.push(`<button class="dk-linkbtn ico ff-edit-btn" data-row="${t}">${ffIcon('edit')}Edit</button>`);
       }
-      act.push(`<button class="dk-linkbtn ico ff-download-btn" data-template-id="${t}">${ffIcon('download')}Download</button>`);
+      act.push(`<button class="dk-linkbtn ico ff-download-btn" data-row="${t}">${ffIcon('download')}Download</button>`);
     }
-    act.push(`<button class="dk-linkbtn ico ff-more-btn" data-template-id="${t}" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="More">${ffIcon('more')}</button>`);
+    act.push(`<button class="dk-linkbtn ico ff-more-btn" data-row="${t}" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="More">${ffIcon('more')}</button>`);
 
     return `
       <div class="dk-reg-row">
         <div style="min-width:0">
-          <div class="dk-reg-title"><span>${lbl}</span>${formEditionTag(f)}</div>
+          <div class="dk-reg-title"><span>${lbl}</span>${formEditionTag(f)}${formFeeChip(f)}</div>
           ${meta.length ? `<div class="dk-reg-meta">${meta.join('<span class="sep">·</span>')}</div>` : ''}
+          ${_ffEditingFee && _ffEditingFee === f.row_key ? formFeeEditor(f) : ''}
         </div>
         <div class="dk-reg-act">${act.join('')}</div>
       </div>`;
@@ -3140,12 +3165,25 @@
       }
     });
 
-    const formOf = (btn) => data.forms.find(f => f.template_id === btn.dataset.templateId);
+    const formOf = (btn) => data.forms.find(f => (f.row_key || f.template_id) === btn.dataset.row);
+
+    mount.querySelectorAll('.ff-fee-btn').forEach(btn => {
+      btn.addEventListener('click', () => openFeeEditor(btn.dataset.row));
+    });
+    mount.querySelector('.ff-fee-cancel')?.addEventListener('click', () => { _ffEditingFee = null; renderFormList(); });
+    mount.querySelector('.ff-fee-save')?.addEventListener('click', (e) => {
+      const f = formOf(e.currentTarget);
+      if (f) saveFee(f, mount.querySelector('.ff-fee-input').value, e.currentTarget);
+    });
+    mount.querySelector('.ff-fee-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); mount.querySelector('.ff-fee-save')?.click(); }
+      if (e.key === 'Escape') { e.preventDefault(); _ffEditingFee = null; renderFormList(); }
+    });
 
     mount.querySelectorAll('.ff-edit-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const f = formOf(btn);
-        if (f) openFormEditor(f.template_id, f.generated_form_id, f.label);
+        if (f) openFormEditor(f.template_id, f.generated_form_id, f.label, f.row_id);
       });
     });
 
@@ -3244,13 +3282,47 @@
   window.addEventListener('resize', window.__ffMenuDismiss);
   window.addEventListener('hashchange', window.__ffMenuDismiss);
 
+  // ── G-1450 amount (1.0.4, D-19, D-20) ──────────────────────────────────────
+  function openFeeEditor(rowKey) {
+    _ffEditingFee = rowKey;
+    renderFormList();
+    const input = document.querySelector('#ff-list-mount .ff-fee-input');
+    input?.focus();
+    input?.select();
+  }
+
+  // Stores the amount on that copy, then autofills that copy again so the
+  // box and the file name carry it.
+  async function saveFee(f, value, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const session = await Auth.getSession();
+      const res = await fetch('/api/form-filler/row-fee', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body:    JSON.stringify({ matter_id: matter.id, row_id: f.row_id, fee_amount: value }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Error ${res.status}`);
+      _ffEditingFee = null;
+      f.fee_amount = body.fee_amount;
+      if (f.template_ready) await runFormFillerGenerate({ matter_id: matter.id, row_ids: [f.row_id] });
+      else { _formFillerLoaded = false; await loadFormFiller(); }
+    } catch (err) {
+      Utils.toast(err.message || 'Failed to save the amount.', 'error');
+      if (btn) btn.disabled = false;
+    }
+  }
+
   async function runFormMenuAction(k, f) {
     if (k === 'autofill') {
       // A form finalized before 1.0.2: autofilling writes a new draft version
       // over it; the finalized copy stays downloadable (D-15).
       const force = f.status === 'finalized';
       if (force && !await Utils.confirm('This form was already finalized. Autofill a new draft anyway? The finalized copy stays available.', { confirmLabel: 'Autofill' })) return;
-      await runFormFillerGenerate({ matter_id: matter.id, template_ids: [f.template_id], ...(force ? { force: true } : {}) });
+      await runFormFillerGenerate({ matter_id: matter.id, ...FormFillerRows.scopeFor([f]), ...(force ? { force: true } : {}) });
+    } else if (k === 'fee') {
+      openFeeEditor(f.row_key);
     } else if (k === 'flatten') {
       await downloadGeneratedForm(null, f.generated_form_id, { flatten: true });
     } else if (k === 'finalized') {
@@ -3263,7 +3335,7 @@
       // D-13: Max's wording.
       if (!await Utils.confirm(FormFillerRows.resetPrompt(f), { confirmLabel: 'Reset form', danger: true })) return;
       try {
-        await resetFormFiller({ template_ids: [f.template_id], label: f.label });
+        await resetFormFiller({ scope: FormFillerRows.scopeFor([f]), label: f.label });
       } catch (err) {
         Utils.toast(err.message || 'Failed to reset the form.', 'error');
       }
@@ -3273,7 +3345,7 @@
         : `Remove ${f.label} from this matter? You can add it back later.`;
       if (!await Utils.confirm(warning, { confirmLabel: 'Remove form', danger: true })) return;
       try {
-        await matterFormsRequest('DELETE', f.template_id);
+        await matterFormsRequest('DELETE', f.template_id, f.row_id);
         Utils.toast(`${f.label} removed from this matter.`, 'success');
         _formFillerLoaded = false;
         await loadFormFiller();
@@ -3635,7 +3707,11 @@
   // tab started it on its own, so a user who may only read the tab (403) is
   // not shown an error for something they did not click.
   async function runFormFillerGenerate(body, { auto = false } = {}) {
-    const ids = body.template_ids || (_ffData?.forms || []).map(f => f.template_id);
+    // The rows this run fills, by row key, for "Autofilling…".
+    const forms = _ffData?.forms || [];
+    const ids = forms.filter(f => body.row_ids ? body.row_ids.includes(f.row_id)
+      : body.template_ids ? body.template_ids.includes(f.template_id) : true)
+      .map(f => f.row_key || f.template_id);
     ids.forEach(id => _ffAutofilling.add(id));
     renderFormList();
     try {
@@ -3726,7 +3802,8 @@
     document.head.appendChild(style);
   }
 
-  async function openFormEditor(templateId, generatedFormId, label) {
+  // rowId: the copy being edited (1.0.4: two G-1450s never share edits).
+  async function openFormEditor(templateId, generatedFormId, label, rowId = null) {
     if (!matter) return;
     injectFormEditorStyles();
 
@@ -3766,7 +3843,7 @@
       overlay.remove();
       if (anythingSaved && !skipRegen) {
         // Re-burn the draft PDF so Open/Download reflects the edits.
-        await runFormFillerGenerate({ matter_id: matter.id, template_ids: [templateId] });
+        await runFormFillerGenerate({ matter_id: matter.id, ...(rowId ? { row_ids: [rowId] } : { template_ids: [templateId] }) });
       }
     };
     overlay.querySelector('#ffe-close').addEventListener('click', () => close());
@@ -3774,7 +3851,7 @@
     async function apiFields(method, body) {
       const session = await Auth.getSession();
       const url = method === 'GET'
-        ? `/api/form-filler/fields?matter_id=${encodeURIComponent(matter.id)}&template_id=${encodeURIComponent(templateId)}`
+        ? `/api/form-filler/fields?matter_id=${encodeURIComponent(matter.id)}&template_id=${encodeURIComponent(templateId)}${rowId ? `&row_id=${encodeURIComponent(rowId)}` : ''}`
         : '/api/form-filler/fields';
       const res = await fetch(url, {
         method,
@@ -3795,7 +3872,7 @@
       const batch = entries.map(([field_name, value]) => ({ field_name, value }));
       entries.forEach(([k]) => delete pendingEdits[k]);
       try {
-        const result = await apiFields('POST', { matter_id: matter.id, template_id: templateId, edits: batch });
+        const result = await apiFields('POST', { matter_id: matter.id, template_id: templateId, row_id: rowId, edits: batch });
         if (result.errors?.length) console.warn('[form-editor] save issues:', result.errors);
         anythingSaved = true;
         batch.forEach(e => (sectionsByField[e.field_name] || []).forEach(s => { s.classList.remove('ffe-dirty'); s.classList.add('ffe-saved'); }));
@@ -3851,7 +3928,7 @@
       try {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
         const result = await apiFields('POST', {
-          matter_id: matter.id, template_id: templateId,
+          matter_id: matter.id, template_id: templateId, row_id: rowId,
           edits: entries.map(([field_name, c]) => ({ field_name, value: c.value, write_back: true })),
         });
         if (result.errors?.length) {
