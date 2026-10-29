@@ -1,0 +1,229 @@
+<!-- Ask Claude — loaded dynamically into #page-content by menu.js. Staff only (KCL). -->
+<!-- Docket kit (see .dk-* in portal.css / DESIGN-SYSTEM.md). The thread is a
+     transcript, not chat bubbles: each turn is a labeled entry, the question on
+     paper-deep, the answer as body text with serif headings. Page-scoped .ac-*
+     styles below are token-driven only, so every theme and both modes follow. -->
+<style>
+#ac-root {
+  --ac-acc: var(--daily);
+  /* A step off the card surface toward ink: reads as paper in light and stays
+     soft in dark, where --paper-deep sits near black. */
+  --ac-soft: color-mix(in srgb, var(--ink) 4%, var(--surface));
+}
+
+.ac-layout { align-items: stretch; margin-top: 24px; }
+
+/* Thread card: fills the viewport under the masthead; the log scrolls inside. */
+.ac-thread {
+  display: flex; flex-direction: column; min-width: 0;
+  height: calc(100vh - var(--topbar-height) - 190px); min-height: 520px;
+  background: var(--surface); border-top: 2px solid var(--ink);
+  border-radius: 0 0 var(--r-card) var(--r-card); box-shadow: var(--card-shadow);
+}
+.ac-thread-head {
+  display: flex; align-items: center; gap: 10px; padding: 13px 20px;
+  border-bottom: 1px solid var(--line); min-height: 52px;
+}
+.ac-thread-title { font-family: var(--font-serif); font-size: 16.5px; font-weight: 600; color: var(--ink);
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.ac-thread-title.is-new { color: var(--ink-soft); font-weight: 400; font-style: italic; }
+
+.ac-log { flex: 1; overflow-y: auto; padding: 22px 26px 8px; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { .ac-log { scroll-behavior: auto; } }
+
+/* Turns */
+.ac-turn { margin: 0 auto 26px; max-width: 820px; }
+.ac-who { font-size: 11px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-faint);
+  display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.ac-who::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.ac-turn.claude .ac-who { color: var(--ac-acc); }
+.ac-q { background: var(--ac-soft); border: 1px solid var(--line); border-left: 3px solid var(--line-strong);
+  border-radius: 0 9px 9px 0; padding: 12px 15px; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: 14.5px; line-height: 1.55; color: var(--ink); }
+.ac-files { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ac-file { display: inline-flex; align-items: center; gap: 6px; max-width: 280px; font-size: 12.5px; font-weight: 600;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; padding: 4px 9px;
+  cursor: pointer; font-family: var(--font-sans); }
+.ac-file:hover { border-color: var(--ac-acc); color: var(--ac-acc); }
+.ac-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-file small { color: var(--ink-faint); font-weight: 400; }
+.ac-file svg { width: 14px; height: 14px; flex: none; }
+
+/* Reasoning + searches */
+.ac-think { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-soft); }
+.ac-think summary { cursor: pointer; font-weight: 600; color: var(--ink-faint); list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+.ac-think summary::-webkit-details-marker { display: none; }
+.ac-think summary::before { content: "▸"; font-size: 10px; transition: transform .15s ease; }
+.ac-think[open] summary::before { transform: rotate(90deg); }
+.ac-think-body { margin: 6px 0 0 4px; padding-left: 12px; border-left: 2px solid var(--line); white-space: pre-wrap; line-height: 1.5; max-height: 260px; overflow-y: auto; }
+.ac-searches { display: flex; flex-direction: column; gap: 3px; margin: 0 0 10px; font-size: 12.5px; color: var(--ink-soft); }
+.ac-searches div { display: flex; gap: 7px; align-items: baseline; }
+.ac-searches b { font-weight: 600; color: var(--ink-faint); white-space: nowrap; }
+.ac-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ac-acc); display: inline-block; }
+@media (prefers-reduced-motion: no-preference) {
+  .ac-live-dot { animation: ac-pulse 1.2s ease-in-out infinite; }
+  @keyframes ac-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+}
+
+/* Answer typography */
+.ac-md { font-size: 14.5px; line-height: 1.62; color: var(--ink); overflow-wrap: anywhere; }
+.ac-md > :first-child { margin-top: 0; }
+.ac-md > :last-child { margin-bottom: 0; }
+.ac-md p { margin: 0 0 .85em; }
+.ac-md h3, .ac-md h4, .ac-md h5 { font-family: var(--font-serif); font-weight: 600; color: var(--ink); line-height: 1.3; margin: 1.3em 0 .5em; }
+.ac-md h3 { font-size: 18px; }
+.ac-md h4 { font-size: 16px; }
+.ac-md h5 { font-size: 14.5px; }
+.ac-md ul, .ac-md ol { margin: 0 0 .85em; padding-left: 1.5em; }
+.ac-md li { margin: .25em 0; }
+.ac-md li > ul, .ac-md li > ol { margin: .25em 0 .4em; }
+.ac-md strong { font-weight: 700; }
+.ac-md a { color: var(--ac-acc); text-decoration: underline; text-underline-offset: 2px; }
+.ac-md code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; background: var(--paper-deep);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+.ac-md pre { background: var(--paper-deep); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 0 0 .85em; }
+.ac-md pre code { background: none; border: 0; padding: 0; font-size: 13px; }
+.ac-md blockquote { margin: 0 0 .85em; padding: 2px 0 2px 14px; border-left: 3px solid var(--line-strong); color: var(--ink-soft); }
+.ac-md hr { border: 0; height: 1px; background: var(--line); margin: 1.2em 0; }
+.ac-table-wrap { overflow-x: auto; margin: 0 0 .85em; border: 1px solid var(--line); border-radius: 8px; }
+.ac-md table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+.ac-md th, .ac-md td { padding: 7px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.ac-md th { background: var(--ac-soft); font-weight: 700; }
+.ac-md tbody tr:nth-child(even) { background: transparent; }
+.ac-md tr:last-child td { border-bottom: 0; }
+.ac-cite { font-size: 10.5px; font-weight: 700; margin-left: 1px; }
+.ac-cite a { text-decoration: none; color: var(--ac-acc); }
+.ac-sources { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 12.5px; }
+.ac-sources-cap { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 5px; }
+.ac-sources ol { margin: 0; padding-left: 1.6em; color: var(--ink-faint); }
+.ac-sources li { margin: 2px 0; }
+.ac-sources a { color: var(--ink-soft); overflow-wrap: anywhere; }
+.ac-sources a:hover { color: var(--ac-acc); }
+.ac-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.ac-foot .ac-note { font-size: 12px; color: var(--color-warning); }
+
+/* Blank chat */
+.ac-blank { max-width: 640px; margin: 7vh auto 0; text-align: center; }
+.ac-blank h2 { font-family: var(--font-serif); font-weight: 400; font-size: 24px; color: var(--ink); margin: 0 0 8px; }
+.ac-blank h2 em { color: var(--ac-acc); }
+.ac-blank p { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 20px; line-height: 1.5; }
+.ac-examples { display: grid; gap: 8px; text-align: left; }
+.ac-example { border: 1px solid var(--line); background: var(--surface); border-radius: 9px; padding: 11px 14px; font-size: 13.5px;
+  color: var(--ink); cursor: pointer; font-family: var(--font-sans); text-align: left; line-height: 1.45;
+  transition: border-color .15s ease, transform .15s ease; }
+.ac-example:hover { border-color: var(--ac-acc); transform: translateY(-1px); }
+
+/* Composer */
+.ac-composer { border-top: 1px solid var(--line); padding: 12px 18px 14px; background: var(--surface); border-radius: 0 0 var(--r-card) var(--r-card); }
+.ac-composer.is-drop { outline: 2px dashed var(--ac-acc); outline-offset: -6px; }
+.ac-pending { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ac-pending:empty { display: none; }
+.ac-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; background: var(--paper-deep); border: 1px solid var(--line);
+  border-radius: 7px; padding: 4px 4px 4px 9px; max-width: 280px; color: var(--ink); }
+.ac-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-chip.is-busy { opacity: .6; }
+.ac-chip.is-bad { border-color: var(--color-danger); color: var(--color-danger); }
+.ac-chip button { border: 0; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 5px; border-radius: 4px; }
+.ac-chip button:hover { color: var(--color-danger); background: var(--color-danger-bg); }
+.ac-input { width: 100%; resize: none; border: 1px solid var(--line-strong); border-radius: 10px; padding: 11px 13px;
+  font: inherit; font-size: 14.5px; line-height: 1.5; color: var(--ink); background: var(--surface);
+  min-height: 48px; max-height: 38vh; overflow-y: auto; display: block; }
+.ac-input:focus { outline: none; border-color: var(--ac-acc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ac-acc) 16%, transparent); }
+.ac-input::placeholder { color: var(--ink-faint); }
+.ac-bar { display: flex; align-items: center; gap: 12px; margin-top: 9px; flex-wrap: wrap; }
+.ac-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); cursor: pointer; user-select: none; }
+.ac-hint { font-size: 11.5px; color: var(--ink-faint); }
+.ac-bar .dk-spacer { flex: 1; }
+.ac-attach svg { width: 15px; height: 15px; vertical-align: -3px; margin-right: 5px; }
+
+/* Rail: chat list */
+.ac-rail-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
+.ac-rail-head .dk-rail-cap { margin: 0; }
+.ac-search { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 13px;
+  background: var(--surface); color: var(--ink); margin-bottom: 10px; }
+.ac-search:focus { outline: none; border-color: var(--ac-acc); }
+.ac-chats { max-height: calc(100vh - var(--topbar-height) - 330px); min-height: 160px; overflow-y: auto; }
+.ac-chat { display: block; width: 100%; text-align: left; border: 0; background: transparent; cursor: pointer;
+  padding: 11px 16px; border-bottom: 1px solid var(--line); font-family: var(--font-sans); color: var(--ink); }
+.ac-chat:last-child { border-bottom: 0; }
+.ac-chat:hover { background: color-mix(in srgb, var(--daily) 4%, var(--surface)); }
+.ac-chat.is-active { background: var(--daily-tint); box-shadow: inset 3px 0 0 var(--ac-acc); }
+.ac-chat b { display: block; font-family: var(--font-serif); font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-chat small { display: block; font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
+
+/* Rail: usage (admin) */
+.ac-usage { margin-top: 22px; }
+.ac-kv { display: flex; justify-content: space-between; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.ac-kv:last-child { border-bottom: 0; }
+.ac-kv span { color: var(--ink-soft); }
+.ac-kv b { font-variant-numeric: tabular-nums; color: var(--ink); }
+.ac-kv.is-head b { color: var(--money); font-size: 15px; }
+
+.ac-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 1180px) {
+  .ac-thread { height: auto; min-height: 0; }
+  .ac-log { max-height: 70vh; min-height: 320px; }
+  .ac-chats { max-height: 320px; }
+}
+@media (max-width: 640px) {
+  .ac-log { padding: 16px 14px 6px; }
+  .ac-composer { padding: 10px 12px 12px; }
+  .ac-hint { display: none; }
+}
+</style>
+
+<div id="ac-root">
+  <div class="dk-masthead">
+    <div class="dk-kicker rise" style="animation-delay:.04s">Daily Work · Ask Claude</div>
+    <h1 class="dk-title rise" style="animation-delay:.09s">Ask <em>Claude</em>, with the real facts.</h1>
+    <p class="dk-sub rise" style="animation-delay:.13s">A private research chat on the firm's commercial Claude account. Client details are fine here.</p>
+  </div>
+
+  <div id="ac-gate"><div class="dk-empty">Loading…</div></div>
+
+  <div class="dk-cols ac-layout" id="ac-body" hidden>
+    <section class="ac-thread" aria-label="Conversation">
+      <div class="ac-thread-head">
+        <h2 class="ac-thread-title is-new" id="ac-title">New chat</h2>
+        <button class="dk-linkbtn" id="ac-rename" type="button" hidden>Rename</button>
+        <button class="dk-linkbtn d" id="ac-delete" type="button" hidden>Delete</button>
+      </div>
+      <div class="ac-log" id="ac-log" role="log" aria-label="Messages"></div>
+      <div class="ac-sr" id="ac-status" aria-live="polite"></div>
+      <form class="ac-composer" id="ac-composer" autocomplete="off">
+        <div class="ac-pending" id="ac-pending"></div>
+        <label class="ac-sr" for="ac-input">Your question</label>
+        <textarea class="ac-input" id="ac-input" rows="2" placeholder="Ask about a case, a form, a bar, an RFE…"></textarea>
+        <div class="ac-bar">
+          <button class="btn btn--secondary btn--sm ac-attach" id="ac-attach" type="button" title="Attach a PDF or image (up to 10 MB)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>Attach
+          </button>
+          <input type="file" id="ac-file" accept="application/pdf,image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+          <label class="ac-switch" title="Let Claude check current USCIS policy, fees and decisions online. Searches never include client details.">
+            <span class="dk-toggle"><input type="checkbox" id="ac-web" checked><span class="dk-toggle-track"></span></span>
+            Web search
+          </label>
+          <span class="dk-spacer"></span>
+          <span class="ac-hint">Enter to send · Shift+Enter for a new line</span>
+          <button class="btn btn--primary" id="ac-send" type="submit">Send</button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="dk-rail">
+      <div class="ac-rail-head">
+        <div class="dk-rail-cap">Your chats</div>
+        <button class="dk-sec-add" id="ac-new" type="button">+ New chat</button>
+      </div>
+      <input class="ac-search" id="ac-filter" type="search" placeholder="Find a chat" aria-label="Find a chat">
+      <div class="dk-register ac-chats" id="ac-chats"></div>
+      <p class="dk-rail-hint">Runs on the firm's commercial Claude API, so Anthropic does not train on anything here. Your chats are private to you and saved in the portal. Web searches go out without client details.</p>
+
+      <div class="ac-usage" id="ac-usage" hidden>
+        <div class="dk-rail-cap">Usage · all staff</div>
+        <div class="dk-register" id="ac-usage-body"></div>
+      </div>
+    </aside>
+  </div>
+</div>

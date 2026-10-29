@@ -74,3 +74,99 @@ export async function readSseStream(response) {
   acc.push(decoder.decode()); // flush
   return acc;
 }
+
+// ── Whole-message assembly ────────────────────────────────────────────────────
+// createSseAccumulator keeps only the text. A multi-turn chat needs the reply's
+// full content blocks: each later request resends the history, and the API
+// requires thinking blocks (with their signatures) and web search blocks back
+// exactly as they came. This rebuilds them from the stream.
+//
+//   const asm = createMessageAssembler({ onEvent(evt, block) { … } });
+//   asm.push(chunk) …
+//   asm.blocks()      → content blocks, ready to store and resend
+//   asm.stopReason() / asm.usage() / asm.error() / asm.model()  as above
+//
+// onEvent sees every parsed event after it is applied; `block` is the block the
+// event touched (complete by content_block_stop), so a caller can forward text
+// deltas or report a finished search query as it happens.
+export function createMessageAssembler({ onEvent } = {}) {
+  let buffer = '';
+  const blocks = [];
+  const partialJson = new Map();   // block index → tool input JSON so far
+  let stopReason = null;
+  let errorMsg = null;
+  let usage = {};
+  let model = null;
+
+  const handleData = (jsonStr) => {
+    if (!jsonStr || jsonStr === '[DONE]') return;
+    let evt;
+    try { evt = JSON.parse(jsonStr); } catch { return; }
+    let block = null;
+    switch (evt.type) {
+      case 'message_start':
+        if (evt.message?.model) model = evt.message.model;
+        if (evt.message?.usage) usage = { ...usage, ...evt.message.usage };
+        break;
+      case 'content_block_start': {
+        block = { ...evt.content_block };
+        // Tool inputs arrive as JSON deltas; the start event's `input: {}` is a placeholder.
+        if (block.type === 'tool_use' || block.type === 'server_tool_use') partialJson.set(evt.index, '');
+        blocks[evt.index] = block;
+        break;
+      }
+      case 'content_block_delta': {
+        block = blocks[evt.index];
+        const d = evt.delta || {};
+        if (!block) break;
+        if (d.type === 'text_delta') block.text = (block.text || '') + (d.text || '');
+        else if (d.type === 'thinking_delta') block.thinking = (block.thinking || '') + (d.thinking || '');
+        else if (d.type === 'signature_delta') block.signature = (block.signature || '') + (d.signature || '');
+        else if (d.type === 'input_json_delta') partialJson.set(evt.index, (partialJson.get(evt.index) || '') + (d.partial_json || ''));
+        else if (d.type === 'citations_delta' && d.citation) (block.citations ||= []).push(d.citation);
+        break;
+      }
+      case 'content_block_stop': {
+        block = blocks[evt.index];
+        if (block && partialJson.has(evt.index)) {
+          const raw = partialJson.get(evt.index);
+          partialJson.delete(evt.index);
+          try { block.input = raw ? JSON.parse(raw) : {}; } catch { block.input = {}; }
+        }
+        // A text block opens with `citations: null` when none follow; drop it
+        // rather than resend a null the API never needed.
+        if (block?.type === 'text' && block.citations == null) delete block.citations;
+        break;
+      }
+      case 'message_delta':
+        if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
+        if (evt.usage) usage = { ...usage, ...evt.usage };
+        break;
+      case 'error':
+        errorMsg = evt.error?.message || 'stream error';
+        break;
+      default:
+        break;
+    }
+    if (onEvent) onEvent(evt, block);
+  };
+
+  return {
+    push(chunk) {
+      buffer += chunk;
+      let idx;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        for (const line of rawEvent.split('\n')) {
+          if (line.startsWith('data:')) handleData(line.slice(5).trim());
+        }
+      }
+    },
+    blocks:     () => blocks.filter(Boolean),
+    stopReason: () => stopReason,
+    usage:      () => usage,
+    error:      () => errorMsg,
+    model:      () => model,
+  };
+}

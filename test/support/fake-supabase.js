@@ -1,5 +1,5 @@
 // An in-memory stand-in for the slice of the supabase-js query builder the
-// Proof Scan v2 store uses. Test-only.
+// Proof Scan v2 store and the Ask Claude routes use. Test-only.
 //
 // It is deliberately small and literal: tables are arrays of plain objects, and
 // only the filters the store calls are implemented. It does NOT enforce the
@@ -43,6 +43,9 @@ const DEFAULTS = {
   proof_scan_suppressions: () => ({ created_at: now() }),
   proof_scan_rule_sets: () => ({ created_at: now() }),
   proof_scan_rule_changes: () => ({ changed_at: now() }),
+  ai_chat_conversations: () => ({ title: 'New chat', message_count: 0, created_at: now(), updated_at: now() }),
+  ai_chat_messages: () => ({ model: null, stop_reason: null, usage: null, created_at: now() }),
+  ai_chat_attachments: () => ({ conversation_id: null, created_at: now() }),
 };
 
 const NO_ID = new Set(['proof_scan_document_people']);
@@ -78,6 +81,7 @@ export function createFakeSupabase(initial = {}) {
         return api;
       },
       lt(col, v) { filters.push((r) => r[col] != null && r[col] < v); return api; },
+      gte(col, v) { filters.push((r) => r[col] != null && r[col] >= v); return api; },
       ilike(col, pattern) {
         const re = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*')}$`, 'i');
         filters.push((r) => re.test(String(r[col] ?? '')));

@@ -17,9 +17,11 @@
 //   proof    Proof Scan v2's structured observation calls (Evidence Zero reads
 //            and the stage runs). Its own role so v2 can be tuned or pinned
 //            separately from the live checker's `judge` while both run.
+//   research Ask Claude, the staff research chat. Legal questions with real
+//            client facts, where a wrong answer costs more than the tokens.
 //
 // Per-client override without a code change: set MODEL_CHAT / MODEL_EXTRACT /
-// MODEL_REASON / MODEL_JUDGE / MODEL_PROOF as a Worker var in that client's wrangler.toml.
+// MODEL_REASON / MODEL_JUDGE / MODEL_PROOF / MODEL_RESEARCH as a Worker var in that client's wrangler.toml.
 // Use it to pin a portal to a known-good model, or to try a new one on the
 // sandbox before it becomes everyone's default here.
 //
@@ -42,6 +44,9 @@ const MODELS = {
   // Sonnet over the 4.6 v2 was written against, so a retirement of 4.6 cannot
   // take the scanner down. Supports output_config.format json_schema.
   proof:   'claude-sonnet-5-5',
+  // Opus: Ask Claude answers immigration-law questions a lawyer may act on, and
+  // nothing waits on it but the person reading the reply as it streams.
+  research: 'claude-opus-5-5',
 };
 
 const ENV_OVERRIDE = {
@@ -50,6 +55,7 @@ const ENV_OVERRIDE = {
   reason:  'MODEL_REASON',
   judge:   'MODEL_JUDGE',
   proof:   'MODEL_PROOF',
+  research: 'MODEL_RESEARCH',
 };
 
 // Returns the model id for a role. Unknown roles throw rather than defaulting —

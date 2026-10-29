@@ -241,17 +241,20 @@ window.MODULE_REGISTRY = [
     badge:       'VIEW LEDGER →',
   },
   {
-    key:         'ai_brain',
-    name:        'AI Assistant',
-    group:       'horizon',
+    // KCL-only. Replaces the 'ai_brain' coming-soon tile. All staff roles get
+    // write, Owner admin (2200_ai_chat.sql); each user sees only their own chats.
+    key:         'ai_chat',
+    name:        'Ask Claude',
+    group:       'daily',
     icon:        'tile-ai',
     navIcon:     'cpu',
-    route:       'ai-brain',
-    wave:        1,
-    sortOrder:   60,
+    route:       'ai-chat',
+    wave:        2,
+    sortOrder:   15,
+    staffOnly:   true,
     premium:     true,
-    comingSoon:  true,
-    description: 'AI-powered legal research, drafting, and matter summarization.',
+    description: 'Private research chat for client questions, on the firm’s commercial Claude account.',
+    badge:       'ASK →',
   },
   {
     key:         'draft_forms',

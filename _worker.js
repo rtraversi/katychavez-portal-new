@@ -122,6 +122,11 @@ import { onRequest as billingRates }                from './functions/api/billin
 import { onRequest as demoEvent }                   from './functions/api/demo-event.js';
 import { onRequest as demoStats }                   from './functions/api/demo-stats.js';
 import { onRequest as helpChat }                    from './functions/api/help-chat.js';
+import { onRequest as aiChatSend }                  from './functions/api/ai-chat-send.js';
+import { onRequest as aiChatUpload, run as runAiChatCleanup } from './functions/api/ai-chat-upload.js';
+import { onRequest as aiChatConversation }          from './functions/api/ai-chat-conversation.js';
+import { onRequest as aiChatAttachment }            from './functions/api/ai-chat-attachment.js';
+import { onRequest as aiChatStats }                 from './functions/api/ai-chat-stats.js';
 import { onRequest as updateAvatar }               from './functions/api/update-avatar.js';
 import { onRequest as setMatterStage }             from './functions/api/set-matter-stage.js';
 import { onRequest as formFillerPackage }          from './functions/api/form-filler-package.js';
@@ -287,6 +292,12 @@ export const routes = {
   '/api/demo-event':                    demoEvent,
   '/api/demo-stats':                    demoStats,
   '/api/help-chat':                     helpChat,
+  // Ask Claude (KCL-only, 2200_ai_chat.sql)
+  '/api/ai-chat-send':                  aiChatSend,
+  '/api/ai-chat-upload':                aiChatUpload,
+  '/api/ai-chat-conversation':          aiChatConversation,
+  '/api/ai-chat-attachment':            aiChatAttachment,
+  '/api/ai-chat-stats':                 aiChatStats,
   '/api/update-avatar':                 updateAvatar,
   // Public consult-booking surface (scheduling module) — no auth; all are
   // rate-limited below, the mutation is Turnstile-gated inside the handler.
@@ -421,6 +432,8 @@ export default {
       // recurring_charges due today (self-gates by day_of_month + month, so it
       // bills each charge at most once per calendar month).
       ctx.waitUntil(runRecurringCharges(env));
+      // Daily — delete Ask Claude attachments uploaded but never sent.
+      ctx.waitUntil(runAiChatCleanup(env));
     } else if (event.cron === '*/5 * * * *') {
       // Every 5 min — debounced message notifications to clients
       ctx.waitUntil(runMessageNotifications(env));
