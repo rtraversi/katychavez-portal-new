@@ -177,6 +177,10 @@ if (Test-Path $migFile) {
 --   matter_id  uuid NOT NULL REFERENCES public.matters(id) ON DELETE CASCADE,
 --   created_at timestamptz NOT NULL DEFAULT now()
 -- );
+--
+-- Data API grants  -  REQUIRED since 2026-10-30 (Supabase no longer auto-grants
+-- new public tables). Without these the table returns "permission denied".
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON public.${Name}_example TO anon, authenticated, service_role;
 
 -- -- RLS ----------------------------------------------------------------------
 
