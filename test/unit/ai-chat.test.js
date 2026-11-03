@@ -209,6 +209,14 @@ describe('Ask Claude request building', () => {
     expect(systemPrompt(env, '2026-10-27')).toContain('Test Firm');
   });
 
+  // The 2026-11-03 live runs came back with no API citations (searches run inside
+  // code execution), so the Sources list stayed empty. Inline links are the backstop.
+  it('tells Claude to link the pages it relies on, using only URLs its searches returned', () => {
+    const p = systemPrompt(env, '2026-10-27');
+    expect(p).toMatch(/Link every web page you rely on/);
+    expect(p).toMatch(/never build or guess one/);
+  });
+
   it('expands stored attachment refs into document and image blocks', () => {
     const rows = [
       { role: 'user', content: [{ type: 'attachment', attachment_id: 'a1' }, { type: 'attachment', attachment_id: 'a2' }, { type: 'attachment', attachment_id: 'gone' }, { type: 'text', text: 'Read these' }] },
