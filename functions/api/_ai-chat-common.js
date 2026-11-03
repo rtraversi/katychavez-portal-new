@@ -22,7 +22,7 @@ export const MAX_FILES_PER_MESSAGE   = 5;
 export const MAX_TEXT_CHARS          = 60_000;   // a pasted declaration or RFE fits
 export const MAX_MESSAGES            = 200;      // user + assistant rows per chat
 export const MAX_CONTINUATIONS       = 4;        // pause_turn resumes in one reply
-export const WEB_SEARCH_MAX_USES     = 5;        // searches per API call
+export const WEB_SEARCH_MAX_USES     = 8;        // searches per API call (5 ran out before the first live answer could open the USCIS page, 2026-11-03)
 export const DEFAULT_DAILY_LIMIT     = 150;      // replies per user per rolling day; AI_CHAT_DAILY_LIMIT overrides
 export const UNSENT_ATTACHMENT_HOURS = 24;       // the daily cron clears files never sent
 
