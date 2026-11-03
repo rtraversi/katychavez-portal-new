@@ -8,8 +8,20 @@
 -- adjustment-of-status and consular-processing filings.
 --
 -- Source:  uscis-forms/i-864.pdf
--- Edition: 10/17/24 (printed lower-left; OMB expires 10/31/2027)
--- SHA-256: f231f39684ba4dd348aad920a65f29ef5707270f39d6f8328ab43e366348f5f5
+-- Edition: 08/24/26 (printed lower-left; OMB expires 10/31/2027)
+-- SHA-256: ddf0b845399ef4ad252468f41820eddf8a726bb982d032bb6fc4a861f2c08130
+--
+-- EDITION HISTORY
+--   08/24/26  current. USCIS added a subform break in Part 8: 8 fields moved
+--             from #subform[9] to a new #subform[8]. No field added, removed,
+--             renamed or reordered; all 207 leaf names and their order are
+--             identical to 10/17/24. Keys below are updated in place so a fresh
+--             migration replay lands on the current edition. Databases that
+--             already applied this file get the same change from
+--             1600-i864-edition-082426.sql, which also carries the full
+--             analysis and the Part 10 fax/mobile correction noted below.
+--   10/17/24  original mapping.
+--             SHA-256 f231f39684ba4dd348aad920a65f29ef5707270f39d6f8328ab43e366348f5f5
 --
 -- 207 field(s): 41 CheckBox, 163 TextField, 3 Dropdown.
 -- Field inventory: normalized/i-864.fields.json
@@ -153,7 +165,16 @@
 --     stays blank.
 --   - Part 9 (interpreter) entirely blank, per the N-400 precedent.
 --   - Part 10 (preparer) <- attorney.last_name/first_name/phone/email +
---     firm.firm_name/firm.fax. Signature and date blank.
+--     firm.firm_name. Signature and date blank.
+--     P10_Line5_PreparersFaxNumber is NAMED fax but is NOT a fax box: its
+--     tooltip and the printed form both read "4. Preparer's Mobile Telephone
+--     Number (if any)", and Part 10 has no fax field at all. It previously
+--     mapped firm.fax, which printed the firm's fax into the preparer's mobile
+--     phone box; corrected to blank with the 08/24/26 edition bump. Blank
+--     either way, as neither users nor firm_settings has a cell/mobile column.
+--     Same call as I-130, I-130A, I-765 and I-192 -- see 1600-i130.sql's
+--     header. (1600-i751.sql still has the uncorrected version of this;
+--     escalated, out of scope here.)
 --   - Part 11 items 1-2 are pre-filled-from-page-1 boxes (read-only flag
 --     cleared at normalize time), so they are the SPONSOR's name and A-number,
 --     NOT the immigrant's -- another place the role inversion bites. The
@@ -217,8 +238,9 @@ INSERT INTO public.form_templates (form_key, label) VALUES
 ON CONFLICT (form_key) DO NOTHING;
 
 UPDATE public.form_templates
-SET r2_key      = 'form-templates/i-864.pdf',
-    field_count = 207,
+SET r2_key       = 'form-templates/i-864.pdf',
+    field_count  = 207,
+    edition_date = '08/24/26',
     field_map   = '{
   "form1[0].#subform[0].G28-CheckBox1[0]": {
     "type": "checkbox",
@@ -876,37 +898,37 @@ SET r2_key      = 'form-templates/i-864.pdf',
     "type": "text",
     "source": "blank"
   },
-  "form1[0].#subform[9].P6_Line1_Checkbox[1]": {
+  "form1[0].#subform[8].P6_Line1_Checkbox[1]": {
     "type": "checkbox",
     "source": "blank"
   },
-  "form1[0].#subform[9].P6_Line1_Checkbox[2]": {
+  "form1[0].#subform[8].P6_Line1_Checkbox[2]": {
     "type": "checkbox",
     "source": "blank"
   },
-  "form1[0].#subform[9].P8_Line1b_language[0]": {
+  "form1[0].#subform[8].P8_Line1b_language[0]": {
     "type": "text",
     "source": "blank"
   },
-  "form1[0].#subform[9].P8_Line2_Checkbox[0]": {
+  "form1[0].#subform[8].P8_Line2_Checkbox[0]": {
     "type": "checkbox",
     "source": "blank"
   },
-  "form1[0].#subform[9].P8_Line2_Attorney[0]": {
+  "form1[0].#subform[8].P8_Line2_Attorney[0]": {
     "type": "text",
     "source": "attorney.full_name"
   },
-  "form1[0].#subform[9].P8_Line3_DaytimeTelephoneNumber[0]": {
+  "form1[0].#subform[8].P8_Line3_DaytimeTelephoneNumber[0]": {
     "type": "text",
     "source": "petitioner.cell_phone",
     "transform": "digits"
   },
-  "form1[0].#subform[9].P8_Line4_MobileTelephoneNumber[0]": {
+  "form1[0].#subform[8].P8_Line4_MobileTelephoneNumber[0]": {
     "type": "text",
     "source": "petitioner.cell_phone",
     "transform": "digits"
   },
-  "form1[0].#subform[9].P7Line7_EmailAddress[0]": {
+  "form1[0].#subform[8].P7Line7_EmailAddress[0]": {
     "type": "text",
     "source": "petitioner.email"
   },
@@ -973,7 +995,7 @@ SET r2_key      = 'form-templates/i-864.pdf',
   },
   "form1[0].#subform[10].P10_Line5_PreparersFaxNumber[0]": {
     "type": "text",
-    "source": "firm.fax"
+    "source": "blank"
   },
   "form1[0].#subform[10].P10_Line6_PreparersEmailAddress[0]": {
     "type": "text",
@@ -1070,3 +1092,13 @@ SET r2_key      = 'form-templates/i-864.pdf',
   }
 }'::jsonb
 WHERE form_key = 'i-864';
+
+-- 1300_proof_scan.sql seeds form_editions with the edition that was current
+-- when it was written. Keep this form's row in step with the map above, so a
+-- fresh replay does not leave the scanner expecting a superseded edition.
+INSERT INTO public.form_editions (form_number, pages, edition_date) VALUES
+  ('I-864', 12, '08/24/26')
+ON CONFLICT (form_number) DO UPDATE
+  SET pages        = EXCLUDED.pages,
+      edition_date = EXCLUDED.edition_date,
+      updated_at   = now();
