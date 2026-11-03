@@ -95,11 +95,34 @@ assistant row stores one `content` array, and `toApiMessages` replays it as-is.
 - `transcript.js` renders from `rounds` when present: text joined, lookups listed, and **Sources
   built from real citations** (the empty-Sources problem goes away for authority answers).
 
-### Toggle
+### Toggles (decided 2026-11-03)
 
-`tool_choice: "none"` turns off **all** tools, not just web search. Recommendation: rename the
-"Web search" switch to **"Look things up"**, covering every source. Keep the tool list identical on
-every request so the cache prefix holds.
+The chat is a general-purpose tool as well as a research tool: Katy wants staff to drop in a paycheck
+and say "calculate yearly income." So web search stays, and case law is opt-in.
+
+| Switch | Default | Covers |
+|---|---|---|
+| **Web search** (existing) | On (remembered per browser, as today) | Web search + eCFR + Federal Register + our own index (Policy Manual, INA, FAM, BIA) |
+| **Case law** (new) | **Off**, resets with each new chat | CourtListener only |
+
+Claude only uses lookups when a question needs them, so a paycheck question runs none. eCFR and the
+Federal Register sit with web search because they have no key and no tight rate limit.
+CourtListener gets its own switch because of its shared 125/day limit and the open
+commercial-terms question.
+
+**How "off" works without breaking the cache.** Every tool stays declared on every request. Taking
+a tool out of `tools` would change the start of the cached prefix and invalidate the whole chat's
+cache. It could also leave earlier `tool_use` blocks pointing at a tool that's no longer defined.
+Instead:
+
+1. The page sends `case_law: true|false` with each message.
+2. The Worker appends a short note to that user message's text, e.g. `[Case law search: off for this
+   message]`. That's append-only history, so cache-safe. The system prompt says what the note means and
+   to suggest "turn on Case law" when a court decision would really help.
+3. **Enforced in code, not just the prompt:** if Claude calls a CourtListener search while it's off,
+   the Worker returns an `is_error` tool_result ("Case law search is turned off") without
+   calling CourtListener.
+4. With **Web search** off, `tool_choice: "none"` still turns off everything, as today.
 
 ---
 
@@ -178,8 +201,8 @@ searches.
 
 1. **KCL-only or template?** The chat itself was built in KCL as an exception. The authority index is
    public law and useful to every firm, so it argues for building Phase 2 in the sandbox template.
-2. **Toggle:** one "Look things up" switch for everything (recommended), or accept a cache break
-   when web search is toggled separately.
+2. ~~Toggle~~ **Decided 11/3:** keep Web search (default on). Add a separate Case law switch,
+   default off (see Toggles).
 3. **CourtListener account:** Rob's token is in `.env` as `COURTLISTENER_API_TOKEN` (the same token
    attytraining uses). Reviewed the terms on 2026-11-03 (ToS dated 2026-08-05). Using one account for
    several of your own projects is allowed, but they share one rate limit (default 5/min, 50/hr,
