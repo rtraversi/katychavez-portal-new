@@ -180,5 +180,12 @@ searches.
    public law and useful to every firm, so it argues for building Phase 2 in the sandbox template.
 2. **Toggle:** one "Look things up" switch for everything (recommended), or accept a cache break
    when web search is toggled separately.
-3. **CourtListener account:** Rob signs up for a free API token (`COURTLISTENER_TOKEN` secret).
+3. **CourtListener account:** Rob's token is in `.env` as `COURTLISTENER_API_TOKEN` (the same token
+   attytraining uses). Reviewed the terms on 2026-11-03 (ToS dated 2026-08-05). Using one account for
+   several of your own projects is allowed, but they share one rate limit (default 5/min, 50/hr,
+   125/day). The open question is the use itself: the terms say "If you need access for a product or a
+   team, talk to us about a commercial agreement," and they forbid sharing or pooling tokens. A
+   firm's staff using Rob's token through the portal is a team/product use, so confirm with Free Law
+   Project (courtlistener.com/contact, issue type API) before go-live. Testing is fine meanwhile.
+   Deploy it as a Worker secret (`wrangler secret put`), never in `wrangler.toml`.
 4. **AILA:** Katy confirms whether there's any licensed path. Until then it's out.
