@@ -146,6 +146,22 @@ describe('createMessageAssembler', () => {
     expect(asm.usage()).toMatchObject({ input_tokens: 1200, output_tokens: 300 });
   });
 
+  // Seen live 2026-11-03: a web search started from code execution streams its
+  // input whole in content_block_start, with no input_json_delta after it.
+  it('keeps a tool input that arrives whole in content_block_start', () => {
+    const asm = createMessageAssembler();
+    asm.push(
+      sseLine('content_block_start', { index: 0, content_block: { type: 'server_tool_use', id: 'srv_9', name: 'web_search', input: { query: 'I-130 fee G-1055' } } })
+      + sseLine('content_block_stop', { index: 0 })
+      + sseLine('content_block_start', { index: 1, content_block: { type: 'server_tool_use', id: 'srv_10', name: 'web_search', input: {} } })
+      + sseLine('content_block_stop', { index: 1 }),
+    );
+    expect(asm.blocks()).toEqual([
+      { type: 'server_tool_use', id: 'srv_9', name: 'web_search', input: { query: 'I-130 fee G-1055' } },
+      { type: 'server_tool_use', id: 'srv_10', name: 'web_search', input: {} },
+    ]);
+  });
+
   it('survives events split at arbitrary chunk boundaries', async () => {
     const full = await sseReply([{ type: 'text', text: 'Split across many chunks.' }]).text();
     const asm = createMessageAssembler();

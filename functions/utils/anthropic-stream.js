@@ -131,7 +131,14 @@ export function createMessageAssembler({ onEvent } = {}) {
         if (block && partialJson.has(evt.index)) {
           const raw = partialJson.get(evt.index);
           partialJson.delete(evt.index);
-          try { block.input = raw ? JSON.parse(raw) : {}; } catch { block.input = {}; }
+          // No deltas means the input came whole in content_block_start. Web
+          // searches run from inside code execution (web_search_20260209's result
+          // filtering) arrive that way; keep that input rather than blank it.
+          if (raw) {
+            try { block.input = JSON.parse(raw); } catch { block.input = {}; }
+          } else if (!block.input || typeof block.input !== 'object') {
+            block.input = {};
+          }
         }
         // A text block opens with `citations: null` when none follow; drop it
         // rather than resend a null the API never needed.
