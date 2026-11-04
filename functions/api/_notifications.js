@@ -495,3 +495,51 @@ export async function notifyProofScanStage(env, { toEmail, result }) {
   }
   return sendEmail(env, toEmail, message.subject, message.html, 'proof_scan');
 }
+// ── Estate Planning questionnaire ────────────────────────────────────────────
+// The client email is bilingual-aware: `language` picks the wording. The staff
+// notice deliberately carries NO answers — names and a link only, so nothing a
+// client wrote about their family or money sits in an inbox.
+
+export async function notifyEstateIntakeRequest(env, { toEmail, firstName, link, language = 'en', expiresDays = 60 }) {
+  const firmName = env.PORTAL_FIRM_NAME || 'Your Law Firm';
+  const es = language === 'es';
+  const greeting = es
+    ? (firstName ? `Hola ${esc(firstName)}:` : 'Hola:')
+    : (firstName ? `Hello ${esc(firstName)},` : 'Hello,');
+  const subject = es
+    ? `${firmName} — su cuestionario de planificación patrimonial`
+    : `${firmName} — your estate planning questionnaire`;
+  const body = es ? `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">${greeting}</p>
+      <p style="margin:0 0 12px;color:#374151"><strong>${esc(firmName)}</strong> le envía un cuestionario para preparar su testamento y sus documentos de planificación patrimonial.</p>
+      <p style="margin:0 0 12px;color:#374151">No necesita cuenta ni contraseña. Sus respuestas se guardan mientras avanza, así que puede pausar y regresar con este mismo enlace. Puede cambiar el idioma a inglés dentro del formulario.</p>
+      <p style="margin:0 0 16px;color:#374151">El enlace vence en ${expiresDays} días.</p>
+      ${btn(link, 'Abrir el cuestionario')}
+      <p style="margin:20px 0 0;font-size:12px;color:#9ca3af">Si el botón no funciona, copie y pegue este enlace en su navegador:<br>${link}</p>
+      <p style="margin:12px 0 0;font-size:12px;color:#9ca3af">Este enlace es personal. Por favor no lo comparta.</p>
+    ` : `
+      <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111">${greeting}</p>
+      <p style="margin:0 0 12px;color:#374151"><strong>${esc(firmName)}</strong> has sent you a questionnaire to help prepare your will and estate planning documents.</p>
+      <p style="margin:0 0 12px;color:#374151">No account or password is needed. Your answers save as you go, so you can stop and come back with this same link. The form can also be switched to Spanish.</p>
+      <p style="margin:0 0 16px;color:#374151">The link expires in ${expiresDays} days.</p>
+      ${btn(link, 'Open the questionnaire')}
+      <p style="margin:20px 0 0;font-size:12px;color:#9ca3af">If the button doesn't work, copy and paste this link into your browser:<br>${link}</p>
+      <p style="margin:12px 0 0;font-size:12px;color:#9ca3af">This link is personal to you. Please don't share it.</p>
+    `;
+  await sendEmail(env, toEmail, subject, layout(env, body), 'ep_intake_request');
+}
+
+export async function notifyEstateIntakeSubmitted(env, { toEmail, clientName }) {
+  const portalUrl = env.PORTAL_URL || 'https://your-portal.workers.dev';
+  const href = `${portalUrl}/portal#clients`;   // the client card has no deep link by id
+  await sendEmail(env, toEmail, `Estate planning questionnaire submitted — ${clientName}`,
+    layout(env, `
+      <p style="margin:0 0 20px;font-size:16px;font-weight:600;color:#111">A client has submitted their estate planning questionnaire</p>
+      <table style="border-collapse:collapse">
+        ${row('Client', esc(clientName))}
+      </table>
+      <p style="margin:16px 0 0;color:#374151">The answers are on the client's card, under Estate Planning. Review and edit them there before drafting.</p>
+      ${btn(href, 'Open the client card')}
+    `), 'ep_intake_submitted'
+  );
+}

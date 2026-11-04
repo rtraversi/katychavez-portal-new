@@ -162,6 +162,26 @@ window.MODULE_REGISTRY = [
     badge:       'MANAGE →',
   },
   {
+    key:         'estate_planning',
+    name:        'Estate Planning',
+    group:       'docs',
+    icon:        'tile-doc-templates',
+    navIcon:     'file-text',
+    route:       'estate-planning',
+    wave:        1,
+    sortOrder:   73,
+    staffOnly:   true,
+    premium:     true,
+    description: 'Wills & trusts questionnaires sent to clients, their answers, and documents drafted from them.',
+    badge:       'VIEW →',
+    badgeFn:     async db => {
+      const since = new Date(Date.now() - 14 * 86400000).toISOString();
+      const { count } = await db.from('ep_intake_requests').select('*', { count: 'exact', head: true })
+        .gte('submitted_at', since).is('answers_updated_at', null);
+      return count ? `${count} NEW →` : 'VIEW →';
+    },
+  },
+  {
     key:         'calendar',
     name:        'Calendar',
     group:       'daily',

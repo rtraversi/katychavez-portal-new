@@ -23,6 +23,9 @@
 
   const profile  = await Auth.getProfile();
   const roleName = profile?.role?.name || '';
+  // "Fills from: Estate planning questionnaire" is offered only where the module is on.
+  const { data: epRow } = await db.from('enabled_modules').select('module_key').eq('module_key', 'estate_planning').maybeSingle();
+  const epEnabled = !!epRow;
   canWrite = ['Owner', 'Attorney', 'Partner Attorney'].includes(roleName);
 
   // "New Word Template" add-button, injected into the section head (Docket kit).
@@ -50,7 +53,7 @@
   async function load() {
     const [{ data, error }, { data: users }] = await Promise.all([
       db.from('draft_templates')
-        .select('id, name, doc_category, assigned_attorney_initials, template_docx_r2_key')
+        .select('id, name, doc_category, assigned_attorney_initials, template_docx_r2_key, merge_profile')
         .order('sort_order'),
       db.from('users').select('id, first_name, last_name, roles(name)').eq('active', true).order('first_name'),
     ]);
@@ -79,7 +82,7 @@
         : '';
       return `<div class="dk-reg-row">
         <div>
-          <div class="dk-reg-title">${Utils.esc(t.name)} ${docxTag}</div>
+          <div class="dk-reg-title">${Utils.esc(t.name)} ${docxTag}${t.merge_profile === 'estate_planning' ? ' ' + DK.tag('Estate planning questionnaire', 'acc') : ''}</div>
           <div class="dk-reg-meta">
             <span>${CAT_LABELS[t.doc_category] || Utils.esc(t.doc_category)}</span>
             <span class="sep">·</span>
@@ -105,6 +108,12 @@
         <select id="wt-cat" style="width:100%;box-sizing:border-box;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius);font-size:var(--text-sm);font-family:inherit;margin-bottom:var(--space-4)">
           ${CATEGORIES.map(c => `<option value="${c}">${CAT_LABELS[c]}</option>`).join('')}
         </select>
+        ${epEnabled ? `
+        <label style="display:block;font-size:var(--text-sm);font-weight:500;margin-bottom:4px">Fills from</label>
+        <select id="wt-profile" style="width:100%;box-sizing:border-box;padding:var(--space-2) var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius);font-size:var(--text-sm);font-family:inherit;margin-bottom:var(--space-4)">
+          <option value="">Case data</option>
+          <option value="estate_planning">Estate planning questionnaire</option>
+        </select>` : ''}
         <p style="font-size:var(--text-xs);color:var(--color-text-muted);margin-bottom:var(--space-4)">You'll upload the .docx file after creating the template.</p>
         <div style="display:flex;gap:var(--space-2);justify-content:flex-end">
           <button class="btn btn--ghost" data-cancel>Cancel</button>
@@ -124,8 +133,15 @@
       overlay.querySelector('[data-save]').disabled = true;
       // template_html is NOT NULL in the schema (legacy HTML flow) — store an
       // empty string; these templates live entirely in the .docx.
-      const { error } = await db.from('draft_templates')
-        .insert({ name, doc_category: cat, template_html: '', active: true, sort_order: 0 });
+      // Estate templates fill from the questionnaire (functions/api/ep-draft.js) and are
+      // scoped to the estate case types so they stay out of other matters' pickers.
+      const profile = overlay.querySelector('#wt-profile')?.value || null;
+      const row = { name, doc_category: cat, template_html: '', active: true, sort_order: 0 };
+      if (profile === 'estate_planning') {
+        Object.assign(row, { merge_profile: 'estate_planning',
+          case_types: ['simple_will', 'will_testamentary_trust', 'revocable_living_trust', 'financial_poa', 'advance_directive', 'plan_review', 'other'] });
+      }
+      const { error } = await db.from('draft_templates').insert(row);
       if (error) { Utils.toast(error.message, 'error'); overlay.querySelector('[data-save]').disabled = false; return; }
       Utils.toast('Template created — upload its .docx next.', 'success');
       close();

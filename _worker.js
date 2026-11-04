@@ -18,6 +18,10 @@ import { onRequest as inviteUser } from './functions/api/invite-user.js';
 import { onRequest as sendIntake } from './functions/api/send-intake.js';
 import { onRequest as intakePublicLoad } from './functions/api/intake-public-load.js';
 import { onRequest as intakePublicSubmit } from './functions/api/intake-public-submit.js';
+// Estate Planning: emailed questionnaire (no login) + drafting from the answers (2300)
+import { onRequest as epIntakePublic } from './functions/api/ep-intake-public.js';
+import { onRequest as epIntakeStaff }  from './functions/api/ep-intake-staff.js';
+import { onRequest as epDraft }        from './functions/api/ep-draft.js';
 // Client self-service intake (ported 2026-07-02 in e66871e). These auto-routed
 // under Pages Functions and were never added to the table below, so every one of
 // them 404'd from the day they landed — see the route-coverage test.
@@ -196,6 +200,16 @@ export const routes = {
   '/api/send-intake': sendIntake,
   '/api/intake-public-load': intakePublicLoad,
   '/api/intake-public-submit': intakePublicSubmit,
+  '/api/ep-intake/public-load':      epIntakePublic,
+  '/api/ep-intake/public-save':      epIntakePublic,
+  '/api/ep-intake/public-submit':    epIntakePublic,
+  '/api/ep-intake/send':             epIntakeStaff,
+  '/api/ep-intake/matter':           epIntakeStaff,
+  '/api/ep-intake/answers':          epIntakeStaff,
+  '/api/ep-intake/revoke':           epIntakeStaff,
+  '/api/ep-intake/templates':        epDraft,
+  '/api/ep-intake/install-starters': epDraft,
+  '/api/ep-intake/draft':            epDraft,
   '/api/client-intake-opposing-party':   clientIntakeOpposingParty,
   '/api/client-intake-opposing-counsel': clientIntakeOpposingCounsel,
   '/api/client-intake-child':            clientIntakeChild,
@@ -317,6 +331,7 @@ const HTML_REWRITES = {
   '/forgot-password': '/forgot-password.html',
   '/account': '/account.html',
   '/intake': '/intake.html',
+  '/estate-intake': '/estate-intake.html',
   '/book': '/book.html',
 };
 
@@ -341,6 +356,10 @@ export const RATE_LIMITS = {
   '/api/send-intake':          'RL_STANDARD',
   '/api/request-retainer':     'RL_STANDARD',
   '/api/intake-public-submit': 'RL_STANDARD',
+  '/api/ep-intake/public-load':   'RL_BEACON',
+  '/api/ep-intake/public-save':   'RL_STANDARD',
+  '/api/ep-intake/public-submit': 'RL_STANDARD',
+  '/api/ep-intake/send':          'RL_STANDARD',
   '/api/demo-event':           'RL_BEACON',
   // Public booking: the two cheap catalog reads get the loose beacon limit;
   // availability (per-request Graph/Google free-busy call) and book (email +

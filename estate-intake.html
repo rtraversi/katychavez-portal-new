@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <!-- The link carries the client's token; never send it to another site. -->
+  <meta name="referrer" content="no-referrer">
+  <title>Estate Planning Questionnaire</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&family=Lora:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet">
+  <!-- Docket kit: tokens + .dk-* classes (see DESIGN-SYSTEM.md) -->
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/portal.css">
+  <script src="js/theme.js"></script>
+  <script>
+    // A client has no saved portal preference: follow their device. Staff opening
+    // the preview keep whatever mode they chose in the portal.
+    (function () {
+      try {
+        if (!localStorage.getItem('portal-mode') && window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.setAttribute('data-mode', 'dark');
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <style>
+    /* ── Public estate-planning questionnaire — the Docket "case file" look on a
+       standalone page, after book.html and the intake-builder page. Every colour
+       and font is a token, so light/dark and all themes come free. ── */
+    body {
+      background:
+        radial-gradient(1100px 460px at 84% -160px, color-mix(in srgb, var(--h-docs) 12%, transparent), transparent 70%),
+        radial-gradient(760px 380px at 10% 2%, color-mix(in srgb, var(--h-intake) 7%, transparent), transparent 66%),
+        var(--paper);
+      background-attachment: fixed;
+      min-height: 100dvh;
+      color: var(--ink);
+    }
+    .ep-shell { max-width: 760px; margin: 0 auto; padding: 36px 20px 72px; }
+
+    .ep-mast { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
+    .ep-kicker { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--docs); margin: 0 0 6px; }
+    .ep-title { font-family: var(--font-serif); font-size: 27px; font-weight: 600; margin: 0 0 5px; color: var(--ink); line-height: 1.2; }
+    .ep-title em { font-style: italic; color: var(--docs); }
+    .ep-sub { color: var(--ink-soft); font-size: 14px; margin: 0; line-height: 1.55; }
+
+    .ep-lang { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; flex: none; background: var(--surface); }
+    .ep-lang button { font: inherit; font-size: 12.5px; font-weight: 600; border: 0; background: none; color: var(--ink-soft); padding: 6px 12px; cursor: pointer; }
+    .ep-lang button.is-on { background: var(--docs); color: var(--surface); }
+
+    .ep-card {
+      background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--docs);
+      border-radius: var(--r-card); box-shadow: var(--card-shadow); padding: 26px 26px 28px;
+    }
+    @media (max-width: 620px) {
+      .ep-card { padding: 20px 16px 22px; }
+      .ep-shell { padding: 20px 12px 52px; }
+      .ep-mast { flex-direction: column-reverse; }
+    }
+
+    .ep-progress { margin-bottom: 22px; }
+    .ep-prog-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--ink-faint); margin-bottom: 7px; gap: 10px; }
+    .ep-prog-step { font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--docs); }
+    .ep-prog-bar { height: 4px; border-radius: 3px; background: var(--line); overflow: hidden; }
+    .ep-prog-fill { height: 100%; background: var(--docs); border-radius: 3px; transition: width .25s ease; }
+
+    .ep-step-title { font-family: var(--font-serif); font-size: 21px; font-weight: 600; color: var(--ink); margin: 0 0 4px; }
+    .ep-lead { color: var(--ink-soft); font-size: 14px; margin: 0 0 18px; line-height: 1.55; }
+
+    .ep-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px 16px; }
+    .ep-grid .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .ep-grid .field.full { grid-column: 1 / -1; }
+    .ep-grid label.ep-label, .ep-grid .ep-label { font-size: 13px; font-weight: 600; color: var(--ink-soft); line-height: 1.4; }
+    .ep-grid .req { color: var(--docs); margin-left: 2px; }
+    .ep-grid input[type=text], .ep-grid input[type=email], .ep-grid input[type=tel], .ep-grid input[type=date],
+    .ep-grid textarea, .ep-grid select {
+      font: inherit; font-size: 15px; color: var(--ink); background: var(--surface);
+      border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; width: 100%;
+    }
+    .ep-grid input:focus, .ep-grid textarea:focus, .ep-grid select:focus {
+      outline: none; border-color: var(--docs); box-shadow: 0 0 0 3px var(--docs-tint);
+    }
+    .ep-grid textarea { min-height: 76px; resize: vertical; }
+    /* Native controls (date picker icon, select arrow) follow the page's mode. */
+    :root[data-mode="dark"] .ep-grid input, :root[data-mode="dark"] .ep-grid select { color-scheme: dark; }
+    .ep-help { font-size: 12px; color: var(--ink-faint); line-height: 1.45; }
+    @media (max-width: 620px) { .ep-grid { grid-template-columns: 1fr; } }
+
+    .ep-choices { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+    .ep-choice {
+      display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
+      border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px;
+      font-size: 14px; color: var(--ink); background: var(--surface); line-height: 1.45;
+      transition: border-color .12s, background .12s;
+    }
+    .ep-choice:hover { border-color: var(--docs); }
+    .ep-choice input { width: auto; margin: 3px 0 0; accent-color: var(--docs); flex: none; }
+    .ep-choice.is-on { border-color: var(--docs); background: var(--docs-tint); }
+
+    .ep-group { grid-column: 1 / -1; }
+    .ep-rows { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+    .ep-row { border: 1px solid var(--line); border-left: 3px solid var(--docs); border-radius: var(--r-card); padding: 16px; background: var(--surface); }
+    .ep-row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; }
+    .ep-row-head b { font-family: var(--font-serif); font-size: 15px; font-weight: 600; }
+    .ep-row-head .ep-order { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin-left: 8px; }
+    .ep-add { margin-top: 10px; }
+
+    .ep-actions { margin-top: 26px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .ep-actions .spacer { flex: 1 1 auto; }
+    .ep-saved { font-size: 12px; color: var(--ink-faint); }
+
+    .ep-review-sec { border-top: 1px solid var(--line); padding: 14px 0 6px; }
+    .ep-review-sec:first-child { border-top: 0; padding-top: 0; }
+    .ep-review-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+    .ep-review-head h3 { font-family: var(--font-serif); font-size: 16px; font-weight: 600; margin: 0; color: var(--ink); }
+    .ep-review dl { display: grid; grid-template-columns: minmax(140px, 40%) 1fr; gap: 4px 14px; margin: 0; font-size: 13.5px; }
+    .ep-review dt { color: var(--ink-faint); }
+    .ep-review dd { margin: 0; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .ep-review .ep-review-row { grid-column: 1 / -1; font-weight: 600; color: var(--ink-soft); margin-top: 6px; }
+    .ep-review .empty { color: var(--ink-faint); font-style: italic; font-size: 13px; }
+    @media (max-width: 620px) { .ep-review dl { grid-template-columns: 1fr; } .ep-review dd { margin-bottom: 6px; } }
+
+    .cf-turnstile-slot { margin: 20px 0 4px; }
+    .ep-msg { padding: 12px 14px; border-radius: 9px; font-size: 14px; margin-top: 14px; line-height: 1.5; }
+    .ep-msg.err { background: var(--color-danger-bg); color: var(--color-danger); border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent); }
+    .ep-msg.note { background: var(--docs-tint); color: var(--ink-soft); border: 1px solid var(--line); }
+    .ep-msg ul { margin: 8px 0 0; padding-left: 18px; }
+    .ep-msg a { color: inherit; }
+
+    .ep-state { text-align: center; padding: 34px 12px; }
+    .ep-state h2 { font-family: var(--font-serif); font-weight: 600; margin: 0 0 8px; font-size: 21px; color: var(--ink); }
+    .ep-state p { color: var(--ink-soft); margin: 0; font-size: 14.5px; line-height: 1.55; }
+
+    .ep-foot { text-align: center; color: var(--ink-faint); font-size: 11.5px; margin-top: 18px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="ep-shell">
+
+    <div class="ep-mast">
+      <div>
+        <p class="ep-kicker" id="firm-name"></p>
+        <h1 class="ep-title" id="page-title">Estate Planning <em>Questionnaire</em></h1>
+        <p class="ep-sub" id="greeting"></p>
+      </div>
+      <div class="ep-lang" role="group" aria-label="Language / Idioma">
+        <button type="button" data-lang="en" class="is-on">English</button>
+        <button type="button" data-lang="es">Español</button>
+      </div>
+    </div>
+
+    <div class="ep-card">
+      <div id="state-loading" class="ep-state"><p>Loading…</p></div>
+
+      <div id="state-message" class="ep-state hidden">
+        <h2 id="msg-title"></h2>
+        <p id="msg-body"></p>
+      </div>
+
+      <form id="state-form" class="hidden" novalidate>
+        <div class="ep-progress">
+          <div class="ep-prog-meta">
+            <span class="ep-prog-step" id="prog-label"></span>
+            <span id="prog-name"></span>
+          </div>
+          <div class="ep-prog-bar"><div class="ep-prog-fill" id="prog-fill" style="width:0%"></div></div>
+        </div>
+
+        <div id="preview-note" class="ep-msg note hidden" style="margin:0 0 16px"></div>
+
+        <h2 class="ep-step-title" id="step-title"></h2>
+        <p class="ep-lead" id="step-lead"></p>
+
+        <div id="step-body"></div>
+
+        <div id="turnstile-ep" class="cf-turnstile-slot hidden"></div>
+        <div id="form-error" class="ep-msg err hidden"></div>
+
+        <div class="ep-actions">
+          <button type="button" id="back-btn" class="btn btn--secondary hidden"></button>
+          <button type="submit" id="next-btn" class="btn btn--primary"></button>
+          <span class="spacer"></span>
+          <span class="ep-saved" id="saved-note" aria-live="polite"></span>
+        </div>
+      </form>
+    </div>
+
+    <p class="ep-foot" id="foot"></p>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/turnstile-init.js"></script>
+  <script src="js/ep-intake.js?v=1"></script>
+</body>
+</html>

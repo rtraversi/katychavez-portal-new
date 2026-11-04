@@ -5949,6 +5949,36 @@
     const immPanel = document.getElementById('tab-immigration');
     if (immBtn)   immBtn.classList.toggle('hidden', !hasImmigration);
     if (immPanel) immPanel.classList.toggle('hidden', !hasImmigration);
+
+    initEstateTab();
+  }
+
+  // ── Estate Planning tab (module estate_planning, migration 2300) ────────────
+  // Shown on every matter while the module is enabled — a client card holds one
+  // matter, and an existing (e.g. immigration) client asking for a will must be
+  // reachable too. All of its logic lives in estate-planning.js, loaded on first open.
+  let _epInit = false;
+  async function initEstateTab() {
+    const btn = document.querySelector('.detail-tab[data-tab="estate"]');
+    if (!btn || !matter || _epInit) return;
+    _epInit = true;
+    const { data: on } = await db.from('enabled_modules').select('module_key').eq('module_key', 'estate_planning').maybeSingle();
+    if (!on) return;
+    btn.classList.remove('hidden');
+    let mounted = false;
+    btn.addEventListener('click', () => {
+      if (mounted) return;
+      mounted = true;
+      const mount = () => window.EstatePlanningTab.mount(document.getElementById('ep-tab-root'), {
+        matter, client, callFunction, practiceAreaKey: matterPracticeAreaKey(),
+      });
+      if (window.EstatePlanningTab) return mount();
+      const s = document.createElement('script');
+      s.src = '/pages/clients/detail/estate-planning.js?v=1';
+      s.onload = mount;
+      s.onerror = () => { mounted = false; Utils.toast('Could not load Estate Planning.', 'error'); };
+      document.body.appendChild(s);
+    });
   }
 
   function wireImmSubtabs() {

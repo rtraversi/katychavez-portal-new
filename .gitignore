@@ -29,3 +29,4 @@ deploy/kcl/kcl-sync.ps1
 KCL-SYNC-DEPLOY.md
 SCROGGINS-CLONE-DEPLOY.md
 kcl-sync.ps1
+scripts/ep/out/

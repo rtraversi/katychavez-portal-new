@@ -36,10 +36,16 @@ async function handleRequest(request, env) {
   // ── Fetch template ────────────────────────────────────────────────────────
   const { data: tmpl, error: tmplErr } = await admin
     .from('draft_templates')
-    .select('id, name, template_docx_r2_key, wizard_schema')
+    .select('id, name, template_docx_r2_key, wizard_schema, merge_profile')
     .eq('id', template_id)
     .single();
   if (tmplErr || !tmpl) return json(404, { error: 'Template not found' });
+
+  // Estate-planning templates fill from the questionnaire, not from case data
+  // (functions/api/ep-draft.js). Rendering one here would print blanks everywhere.
+  if (tmpl.merge_profile === 'estate_planning') {
+    return json(409, { error: 'This is an estate-planning template. Draft it from the Estate Planning tab on the client card.' });
+  }
 
   if (!tmpl.template_docx_r2_key) {
     return json(422, { error: 'No .docx template has been uploaded for this template. Please upload one in Settings > Doc Templates.' });
