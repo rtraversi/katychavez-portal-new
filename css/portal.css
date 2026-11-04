@@ -3689,16 +3689,50 @@ body.help-drawer-lock { overflow: hidden; }
   .ep-send-grid, .ep-e-grid, .ep-a-sec dl { grid-template-columns: 1fr; }
 }
 
-/* ── "Also includes" — extra case types on a matter (migration 2301) ─────────
-   A native <details> so the long immigration lists stay folded away; opens by
-   default when the matter already has extras. Checkbox pills, token-only. */
-.dk-alsoct { grid-column: 1 / -1; margin-top: 2px; }
-.dk-alsoct > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-soft); padding: 4px 0; list-style-position: inside; }
-.dk-alsoct > summary .n { color: var(--docs); }
-.dk-alsoct-pills { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
-.dk-alsoct-pills label {
-  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12.5px; font-weight: 500;
-  color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px;
+/* ── Case-type picker (js/case-type-picker.js, migration 2301) ──────────────
+   A select-looking button that opens a checklist; chosen case types list as chips
+   underneath, the first one marked Primary. Buttons, not <label>s, so the card's
+   uppercase form-label styles never reach it. Token-only. */
+.dk-ctp { min-width: 0; }
+.dk-ctp-field { position: relative; }
+.dk-ctp-btn {
+  width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer;
+  font: inherit; font-size: var(--text-sm, 14px); color: var(--ink); background-color: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius, 8px); padding: 9px 36px 9px 12px; min-height: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2394a3b8'%3E%3Cpath d='M5.5 8.5L10 13l4.5-4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; background-size: 16px;
 }
-.dk-alsoct-pills label:has(input:checked) { border-color: var(--docs); background: var(--docs-tint); }
-.dk-alsoct-pills input { width: auto; margin: 0; accent-color: var(--docs); }
+.dk-ctp-btn:focus-visible { outline: none; border-color: var(--docs); box-shadow: 0 0 0 3px var(--docs-tint); }
+.dk-ctp-btn:disabled { opacity: .6; cursor: default; }
+.dk-ctp-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-ctp-ph { color: var(--ink-faint); }
+.dk-ctp-more { flex: none; font-size: 12px; font-weight: 700; color: var(--docs); background: var(--docs-tint); border-radius: 999px; padding: 1px 8px; }
+.dk-ctp-req { position: absolute; left: 12px; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.dk-ctp-panel {
+  position: absolute; z-index: 1200; top: calc(100% + 4px); left: 0; right: 0;
+  max-height: 300px; overflow-y: auto; padding: 6px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r-card, 10px); box-shadow: var(--card-shadow-hover, var(--card-shadow));
+}
+.dk-ctp-opt {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer;
+  font: inherit; font-size: 14px; text-transform: none; letter-spacing: normal; color: var(--ink);
+  background: none; border: 0; border-radius: 7px; padding: 8px 10px;
+}
+.dk-ctp-opt:hover, .dk-ctp-opt:focus-visible { background: var(--paper-deep); outline: none; }
+.dk-ctp-opt.is-on { background: var(--docs-tint); }
+.dk-ctp-box { flex: none; width: 16px; height: 16px; border: 1.5px solid var(--ink-faint); border-radius: 4px; display: grid; place-items: center; }
+.dk-ctp-opt.is-on .dk-ctp-box { background: var(--docs); border-color: var(--docs); }
+.dk-ctp-opt.is-on .dk-ctp-box::after { content: ''; width: 8px; height: 4px; border: 2px solid var(--surface); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
+.dk-ctp-prim { margin-left: auto; flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--docs); }
+.dk-ctp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dk-ctp-chips:empty { display: none; }
+.dk-ctp-chip {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px;
+}
+.dk-ctp-chip.is-primary { border-color: var(--docs); background: var(--docs-tint); }
+.dk-ctp-chip .dk-ctp-prim { margin-left: 0; }
+.dk-ctp-mk { font: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-soft); background: none; border: 0; padding: 0 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.dk-ctp-mk:hover { color: var(--docs); }
+.dk-ctp-x { font: inherit; font-size: 15px; line-height: 1; width: 22px; height: 22px; border-radius: 50%; border: 0; background: none; color: var(--ink-faint); cursor: pointer; }
+.dk-ctp-x:hover { background: var(--color-danger-bg); color: var(--color-danger); }

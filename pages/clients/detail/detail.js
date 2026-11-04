@@ -95,15 +95,13 @@
     return [primary, ...extra].filter(Boolean).join(' · ') || null;
   }
 
-  function extraCaseTypesHtml(paId, primaryId, selectedIds) {
-    const sel = new Set(selectedIds || []);
-    const cts = caseTypesData.filter(ct => ct.practice_area_id === paId && ct.id !== primaryId && (ct.active !== false || sel.has(ct.id)));
-    if (!paId || !cts.length) return '';
-    const n = cts.filter(ct => sel.has(ct.id)).length;
-    return `<details class="dk-alsoct"${n ? ' open' : ''}>
-      <summary>Also includes${n ? ` <span class="n">(${n})</span>` : ' — add more case types'}</summary>
-      <div class="dk-alsoct-pills">${cts.map(ct => `<label><input type="checkbox" name="additional_case_type_ids" value="${Utils.esc(ct.id)}"${sel.has(ct.id) ? ' checked' : ''}> ${Utils.esc(ct.name)}</label>`).join('')}</div>
-    </details>`;
+  // Options for the case-type picker (js/case-type-picker.js): the practice area's
+  // active types, plus any retired one the matter still carries.
+  function caseTypePickerOptions(paId, keepIds = []) {
+    const keep = new Set(keepIds.filter(Boolean));
+    return caseTypesData
+      .filter(ct => ct.practice_area_id === paId && (ct.active !== false || keep.has(ct.id)))
+      .map(ct => ({ id: ct.id, name: ct.name }));
   }
 
   function practiceAreaLabel(id) {
@@ -2256,14 +2254,10 @@
 
     const paOpts   = practiceAreas.map(p => [p.id, p.name]);
     const selPaId  = m?.practice_area_id || '';
-    const ctOpts   = caseTypesData
-      .filter(ct => ct.practice_area_id === selPaId)
-      .map(ct => [ct.id, ct.name]);
 
     const fieldsEl = document.getElementById('fields-case');
     fieldsEl.innerHTML = `
-      ${row2(sel('practice_area_id','Practice area',paOpts,selPaId), sel('case_type_id','Case type',ctOpts,m?.case_type_id))}
-      <div id="case-extra-ct">${extraCaseTypesHtml(selPaId, m?.case_type_id, m?.additional_case_type_ids)}</div>
+      ${row2(sel('practice_area_id','Practice area',paOpts,selPaId), `<div class="field"><label>Case types</label><div id="case-ct-picker"></div></div>`)}
       ${row2(inp('case_number','Case number',m?.case_number), sel('status','Status',statusOpts,m?.status))}
       ${row2(inp('court_county','Court / County',m?.court_county), inp('judge_name','Judge',m?.judge_name))}
       ${row2(inp('date_filed','Date filed',m?.date_filed,'date'), sel('assigned_attorney_id','Assigned attorney',attyOpts,m?.assigned_attorney_id))}
@@ -2276,20 +2270,15 @@
       ${ta('notes','Notes',m?.notes)}
     `;
 
-    // Dynamically filter case types when practice area changes
-    fieldsEl.querySelector('[name=practice_area_id]')?.addEventListener('change', e => {
-      const paId  = e.target.value;
-      const ctSel = fieldsEl.querySelector('[name=case_type_id]');
-      const opts  = caseTypesData
-        .filter(ct => ct.practice_area_id === paId)
-        .map(ct => `<option value="${Utils.esc(ct.id)}">${Utils.esc(ct.name)}</option>`);
-      ctSel.innerHTML = `<option value="">— Select —</option>${opts.join('')}`;
-      fieldsEl.querySelector('#case-extra-ct').innerHTML = extraCaseTypesHtml(paId, '', []);
+    // Case types: one picker — primary + "also includes" (2301). It writes the
+    // case_type_id / additional_case_type_ids fields the save handler reads.
+    const extra  = m?.additional_case_type_ids || [];
+    const picker = CaseTypePicker.mount(fieldsEl.querySelector('#case-ct-picker'), {
+      options: caseTypePickerOptions(selPaId, [m?.case_type_id, ...extra]),
+      primaryId: m?.case_type_id, extraIds: extra,
     });
-    fieldsEl.querySelector('[name=case_type_id]')?.addEventListener('change', e => {
-      const paId = fieldsEl.querySelector('[name=practice_area_id]')?.value || '';
-      const kept = [...fieldsEl.querySelectorAll('input[name=additional_case_type_ids]:checked')].map(x => x.value).filter(id => id !== e.target.value);
-      fieldsEl.querySelector('#case-extra-ct').innerHTML = extraCaseTypesHtml(paId, e.target.value, kept);
+    fieldsEl.querySelector('[name=practice_area_id]')?.addEventListener('change', e => {
+      picker.setOptions(caseTypePickerOptions(e.target.value));
     });
   }
 

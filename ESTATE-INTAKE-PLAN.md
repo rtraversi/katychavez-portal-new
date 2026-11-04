@@ -28,9 +28,10 @@ so the two converge if both ever land.
 ## Multiple case types per matter (2301)
 
 An estate plan is a bundle, so a matter now has a **primary** case type (`matters.case_type_id`, unchanged — every
-existing consumer keeps reading it) plus **"Also includes"** (`matters.additional_case_type_ids uuid[]`), picked as
-checkbox pills under the case-type dropdown on the New Client form and the card's Case edit. Generic across practice
-areas; folded away in a `<details>` unless the matter has extras. Shown as "Simple Will · Irrevocable Trust · …" in
+existing consumer keeps reading it) plus **"Also includes"** (`matters.additional_case_type_ids uuid[]`), picked with
+`js/case-type-picker.js` (global `CaseTypePicker`) on the New Client form and the card's Case edit: a select-looking
+button that opens a checklist, chosen types listed as chips underneath — first = **Primary**, any chip can be made
+primary or removed. Generic across practice areas. Shown as "Simple Will · Irrevocable Trust · …" in
 the card header, the Case section and the client list. Case-type hard delete counts it as in use. 2301 also adds the
 seven estate case types 2300 didn't seed (irrevocable, asset protection, special needs, charitable, trust funding,
 business succession, beneficiary review) and widens installed estate templates to all of them.

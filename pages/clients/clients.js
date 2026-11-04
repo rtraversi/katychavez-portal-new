@@ -71,29 +71,15 @@
     sel.innerHTML = html;
   }
 
-  function buildCaseTypeOptions(paId) {
-    const cts = caseTypesData.filter(ct => ct.practice_area_id === paId);
-    return '<option value="">— Select —</option>' +
-      cts.map(ct => `<option value="${Utils.esc(ct.id)}">${Utils.esc(ct.name)}</option>`).join('');
+  // Case types for the picker (js/case-type-picker.js): the practice area's active
+  // types, plus any retired one this matter still carries so it isn't silently dropped.
+  function caseTypeOptionsFor(paId, keepIds = []) {
+    const keep = new Set(keepIds.filter(Boolean));
+    return caseTypesData
+      .filter(ct => ct.practice_area_id === paId && (ct.active !== false || keep.has(ct.id)))
+      .map(ct => ({ id: ct.id, name: ct.name }));
   }
-
-  // "Also includes" — the matter's other case types in the same practice area
-  // (matters.additional_case_type_ids, 2301). The primary stays in case_type_id.
-  function renderExtraCaseTypes(paId, primaryId, selectedIds) {
-    const wrap = document.getElementById('matter-extra-ct');
-    if (!wrap) return;
-    const sel = new Set(selectedIds || []);
-    const cts = caseTypesData.filter(ct => ct.practice_area_id === paId && ct.id !== primaryId && (ct.active !== false || sel.has(ct.id)));
-    if (!paId || !cts.length) { wrap.innerHTML = ''; return; }
-    const n = cts.filter(ct => sel.has(ct.id)).length;
-    wrap.innerHTML = `<details class="dk-alsoct"${n ? ' open' : ''}>
-      <summary>Also includes${n ? ` <span class="n">(${n})</span>` : ' — add more case types'}</summary>
-      <div class="dk-alsoct-pills">${cts.map(ct => `<label><input type="checkbox" name="additional_case_type_ids" value="${Utils.esc(ct.id)}"${sel.has(ct.id) ? ' checked' : ''}> ${Utils.esc(ct.name)}</label>`).join('')}</div>
-    </details>`;
-  }
-  function checkedExtraCaseTypes() {
-    return [...document.querySelectorAll('#matter-extra-ct input[name=additional_case_type_ids]:checked')].map(x => x.value);
-  }
+  let ctPicker = null;   // the open modal's CaseTypePicker
 
   async function loadUnreadCounts() {
     try {
@@ -313,14 +299,11 @@
     modalEl.classList.remove('hidden');
     document.getElementById('client-first-name').focus();
 
-    // Wire PA → case type cascade
+    // Wire PA → case type cascade. The picker starts empty; loadClientIntoForm
+    // remounts it with the matter's case types when editing.
+    ctPicker = CaseTypePicker.mount(document.getElementById('matter-case-type'), { options: [], required: true });
     document.getElementById('matter-practice-area').addEventListener('change', e => {
-      document.getElementById('matter-case-type').innerHTML = buildCaseTypeOptions(e.target.value);
-      renderExtraCaseTypes(e.target.value, '', []);
-    });
-    document.getElementById('matter-case-type').addEventListener('change', e => {
-      const paId = document.getElementById('matter-practice-area').value;
-      renderExtraCaseTypes(paId, e.target.value, checkedExtraCaseTypes().filter(id => id !== e.target.value));
+      ctPicker?.setOptions(caseTypeOptionsFor(e.target.value));
     });
 
     if (clientId) loadClientIntoForm(clientId);
@@ -443,13 +426,10 @@
               </select>
             </div>
             <div class="field">
-              <label for="matter-case-type">Case type <span class="required">*</span></label>
-              <select id="matter-case-type" name="case_type_id" required>
-                <option value="">— Select practice area first —</option>
-              </select>
+              <label>Case type <span class="required">*</span> <span class="text-muted" style="font-weight:400">— tick all that apply</span></label>
+              <div id="matter-case-type"></div>
             </div>
           </div>
-          <div id="matter-extra-ct"></div>
           <div class="field-row">
             <div class="field" style="visibility:hidden"></div>
             <div class="field">
@@ -576,7 +556,6 @@
 
       // Two-step PA → case type
       const paEl = document.getElementById('matter-practice-area');
-      const ctEl = document.getElementById('matter-case-type');
       let paId = matter.practice_area_id;
       let ctId = matter.case_type_id;
 
@@ -588,11 +567,10 @@
 
       if (paId && paEl) {
         paEl.value = paId;
-        if (ctEl) {
-          ctEl.innerHTML = buildCaseTypeOptions(paId);
-          if (ctId) ctEl.value = ctId;
-        }
-        renderExtraCaseTypes(paId, ctId, matter.additional_case_type_ids || []);
+        const extra = matter.additional_case_type_ids || [];
+        ctPicker = CaseTypePicker.mount(document.getElementById('matter-case-type'), {
+          options: caseTypeOptionsFor(paId, [ctId, ...extra]), primaryId: ctId, extraIds: extra, required: true,
+        });
       }
     }
   }
@@ -635,7 +613,7 @@
       practice_area_id:     paId   || null,
       case_type_id:         ctId   || null,
       case_type:            ctRow?.key || null,  // text key for backward compat
-      additional_case_type_ids: checkedExtraCaseTypes().filter(id => id !== ctId),
+      additional_case_type_ids: [...f.querySelectorAll('input[name=additional_case_type_ids]')].map(x => x.value).filter(id => id && id !== ctId),
       status:               f.elements['matter_status'].value || 'intake',
       case_number:          f.elements['case_number'].value.trim() || null,
       court_county:         f.elements['court_county'].value.trim() || null,
