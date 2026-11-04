@@ -3688,3 +3688,17 @@ body.help-drawer-lock { overflow: hidden; }
 @media (max-width: 700px) {
   .ep-send-grid, .ep-e-grid, .ep-a-sec dl { grid-template-columns: 1fr; }
 }
+
+/* ── "Also includes" — extra case types on a matter (migration 2301) ─────────
+   A native <details> so the long immigration lists stay folded away; opens by
+   default when the matter already has extras. Checkbox pills, token-only. */
+.dk-alsoct { grid-column: 1 / -1; margin-top: 2px; }
+.dk-alsoct > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-soft); padding: 4px 0; list-style-position: inside; }
+.dk-alsoct > summary .n { color: var(--docs); }
+.dk-alsoct-pills { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 4px; }
+.dk-alsoct-pills label {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12.5px; font-weight: 500;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px;
+}
+.dk-alsoct-pills label:has(input:checked) { border-color: var(--docs); background: var(--docs-tint); }
+.dk-alsoct-pills input { width: auto; margin: 0; accent-color: var(--docs); }

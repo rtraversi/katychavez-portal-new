@@ -6,11 +6,13 @@ export const EP_MODULE = 'estate_planning';
 export const EP_LINK_TTL_DAYS = 60;          // a will questionnaire is long; people come back to it
 export const EP_MAX_BODY_BYTES = 256 * 1024; // answers JSON is a few KB; anything near this is abuse
 
-// The estate-planning case-type keys (2300 / 2101). Starter templates are scoped to
+// The estate-planning case-type keys (2300 + 2301, the same set as 2101). Starter templates are scoped to
 // these so they never appear in the generic Draft Document picker on other matters.
 export const EP_CASE_TYPE_KEYS = [
-  'simple_will', 'will_testamentary_trust', 'revocable_living_trust',
-  'financial_poa', 'advance_directive', 'plan_review', 'other',
+  'simple_will', 'will_testamentary_trust', 'revocable_living_trust', 'irrevocable_trust',
+  'asset_protection_trust', 'special_needs_trust', 'charitable_trust', 'financial_poa',
+  'advance_directive', 'trust_funding', 'plan_review', 'business_succession',
+  'beneficiary_review', 'other',
 ];
 
 // ── Tokens ──────────────────────────────────────────────────────────────────

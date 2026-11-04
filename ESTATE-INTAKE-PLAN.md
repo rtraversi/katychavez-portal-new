@@ -1,6 +1,6 @@
 # Estate Planning — client questionnaire, answers, drafting
 
-**Branch:** `module/ep-intake` (off master) · **Migration:** `2300_estate_planning_intake.sql` (range 2300–2399, free in both repos)
+**Branch:** `module/ep-intake` (off master) · **Migrations:** `2300_estate_planning_intake.sql`, `2301_matter_additional_case_types.sql` (range 2300–2399, free in both repos)
 **Status 2026-11-04:** built, `npm test` green (933). **Not yet applied to the sandbox DB, not deployed, not click-tested.**
 First client: KCL (Katy, NC wills & trusts) — built here, cherry-picked there per the two-repo workflow.
 
@@ -24,6 +24,16 @@ so the two converge if both ever land.
 4. **Draft.** Pick templates, for the client or (couples) the spouse → filled `.docx` in `draft_documents`
    (same tables/R2 keys/versions/WebDAV as Word Templates) → **Open in Word**.
 5. **Estate Planning page** (`#estate-planning`): ready-to-review and waiting-on-client lists across matters.
+
+## Multiple case types per matter (2301)
+
+An estate plan is a bundle, so a matter now has a **primary** case type (`matters.case_type_id`, unchanged — every
+existing consumer keeps reading it) plus **"Also includes"** (`matters.additional_case_type_ids uuid[]`), picked as
+checkbox pills under the case-type dropdown on the New Client form and the card's Case edit. Generic across practice
+areas; folded away in a `<details>` unless the matter has extras. Shown as "Simple Will · Irrevocable Trust · …" in
+the card header, the Case section and the client list. Case-type hard delete counts it as in use. 2301 also adds the
+seven estate case types 2300 didn't seed (irrevocable, asset protection, special needs, charitable, trust funding,
+business succession, beneficiary review) and widens installed estate templates to all of them.
 
 ## Templates
 

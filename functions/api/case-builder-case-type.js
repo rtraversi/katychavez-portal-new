@@ -99,11 +99,13 @@ async function handle(request, env) {
 async function deleteCaseType(admin, id) {
   if (!id) return json(400, { error: 'id is required.' });
 
-  const [mRes, aRes] = await Promise.all([
+  const [mRes, aRes, xRes] = await Promise.all([
     admin.from('matters').select('id', { count: 'exact', head: true }).eq('case_type_id', id),
     admin.from('appointments').select('id', { count: 'exact', head: true }).eq('case_type_id', id),
+    // "Also includes" case types (2301) count as in use too.
+    admin.from('matters').select('id', { count: 'exact', head: true }).contains('additional_case_type_ids', [id]),
   ]);
-  const matterCount = mRes.count || 0;
+  const matterCount = (mRes.count || 0) + (xRes?.count || 0);
   const apptCount   = aRes.count || 0;
 
   if (matterCount || apptCount) {

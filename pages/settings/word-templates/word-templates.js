@@ -139,7 +139,9 @@
       const row = { name, doc_category: cat, template_html: '', active: true, sort_order: 0 };
       if (profile === 'estate_planning') {
         Object.assign(row, { merge_profile: 'estate_planning',
-          case_types: ['simple_will', 'will_testamentary_trust', 'revocable_living_trust', 'financial_poa', 'advance_directive', 'plan_review', 'other'] });
+          case_types: ['simple_will', 'will_testamentary_trust', 'revocable_living_trust', 'irrevocable_trust',
+            'asset_protection_trust', 'special_needs_trust', 'charitable_trust', 'financial_poa', 'advance_directive',
+            'trust_funding', 'plan_review', 'business_succession', 'beneficiary_review', 'other'] });
       }
       const { error } = await db.from('draft_templates').insert(row);
       if (error) { Utils.toast(error.message, 'error'); overlay.querySelector('[data-save]').disabled = false; return; }

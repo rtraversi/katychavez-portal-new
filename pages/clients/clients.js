@@ -77,6 +77,24 @@
       cts.map(ct => `<option value="${Utils.esc(ct.id)}">${Utils.esc(ct.name)}</option>`).join('');
   }
 
+  // "Also includes" — the matter's other case types in the same practice area
+  // (matters.additional_case_type_ids, 2301). The primary stays in case_type_id.
+  function renderExtraCaseTypes(paId, primaryId, selectedIds) {
+    const wrap = document.getElementById('matter-extra-ct');
+    if (!wrap) return;
+    const sel = new Set(selectedIds || []);
+    const cts = caseTypesData.filter(ct => ct.practice_area_id === paId && ct.id !== primaryId && (ct.active !== false || sel.has(ct.id)));
+    if (!paId || !cts.length) { wrap.innerHTML = ''; return; }
+    const n = cts.filter(ct => sel.has(ct.id)).length;
+    wrap.innerHTML = `<details class="dk-alsoct"${n ? ' open' : ''}>
+      <summary>Also includes${n ? ` <span class="n">(${n})</span>` : ' — add more case types'}</summary>
+      <div class="dk-alsoct-pills">${cts.map(ct => `<label><input type="checkbox" name="additional_case_type_ids" value="${Utils.esc(ct.id)}"${sel.has(ct.id) ? ' checked' : ''}> ${Utils.esc(ct.name)}</label>`).join('')}</div>
+    </details>`;
+  }
+  function checkedExtraCaseTypes() {
+    return [...document.querySelectorAll('#matter-extra-ct input[name=additional_case_type_ids]:checked')].map(x => x.value);
+  }
+
   async function loadUnreadCounts() {
     try {
       const session = await Auth.getSession();
@@ -99,7 +117,7 @@
       .from('clients')
       .select(`
         id, first_name, last_name, email, phone, active, is_dv_confidential,
-        matters ( id, case_type, case_type_id, case_number, status, assigned_attorney_id, retainer_balance,
+        matters ( id, case_type, case_type_id, additional_case_type_ids, case_number, status, assigned_attorney_id, retainer_balance,
           key_dates ( date_type, date_value )
         )
       `, { count: 'exact' })
@@ -189,10 +207,13 @@
       ].filter(Boolean).join('');
 
       // Meta line: case type · matter # · attorney · next date · email
-      const caseTypeName = matter
+      const primaryCt = matter
         ? (caseTypeMap.get(matter.case_type_id)?.name
            || (matter.case_type ? Utils.titleCase(matter.case_type.replace(/_/g, ' ')) : ''))
         : '';
+      // "Also includes" case types (2301): primary first, then the rest.
+      const extraCts = (matter?.additional_case_type_ids || []).map(id => caseTypeMap.get(id)?.name).filter(Boolean);
+      const caseTypeName = [primaryCt, ...extraCts].filter(Boolean).join(' · ');
       const meta = [
         caseTypeName ? `<span>${Utils.esc(caseTypeName)}</span>` : '',
         matter?.case_number ? `<span>#${Utils.esc(matter.case_number)}</span>` : '',
@@ -295,6 +316,11 @@
     // Wire PA → case type cascade
     document.getElementById('matter-practice-area').addEventListener('change', e => {
       document.getElementById('matter-case-type').innerHTML = buildCaseTypeOptions(e.target.value);
+      renderExtraCaseTypes(e.target.value, '', []);
+    });
+    document.getElementById('matter-case-type').addEventListener('change', e => {
+      const paId = document.getElementById('matter-practice-area').value;
+      renderExtraCaseTypes(paId, e.target.value, checkedExtraCaseTypes().filter(id => id !== e.target.value));
     });
 
     if (clientId) loadClientIntoForm(clientId);
@@ -423,6 +449,7 @@
               </select>
             </div>
           </div>
+          <div id="matter-extra-ct"></div>
           <div class="field-row">
             <div class="field" style="visibility:hidden"></div>
             <div class="field">
@@ -565,6 +592,7 @@
           ctEl.innerHTML = buildCaseTypeOptions(paId);
           if (ctId) ctEl.value = ctId;
         }
+        renderExtraCaseTypes(paId, ctId, matter.additional_case_type_ids || []);
       }
     }
   }
@@ -607,6 +635,7 @@
       practice_area_id:     paId   || null,
       case_type_id:         ctId   || null,
       case_type:            ctRow?.key || null,  // text key for backward compat
+      additional_case_type_ids: checkedExtraCaseTypes().filter(id => id !== ctId),
       status:               f.elements['matter_status'].value || 'intake',
       case_number:          f.elements['case_number'].value.trim() || null,
       court_county:         f.elements['court_county'].value.trim() || null,

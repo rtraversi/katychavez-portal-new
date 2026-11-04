@@ -87,6 +87,25 @@
     return LEGACY[id] || Utils.titleCase(id);
   }
 
+  // Primary case type + the "Also includes" ones (matters.additional_case_type_ids, 2301).
+  function matterCaseTypesLabel(m) {
+    if (!m) return null;
+    const primary = caseTypeLabel(m.case_type_id) || caseTypeLabel(m.case_type);
+    const extra = (m.additional_case_type_ids || []).map(id => caseTypeMap.get(id)?.name).filter(Boolean);
+    return [primary, ...extra].filter(Boolean).join(' · ') || null;
+  }
+
+  function extraCaseTypesHtml(paId, primaryId, selectedIds) {
+    const sel = new Set(selectedIds || []);
+    const cts = caseTypesData.filter(ct => ct.practice_area_id === paId && ct.id !== primaryId && (ct.active !== false || sel.has(ct.id)));
+    if (!paId || !cts.length) return '';
+    const n = cts.filter(ct => sel.has(ct.id)).length;
+    return `<details class="dk-alsoct"${n ? ' open' : ''}>
+      <summary>Also includes${n ? ` <span class="n">(${n})</span>` : ' — add more case types'}</summary>
+      <div class="dk-alsoct-pills">${cts.map(ct => `<label><input type="checkbox" name="additional_case_type_ids" value="${Utils.esc(ct.id)}"${sel.has(ct.id) ? ' checked' : ''}> ${Utils.esc(ct.name)}</label>`).join('')}</div>
+    </details>`;
+  }
+
   function practiceAreaLabel(id) {
     if (!id) return null;
     return practiceAreaMap.get(id)?.name || null;
@@ -303,7 +322,7 @@
     if (matter) {
       const statusOpts = [['intake','Intake'],['active','Active'],['on_hold','On Hold'],['closed','Closed']];
       metaParts.push(`<select id="status-quick-select" class="status-quick-select status-quick-select--${matter.status}">${statusOpts.map(([v,l]) => `<option value="${v}"${matter.status===v?' selected':''}>${l}</option>`).join('')}</select>`);
-      metaParts.push(`<span>${caseTypeLabel(matter.case_type_id) || caseTypeLabel(matter.case_type) || ''}</span>`);
+      metaParts.push(`<span>${Utils.esc(matterCaseTypesLabel(matter) || '')}</span>`);
       if (matter.case_number) metaParts.push(`<span>Case #${Utils.esc(matter.case_number)}</span>`);
       const atty = userName(matter.assigned_attorney_id);
       if (atty) metaParts.push(`<span>${Utils.esc(atty)}</span>`);
@@ -664,7 +683,7 @@
     const m = matter;
     setGrid('grid-case', [
       field('Practice area',   practiceAreaLabel(m.practice_area_id)),
-      field('Case type',       caseTypeLabel(m.case_type_id) || caseTypeLabel(m.case_type)),
+      field((m.additional_case_type_ids || []).length ? 'Case types' : 'Case type', matterCaseTypesLabel(m)),
       field('Status',          Utils.titleCase(m.status)),
       field('Case number',     m.case_number),
       field('Court / County',  m.court_county),
@@ -1918,6 +1937,7 @@
           practice_area_id: paId,
           case_type_id:     ctId,
           case_type:        ctId ? (caseTypeMap.get(ctId)?.key || null) : null,
+          additional_case_type_ids: fd.getAll('additional_case_type_ids').filter(id => id && id !== ctId),
           status:           fd.get('status') || 'intake',
           case_number:          fd.get('case_number')?.trim() || null,
           court_county:         fd.get('court_county')?.trim() || null,
@@ -2243,6 +2263,7 @@
     const fieldsEl = document.getElementById('fields-case');
     fieldsEl.innerHTML = `
       ${row2(sel('practice_area_id','Practice area',paOpts,selPaId), sel('case_type_id','Case type',ctOpts,m?.case_type_id))}
+      <div id="case-extra-ct">${extraCaseTypesHtml(selPaId, m?.case_type_id, m?.additional_case_type_ids)}</div>
       ${row2(inp('case_number','Case number',m?.case_number), sel('status','Status',statusOpts,m?.status))}
       ${row2(inp('court_county','Court / County',m?.court_county), inp('judge_name','Judge',m?.judge_name))}
       ${row2(inp('date_filed','Date filed',m?.date_filed,'date'), sel('assigned_attorney_id','Assigned attorney',attyOpts,m?.assigned_attorney_id))}
@@ -2263,6 +2284,12 @@
         .filter(ct => ct.practice_area_id === paId)
         .map(ct => `<option value="${Utils.esc(ct.id)}">${Utils.esc(ct.name)}</option>`);
       ctSel.innerHTML = `<option value="">— Select —</option>${opts.join('')}`;
+      fieldsEl.querySelector('#case-extra-ct').innerHTML = extraCaseTypesHtml(paId, '', []);
+    });
+    fieldsEl.querySelector('[name=case_type_id]')?.addEventListener('change', e => {
+      const paId = fieldsEl.querySelector('[name=practice_area_id]')?.value || '';
+      const kept = [...fieldsEl.querySelectorAll('input[name=additional_case_type_ids]:checked')].map(x => x.value).filter(id => id !== e.target.value);
+      fieldsEl.querySelector('#case-extra-ct').innerHTML = extraCaseTypesHtml(paId, e.target.value, kept);
     });
   }
 
