@@ -206,6 +206,7 @@ export const routes = {
   '/api/ep-intake/send':             epIntakeStaff,
   '/api/ep-intake/matter':           epIntakeStaff,
   '/api/ep-intake/answers':          epIntakeStaff,
+  '/api/ep-intake/enter':            epIntakeStaff,
   '/api/ep-intake/revoke':           epIntakeStaff,
   '/api/ep-intake/templates':        epDraft,
   '/api/ep-intake/install-starters': epDraft,

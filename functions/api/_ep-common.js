@@ -30,6 +30,22 @@ export async function hashToken(token) {
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Answers staff type in themselves (POST /api/ep-intake/enter) are an ep_intake_requests
+// row like any other, so drafting/editing/printing need nothing new. There is no client
+// link, but token_hash is NOT NULL UNIQUE: such rows hold 'staff:' + random hex there.
+// That can never equal sha256(token) (64 bare hex chars), so no link opens it, and the
+// prefix is how the row is recognised (no migration needed).
+export const STAFF_ENTRY_PREFIX = 'staff:';
+
+export function staffEntryHash() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return STAFF_ENTRY_PREFIX + [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function isStaffEntered(row) {
+  return typeof row?.token_hash === 'string' && row.token_hash.startsWith(STAFF_ENTRY_PREFIX);
+}
+
 export function looksLikeToken(t) {
   return typeof t === 'string' && /^[A-Za-z0-9_-]{40,64}$/.test(t);
 }

@@ -5990,7 +5990,7 @@
       });
       if (window.EstatePlanningTab) return mount();
       const s = document.createElement('script');
-      s.src = '/pages/clients/detail/estate-planning.js?v=1';
+      s.src = '/pages/clients/detail/estate-planning.js?v=2';
       s.onload = mount;
       s.onerror = () => { mounted = false; Utils.toast('Could not load Estate Planning.', 'error'); };
       document.body.appendChild(s);

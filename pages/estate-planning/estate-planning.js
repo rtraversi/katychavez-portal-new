@@ -8,7 +8,7 @@
   const esc = (s) => Utils.esc(s == null ? '' : String(s));
 
   const { data, error } = await db.from('ep_intake_requests')
-    .select('id, matter_id, language, sent_at, expires_at, revoked_at, opened_at, draft_saved_at, submitted_at, answers_updated_at, matter:matters(id, client_id, client:clients(id, first_name, last_name))')
+    .select('id, matter_id, language, sent_at, expires_at, revoked_at, opened_at, draft_saved_at, submitted_at, answers_updated_at, token_hash, matter:matters(id, client_id, client:clients(id, first_name, last_name))')
     .order('sent_at', { ascending: false })
     .limit(500);
 
@@ -23,7 +23,10 @@
   // One line per matter: its most recent request.
   const now = new Date();
   const seen = new Set();
-  const latest = (data || []).filter(r => (seen.has(r.matter_id) ? false : seen.add(r.matter_id)));
+  // Staff-entered answers (POST /api/ep-intake/enter) carry 'staff:' in token_hash —
+  // see _ep-common.js. Keep only that flag; the hash itself is never needed here.
+  const rows = (data || []).map(({ token_hash, ...r }) => ({ ...r, staff: String(token_hash || '').startsWith('staff:') }));
+  const latest = rows.filter(r => (seen.has(r.matter_id) ? false : seen.add(r.matter_id)));
   const ready = latest.filter(r => r.submitted_at);
   const open  = latest.filter(r => !r.submitted_at && !r.revoked_at && new Date(r.expires_at) >= now);
 
@@ -35,8 +38,8 @@
     </div>`;
 
   readyEl.innerHTML = ready.length ? `<div class="dk-register">${ready.map(r => row(r,
-    `Submitted ${esc(Utils.formatDateTime(r.submitted_at))}${r.answers_updated_at ? '<span class="sep">·</span>edited by staff' : ''}`,
-    r.answers_updated_at ? DK.tag('Reviewed', 'ok') : DK.tag('New', 'acc'))).join('')}</div>`
+    `${r.staff ? 'Entered by staff' : 'Submitted'} ${esc(Utils.formatDateTime(r.submitted_at))}${r.answers_updated_at ? '<span class="sep">·</span>edited by staff' : ''}`,
+    r.staff || r.answers_updated_at ? DK.tag('Reviewed', 'ok') : DK.tag('New', 'acc'))).join('')}</div>`
     : '<p class="dk-empty">No submitted questionnaires yet.</p>';
 
   openEl.innerHTML = open.length ? `<div class="dk-register">${open.map(r => row(r,
@@ -49,7 +52,7 @@
   document.getElementById('ep-count-ready').textContent = ready.length ? String(ready.length) : '';
   document.getElementById('ep-count-open').textContent = open.length ? String(open.length) : '';
   document.getElementById('ep-deskbar').innerHTML = DK.deskbar([
-    { n: ready.filter(r => !r.answers_updated_at).length, label: 'new submissions', jump: 'ep-sec-ready' },
+    { n: ready.filter(r => !r.staff && !r.answers_updated_at).length, label: 'new submissions', jump: 'ep-sec-ready' },
     { n: open.length, label: 'waiting on clients', jump: 'ep-sec-open', tone: open.length ? 'warn' : '' },
   ]);
   DK.wireDeskbar && DK.wireDeskbar();

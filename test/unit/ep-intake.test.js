@@ -436,6 +436,41 @@ describe('staff endpoints', () => {
     expect(res.status).toBe(409);
   });
 
+  it('enter: staff answers become a submitted questionnaire no link can open', async () => {
+    const res = await staffApi({ request: post('/api/ep-intake/enter', { matter_id: 'm-1', answers: married() }), env: ENV });
+    expect(res.status).toBe(200);
+    const row = db.tables.ep_intake_requests[0];
+    expect(row.submitted_at).toBeTruthy();
+    expect(row.answers.client.full_legal_name).toBe('Maria Elena Lopez');
+    expect(row.answers_submitted).toEqual(row.answers);
+    expect(row.answers.hacker).toBeUndefined();
+    expect(row.sent_by).toBe('u-1');
+    expect(row.token_hash).toMatch(/^staff:[0-9a-f]{32}$/);
+
+    const view = await (await staffApi({ request: get('/api/ep-intake/matter?matter_id=m-1'), env: ENV })).json();
+    expect(view.requests[0]).toMatchObject({ status: 'submitted', entered_by_staff: true });
+    expect(view.requests[0].token_hash).toBeUndefined();
+  });
+
+  it('enter: partial answers save with warnings, and close the client’s open link', async () => {
+    await seedOpen(db);
+    const res = await staffApi({ request: post('/api/ep-intake/enter', { matter_id: 'm-1', answers: { client: { full_legal_name: 'Maria' } } }), env: ENV });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.warnings.length).toBeGreaterThan(0);
+    expect(body.closed_link).toBe(true);
+    const [open, entered] = db.tables.ep_intake_requests;
+    expect(open.revoked_at).toBeTruthy();
+    expect(entered.submitted_at).toBeTruthy();
+  });
+
+  it('enter: a Client cannot use it', async () => {
+    helpersMock.verifyAuth.mockResolvedValue({ profile: { id: 'c', roles: { name: 'Client' } }, accessLevel: 'write', isClient: true });
+    const res = await staffApi({ request: post('/api/ep-intake/enter', { matter_id: 'm-1', answers: married() }), env: ENV });
+    expect(res.status).toBe(403);
+    expect(db.tables.ep_intake_requests).toHaveLength(0);
+  });
+
   it('matter: lists requests with status and never the token hash', async () => {
     await seedOpen(db);
     const res = await staffApi({ request: get('/api/ep-intake/matter?matter_id=m-1'), env: ENV });

@@ -9,11 +9,16 @@
 //        they use, for the client card's Estate Planning tab.
 //   POST /api/ep-intake/answers   { request_id, answers }
 //        Staff edits to submitted answers. answers_submitted is never touched.
+//   POST /api/ep-intake/enter     { matter_id, answers }
+//        Staff fill the questionnaire in themselves (phone / office meeting). Saved
+//        as a submitted questionnaire with no client link; closes any open link
+//        (the card pre-fills the form with that link's saved progress).
 //   POST /api/ep-intake/revoke    { request_id }
 
 import { makeAdminClient, json } from './_helpers.js';
 import {
   requireStaff, readJson, newToken, hashToken, requestStatus, portalUrl, EP_LINK_TTL_DAYS,
+  staffEntryHash, isStaffEntered,
 } from './_ep-common.js';
 import { getQuestionnaire, DEFAULT_QUESTIONNAIRE_KEY } from './_ep-questionnaire.js';
 import { validateAnswers, publicDefinition } from './_ep-validate.js';
@@ -28,6 +33,7 @@ export async function onRequest({ request, env }) {
     if (path.endsWith('/send'))    return await send(request, env);
     if (path.endsWith('/matter'))  return await matterView(request, env);
     if (path.endsWith('/answers')) return await saveAnswers(request, env);
+    if (path.endsWith('/enter'))   return await enterAnswers(request, env);
     if (path.endsWith('/revoke'))  return await revoke(request, env);
     return json(404, { error: 'Not found' });
   } catch (err) {
@@ -120,11 +126,13 @@ async function matterView(request, env) {
 
   const admin = makeAdminClient(env);
   const { data: rows, error } = await admin.from('ep_intake_requests')
-    .select(PUBLIC_COLS).eq('matter_id', matterId).order('sent_at', { ascending: false });
+    .select(PUBLIC_COLS + ', token_hash').eq('matter_id', matterId).order('sent_at', { ascending: false });
   if (error) return json(500, { error: 'Could not load questionnaires' });
 
   const now = new Date();
-  const requests = (rows || []).map(r => ({ ...r, status: requestStatus(r, now) }));
+  const requests = (rows || []).map(({ token_hash, ...r }) => ({
+    ...r, status: requestStatus(r, now), entered_by_staff: isStaffEntered({ token_hash }),
+  }));
   const keys = new Set([DEFAULT_QUESTIONNAIRE_KEY, ...requests.map(r => r.questionnaire_key)]);
   const definitions = {};
   for (const k of keys) { const d = getQuestionnaire(k); if (d) definitions[k] = publicDefinition(d); }
@@ -162,6 +170,57 @@ async function saveAnswers(request, env) {
   if (upErr) return json(500, { error: 'Could not save' });
 
   return json(200, { ok: true, answers, warnings: errors.map(e => e.message), updated_at: now });
+}
+
+async function enterAnswers(request, env) {
+  if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
+  const auth = await requireStaff(request, env, 'write');
+  if (auth.httpError) return json(auth.httpError.status, { error: auth.httpError.message });
+
+  const { body, error } = await readJson(request);
+  if (error) return json(400, { error });
+  const { matter_id } = body;
+  if (!matter_id) return json(400, { error: 'matter_id is required' });
+
+  const admin = makeAdminClient(env);
+  const { data: matter } = await admin.from('matters').select('id').eq('id', matter_id).maybeSingle();
+  if (!matter) return json(404, { error: 'Matter not found' });
+
+  const { data: open } = await admin.from('ep_intake_requests')
+    .select('id, questionnaire_key')
+    .eq('matter_id', matter_id).is('submitted_at', null).is('revoked_at', null)
+    .maybeSingle();
+
+  const def = getQuestionnaire(open?.questionnaire_key) || getQuestionnaire(DEFAULT_QUESTIONNAIRE_KEY);
+  // Same rules as staff edits: hidden sections dropped, missing required answers are warnings.
+  const { answers, errors } = validateAnswers(def, body.answers, 'submit');
+  const now = new Date().toISOString();
+
+  // Staff have taken over: the client's link would only produce a competing submission.
+  if (open) await admin.from('ep_intake_requests').update({ revoked_at: now }).eq('id', open.id);
+
+  const { data: created, error: insErr } = await admin.from('ep_intake_requests').insert({
+    matter_id,
+    questionnaire_key: def.key,
+    questionnaire_version: def.version,
+    token_hash: staffEntryHash(),
+    language: 'en',
+    sent_to_email: null,
+    sent_by: auth.profile?.id || null,
+    sent_at: now,
+    expires_at: now,
+    submitted_at: now,
+    answers_submitted: answers,
+    answers,
+  }).select('id').single();
+  if (insErr || !created) {
+    console.error('[ep-intake-staff] enter:', insErr?.message);
+    return json(500, { error: 'Could not save the answers.' });
+  }
+
+  return json(200, {
+    ok: true, request_id: created.id, answers, warnings: errors.map(e => e.message), closed_link: !!open,
+  });
 }
 
 async function revoke(request, env) {

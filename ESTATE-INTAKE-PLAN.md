@@ -14,6 +14,10 @@ so the two converge if both ever land.
 1. **Send.** On the client card → **Estate Planning** tab, staff send the questionnaire (English or Spanish),
    emailed and/or as a link to copy (for text/WhatsApp — shown once; only its SHA-256 is stored).
    Resending revokes the open link and **carries the client's saved progress** to the new one. Links last 60 days.
+   **Or fill it in yourself** (phone / office meeting): the same questionnaire opens on the card, pre-filled from
+   the client record (or the open link's saved progress). Saving makes it a submitted questionnaire with no link
+   (`POST /api/ep-intake/enter`; closes any open link). Such rows are marked by `token_hash = 'staff:' + hex`
+   (`isStaffEntered()` in `_ep-common.js`) — no migration; shown as "Entered by staff", never "New".
 2. **Client fills it in** at `/estate-intake?t=…` — no login, one section per step, EN/ES toggle, autosave on
    every step and every 15 s, review page, Turnstile on submit. Hidden sections (e.g. spouse when single) are
    dropped on submit. Mobile-first, Docket kit, light/dark.

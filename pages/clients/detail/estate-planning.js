@@ -5,7 +5,8 @@
 // estate-specific on the card lives here, so the shared detail.js only carries
 // the hook.
 //
-//   Questionnaire  send / resend / revoke the client link, see where it stands
+//   Questionnaire  send / resend / revoke the client link, see where it stands —
+//                  or fill it in yourself (phone or office meeting, no link)
 //   Answers        read, edit (validated server-side), print, compare to original
 //   Draft          fill estate templates (Word) from the answers, for the client
 //                  or — for a couple — the spouse
@@ -158,6 +159,7 @@
     let data = null;          // /api/ep-intake/matter
     let tpl = null;           // /api/ep-intake/templates
     let editing = null;       // working copy of answers while editing
+    let entering = false;     // editing is a new staff-entered questionnaire, not an edit
     let showOriginal = false;
     let lastLink = null;
 
@@ -188,11 +190,30 @@
     const openReq = () => data.requests.find(r => r.status === 'open') || null;
     const defFor = (r) => data.definitions[r?.questionnaire_key] || data.definitions[data.default_key];
 
+    // Starting point for "Fill it in yourself": whatever the client already saved on an
+    // open link, else what the card knows about the client.
+    function prefill() {
+      const saved = openReq()?.draft_answers;
+      if (saved && Object.keys(saved).length) return JSON.parse(JSON.stringify(saved));
+      const c = client || {};
+      const cityLine = [c.city, [c.state, c.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+      const address = [c.address_line1, c.address_line2, cityLine].filter(Boolean).join('\n');
+      const out = { client: {} };
+      if (Utils.fullName(c)) out.client.full_legal_name = Utils.fullName(c);
+      if (/^\d{4}-\d{2}-\d{2}/.test(c.dob || '')) out.client.dob = c.dob.slice(0, 10);
+      if (c.phone) out.client.phone = c.phone;
+      if (c.email) out.client.email = c.email;
+      if (address) out.client.address = address;
+      return out;
+    }
+    const enterBtn = (cls = 'btn btn--secondary') => (data.can_write && !latestSubmitted()
+      ? `<button type="button" class="${cls}" data-ep-enter>Fill it in yourself</button>` : '');
+
     function deskbar() {
       const r = latest();
       const chips = [];
       if (!r) chips.push({ label: 'Questionnaire not sent', static: true });
-      else if (r.status === 'submitted') chips.push({ label: `Submitted ${Utils.formatDate(r.submitted_at)}`, static: true });
+      else if (r.status === 'submitted') chips.push({ label: `${r.entered_by_staff ? 'Entered by staff' : 'Submitted'} ${Utils.formatDate(r.submitted_at)}`, static: true });
       else if (r.status === 'open') {
         chips.push({ label: r.draft_saved_at ? `Client saved progress ${Utils.formatDate(r.draft_saved_at)}`
           : r.opened_at ? 'Client opened the link' : `Link sent ${Utils.formatDate(r.sent_at)}`, static: true, tone: 'warn' });
@@ -214,7 +235,9 @@
           <div class="ep-send-actions">
             <button type="button" class="btn btn--primary" id="ep-send-go">${open ? 'Send a new link' : 'Send questionnaire'}</button>
             <a class="btn btn--secondary" id="ep-preview" target="_blank" rel="noopener" href="/estate-intake?preview=1">Preview</a>
+            ${enterBtn()}
           </div>
+          ${data.can_write && !latestSubmitted() ? '<p class="ep-note">Taking the answers by phone or in the office? <b>Fill it in yourself</b> opens the same questionnaire here — no link is sent.</p>' : ''}
           ${open ? '<p class="ep-note">Sending a new link replaces the open one. Anything the client already saved carries over.</p>' : ''}
           ${lastLink ? `
             <div class="ep-link">
@@ -227,6 +250,10 @@
     function requestsRegister() {
       if (!data.requests.length) return '<p class="dk-empty">No questionnaire has been sent for this matter yet.</p>';
       return `<div class="dk-register">${data.requests.map(r => {
+        if (r.entered_by_staff) {
+          return `<div class="dk-reg-row"><div><div class="dk-reg-title">Questionnaire ${DK.tag('Entered by staff', 'ok')}</div>
+            <div class="dk-reg-meta">Filled in on the card ${esc(fmt(r.submitted_at))}<span class="sep">·</span>no client link</div></div><div class="dk-reg-act"></div></div>`;
+        }
         const st = STATUS[r.status] || { label: r.status, kind: 'mut' };
         const meta = [
           `Sent ${esc(fmt(r.sent_at))}`,
@@ -247,19 +274,32 @@
 
     function answersSection() {
       const r = latestSubmitted();
-      if (!r) return '<p class="dk-empty">Answers appear here once the client submits the questionnaire.</p>';
+      if (entering && editing) {
+        const open = openReq();
+        return `<div class="ep-note" style="margin-bottom:12px"><b>Filling in the questionnaire for ${esc(clientName)}.</b>
+            Leave anything you don’t know yet blank — saving lists what’s still missing, and <b>Edit answers</b> picks it up later.
+            ${open ? '<br>Saving closes the link sent to the client; anything they already saved is filled in below.' : ''}</div>
+          <form id="ep-edit-form" class="ep-edit">${editorHtml(defFor(open), editing)}
+          <div class="ep-send-actions"><button type="submit" class="btn btn--primary" id="ep-edit-save">Save answers</button>
+          <button type="button" class="btn btn--secondary" id="ep-edit-cancel">Cancel</button></div></form>`;
+      }
+      if (!r) {
+        return `<div class="dk-empty">Answers appear here once the client submits the questionnaire${data.can_write ? ' — or fill it in yourself.' : '.'}
+          ${enterBtn('btn btn--secondary btn--sm')}</div>`;
+      }
       const def = defFor(r);
       if (editing) {
         return `<form id="ep-edit-form" class="ep-edit">${editorHtml(def, editing)}
           <div class="ep-send-actions"><button type="submit" class="btn btn--primary" id="ep-edit-save">Save answers</button>
           <button type="button" class="btn btn--secondary" id="ep-edit-cancel">Cancel</button></div></form>`;
       }
+      const original = r.entered_by_staff ? 'the first saved version' : 'what the client submitted';
       const edited = r.answers_updated_at
-        ? `<span>Edited by staff ${esc(fmt(r.answers_updated_at))}.</span> <button class="dk-linkbtn" id="ep-orig">${showOriginal ? 'Show current answers' : 'Show what the client submitted'}</button>` : '';
+        ? `<span>Edited by staff ${esc(fmt(r.answers_updated_at))}.</span> <button class="dk-linkbtn" id="ep-orig">${showOriginal ? 'Show current answers' : `Show ${original}`}</button>` : '';
       const shown = showOriginal ? (r.answers_submitted || {}) : (r.answers || {});
       return `
         <div class="ep-ans-bar">
-          <div class="ep-note">${showOriginal ? '<b>Showing the client’s original submission.</b> ' : ''}${edited}</div>
+          <div class="ep-note">${r.entered_by_staff ? `Entered by staff ${esc(fmt(r.submitted_at))}. ` : ''}${showOriginal ? `<b>Showing ${original}.</b> ` : ''}${edited}</div>
           <div class="dk-reg-act">
             ${data.can_write && !showOriginal ? '<button class="btn btn--secondary btn--sm" id="ep-edit">Edit answers</button>' : ''}
             <button class="btn btn--secondary btn--sm" id="ep-print">Print</button>
@@ -283,9 +323,11 @@
           ${married ? `<select class="form-control" id="ep-role" style="max-width:260px">
               <option value="client">For ${esc(r.answers.client?.full_legal_name || clientName)}</option>
               <option value="spouse">For the spouse, ${esc(r.answers.marriage.spouse_name)}</option></select>` : ''}
-          <button class="btn btn--primary" id="ep-draft-go" ${r && data.can_write ? '' : 'disabled'}>Draft selected</button>
-          ${r ? '' : '<span class="ep-note">Drafting needs a submitted questionnaire.</span>'}
+          <button class="btn btn--primary" id="ep-draft-go" ${r && data.can_write ? '' : 'disabled title="Needs questionnaire answers first"'}>Draft selected</button>
         </div>
+        ${r ? '' : `<div class="ep-starters"><div><b>Drafting needs the questionnaire answers first</b> — the templates are filled from them
+          (names, county, family, executors, agents). Send the questionnaire to the client, or fill it in yourself.</div>
+          ${data.can_write ? `<div class="dk-reg-act"><button type="button" class="btn btn--secondary btn--sm" data-ep-jump="ep-send">Send questionnaire</button>${enterBtn('btn btn--secondary btn--sm')}</div>` : ''}</div>`}
         <div id="ep-draft-result"></div>` : '<p class="dk-empty">No estate-planning templates yet.</p>';
 
       const starters = notInstalled.length && data.can_write ? `
@@ -356,7 +398,16 @@
       });
       $('ep-orig')?.addEventListener('click', () => { showOriginal = !showOriginal; render(); });
       $('ep-edit')?.addEventListener('click', () => { editing = JSON.parse(JSON.stringify(latestSubmitted().answers || {})); render(); });
-      $('ep-edit-cancel')?.addEventListener('click', () => { editing = null; render(); });
+      $('ep-edit-cancel')?.addEventListener('click', () => { editing = null; entering = false; render(); });
+      root.querySelectorAll('[data-ep-enter]').forEach(b => b.addEventListener('click', () => {
+        editing = prefill(); entering = true; showOriginal = false; render();
+        root.querySelector('#ep-sec-answers')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }));
+      root.querySelectorAll('[data-ep-jump]').forEach(b => b.addEventListener('click', () => {
+        const el = root.querySelector('#' + b.dataset.epJump);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.querySelector('input')?.focus({ preventScroll: true });
+      }));
 
       const form = $('ep-edit-form');
       if (form) {
@@ -385,8 +436,10 @@
           e.preventDefault();
           const btn = $('ep-edit-save'); btn.disabled = true;
           try {
-            const res = await callFunction('/api/ep-intake/answers', { request_id: latestSubmitted().id, answers: editing });
-            editing = null;
+            const res = entering
+              ? await callFunction('/api/ep-intake/enter', { matter_id: matter.id, answers: editing })
+              : await callFunction('/api/ep-intake/answers', { request_id: latestSubmitted().id, answers: editing });
+            editing = null; entering = false; lastLink = null;
             if (res.warnings?.length) Utils.toast(`Saved. Still blank: ${res.warnings.slice(0, 3).join('; ')}${res.warnings.length > 3 ? '…' : ''}`, 'warning');
             else Utils.toast('Answers saved.', 'success');
             await load();

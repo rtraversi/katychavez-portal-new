@@ -157,7 +157,7 @@ async function draft(request, env) {
   if (body.request_id) q = q.eq('id', body.request_id);
   const { data: reqs } = await q.order('submitted_at', { ascending: false }).limit(1);
   const req = reqs?.[0];
-  if (!req) return json(409, { error: 'There is no submitted questionnaire for this matter yet.' });
+  if (!req) return json(409, { error: 'There are no questionnaire answers for this matter yet. Send the questionnaire, or fill it in yourself on the Estate Planning tab.' });
 
   const married = ['married', 'separated'].includes(req.answers?.marriage?.status);
   if (role === 'spouse' && !(married && req.answers?.marriage?.spouse_name)) {
