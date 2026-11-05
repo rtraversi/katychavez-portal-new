@@ -1,15 +1,37 @@
 'use strict';
 
 // Bank Accounts: the firm's own balances + transactions (bank_feeds module).
-// Reads bank_connections / bank_accounts / bank_transactions through RLS
-// (can_read('bank_feeds'), Owner by default). Connect / sync / disconnect go through
-// POST /api/bank-feeds, because the provider credential never reaches the browser.
+// Reads bank_connections / bank_accounts / bank_transactions / bank_category_rules
+// through RLS (can_read('bank_feeds'), Owner by default). Connect / sync / disconnect
+// go through POST /api/bank-feeds, because the provider credential never reaches the
+// browser. Category rules are plain firm data and are written directly (RLS
+// can_write('bank_feeds')). Categorizing happens here, at render time, so editing a
+// rule recategorizes history at once. The logic is in categorize.js.
 (async function BankAccountsPage() {
   const esc = (s) => Utils.esc(s == null ? '' : String(s));
   const $ = (id) => document.getElementById(id);
   const PAGE = 150;
+  const TOP_N = 5;
+  const NONE = '__none__';   // category filter value for "Uncategorized"
 
-  const state = { conns: [], accounts: [], txns: [], accountFilter: '', search: '', shown: PAGE };
+  let Cat;
+  try {
+    Cat = await import(`/pages/bank-accounts/categorize.js?v=${window.APP_CONFIG?.deployVersion || ''}`);
+  } catch (err) {
+    console.error('[bank-accounts] categorize.js failed to load', err);
+  }
+
+  const state = {
+    conns: [], accounts: [], txns: [], rules: [], rulesOk: false,
+    compiled: [], catOf: new Map(),
+    accountFilter: '', catFilter: '', search: '', shown: PAGE, days: 30,
+    canWrite: false,
+  };
+
+  try {
+    const writable = await Auth.getAccessibleModules('write');
+    state.canWrite = writable.has('bank_feeds');
+  } catch { /* read-only view */ }
 
   // ── Money ─────────────────────────────────────────────────────────────────
   const fmtCache = new Map();
@@ -25,6 +47,7 @@
     }
     return fmtCache.get(currency).format(n);
   }
+  const signed = (n, currency) => `${n > 0 ? '+' : ''}${money(n, currency)}`;
 
   async function api(body) {
     const session = await Auth.getSession();
@@ -55,11 +78,29 @@
     state.conns = c.data || [];
     state.accounts = a.data || [];
     state.txns = t.data || [];
+    await loadRules();
     return true;
+  }
+
+  // Rules load separately: a failure here (e.g. the table not migrated yet) must not
+  // take the balances down with it.
+  async function loadRules() {
+    const r = await db.from('bank_category_rules')
+      .select('id, pattern, category, direction, priority, created_at')
+      .order('priority').order('created_at');
+    state.rulesOk = !r.error && !!Cat;
+    state.rules = state.rulesOk ? (r.data || []) : [];
+    recategorize();
+  }
+
+  function recategorize() {
+    state.compiled = Cat ? Cat.compileRules(state.rules) : [];
+    state.catOf = new Map(state.txns.map(t => [t.id, Cat ? Cat.categorize(t, state.compiled) : null]));
   }
 
   const accountById = () => new Map(state.accounts.map(a => [a.id, a]));
   const connById = () => new Map(state.conns.map(c => [c.id, c]));
+  const currencyOf = () => state.accounts.find(a => a.present)?.currency || 'USD';
 
   // ── Render: deskbar ───────────────────────────────────────────────────────
   function renderDeskbar() {
@@ -97,28 +138,87 @@
         a.balance_date ? `as of ${esc(Utils.formatDateTime(a.balance_date))}` : '',
         conn?.status === 'revoked' ? '<span class="danger">connection revoked — balance may be stale</span>' : '',
       ].filter(Boolean).join('<span class="sep">·</span>');
-      return `<div class="dk-reg-row ba-pick${state.accountFilter === a.id ? ' is-active' : ''}" data-account="${esc(a.id)}" title="Show this account's transactions">
+      return `<div class="dk-reg-row ba-pick${state.accountFilter === a.id ? ' is-active' : ''}" data-account="${esc(a.id)}" title="Show only this account">
         <div><div class="dk-reg-title">${esc(a.name)}</div><div class="dk-reg-meta">${meta}</div></div>
         <div class="ba-amt lg${n < 0 ? ' neg' : ''}">${esc(money(a.balance, a.currency))}${avail}</div>
       </div>`;
     }).join('')}</div>`;
 
     $('ba-accounts').querySelectorAll('[data-account]').forEach(el => el.addEventListener('click', () => {
-      state.accountFilter = state.accountFilter === el.dataset.account ? '' : el.dataset.account;
-      state.shown = PAGE;
-      $('ba-txn-account').value = state.accountFilter;
-      renderAccounts();
-      renderTxns();
-      if (state.accountFilter) $('ba-sec-txns').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setAccountFilter(state.accountFilter === el.dataset.account ? '' : el.dataset.account);
+    }));
+  }
+
+  // ── Render: top categories ────────────────────────────────────────────────
+  function summaryTxns() {
+    const cutoff = new Date(Date.now() - state.days * 86400000);
+    return state.txns.filter(t =>
+      (!state.accountFilter || t.account_id === state.accountFilter) && Date.parse(t.posted_at) >= cutoff.getTime());
+  }
+
+  function renderCats() {
+    document.querySelectorAll('#ba-period [data-days]').forEach(b =>
+      b.setAttribute('aria-pressed', String(Number(b.dataset.days) === state.days)));
+
+    const el = $('ba-cats');
+    if (!state.txns.length) { el.innerHTML = '<p class="dk-empty">Categories appear once transactions come in.</p>'; return; }
+    if (!state.rulesOk) { el.innerHTML = '<p class="dk-empty">Categories are not available yet.</p>'; return; }
+
+    const acct = state.accountFilter ? accountById().get(state.accountFilter) : null;
+    const scope = acct ? ` in ${esc(acct.name)}` : '';
+    const { categories, uncategorized } = Cat.summarize(summaryTxns(), state.compiled);
+    if (!state.rules.length) {
+      el.innerHTML = `<p class="dk-empty">No category rules yet. ${state.canWrite ? 'Add some under <strong>Category rules</strong> below (e.g. "gusto" is Payroll).' : ''}</p>`;
+      return;
+    }
+    if (!categories.length) {
+      el.innerHTML = `<p class="dk-empty">Nothing categorized in the last ${state.days} days${scope}.</p>`;
+      return;
+    }
+    const top = categories.slice(0, TOP_N);
+    const max = Math.max(...top.map(c => Math.abs(c.total))) || 1;
+    const cur = currencyOf();
+    const rows = top.map(c => {
+      const pct = Math.max(2, Math.round(Math.abs(c.total) / max * 100));
+      const active = state.catFilter === c.category;
+      return `<div class="dk-reg-row ba-pick${active ? ' is-active' : ''}" data-cat="${esc(c.category)}" title="Show these transactions">
+        <div><div class="dk-reg-title">${esc(c.category)}</div>
+          <div class="dk-reg-meta">${c.count} transaction${c.count === 1 ? '' : 's'}</div>
+          <span class="ba-bar${c.total > 0 ? ' in' : ''}"><i style="width:${pct}%"></i></span></div>
+        <div class="ba-amt${c.total > 0 ? ' in' : ''}">${esc(signed(c.total, cur))}</div>
+      </div>`;
+    }).join('');
+    const more = categories.length > TOP_N ? `${categories.length - TOP_N} more categor${categories.length - TOP_N === 1 ? 'y' : 'ies'}` : '';
+    const unc = uncategorized.count
+      ? `<button class="dk-linkbtn" type="button" data-cat="${NONE}">${uncategorized.count} uncategorized (${esc(signed(uncategorized.total, cur))})</button>` : '';
+    const foot = [more, unc].filter(Boolean).join(' · ');
+    el.innerHTML = `<div class="dk-register">${rows}${foot ? `<div class="ba-cat-foot">Last ${state.days} days${scope}${foot ? ' · ' + foot : ''}</div>` : ''}</div>`;
+
+    el.querySelectorAll('[data-cat]').forEach(r => r.addEventListener('click', () => {
+      setCatFilter(state.catFilter === r.dataset.cat ? '' : r.dataset.cat, true);
     }));
   }
 
   // ── Render: transactions ──────────────────────────────────────────────────
+  function allCategories() {
+    return [...new Set(state.rules.map(r => String(r.category).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }
+
   function renderTxnToolbar() {
     const sel = $('ba-txn-account');
     sel.innerHTML = '<option value="">All accounts</option>' + state.accounts.map(a =>
       `<option value="${esc(a.id)}">${esc(a.name)}${a.institution ? ' · ' + esc(a.institution) : ''}${a.present ? '' : ' (no longer reported)'}</option>`).join('');
     sel.value = state.accountFilter;
+
+    const cats = allCategories();
+    const csel = $('ba-txn-cat');
+    csel.hidden = !state.rulesOk || !cats.length;
+    csel.innerHTML = '<option value="">All categories</option>' +
+      cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('') +
+      `<option value="${NONE}">Uncategorized</option>`;
+    if (state.catFilter && state.catFilter !== NONE && !cats.includes(state.catFilter)) state.catFilter = '';
+    csel.value = state.catFilter;
+
     $('ba-txn-toolbar').hidden = !state.txns.length;
   }
 
@@ -126,8 +226,13 @@
     const q = state.search.trim().toLowerCase();
     return state.txns.filter(t => {
       if (state.accountFilter && t.account_id !== state.accountFilter) return false;
+      if (state.catFilter) {
+        const c = state.catOf.get(t.id);
+        if (state.catFilter === NONE ? c : c !== state.catFilter) return false;
+      }
       if (!q) return true;
-      return [t.payee, t.description, t.memo, String(t.amount)].some(v => v && String(v).toLowerCase().includes(q));
+      return [t.payee, t.description, t.memo, String(t.amount), state.catOf.get(t.id)]
+        .some(v => v && String(v).toLowerCase().includes(q));
     });
   }
 
@@ -147,14 +252,15 @@
       const a = accounts.get(t.account_id);
       const n = Number(t.amount);
       const title = t.payee || t.description || 'Transaction';
+      const cat = state.catOf.get(t.id);
       const meta = [
         esc(Utils.formatDate(t.posted_at)),
         multi && a ? esc(a.name) : '',
         t.payee && t.description && t.description !== t.payee ? esc(t.description) : '',
       ].filter(Boolean).join('<span class="sep">·</span>');
       return `<div class="dk-reg-row">
-        <div><div class="dk-reg-title">${esc(title)}</div><div class="dk-reg-meta">${meta}</div></div>
-        <div class="ba-amt${n > 0 ? ' in' : ''}">${n > 0 ? '+' : ''}${esc(money(t.amount, a?.currency || 'USD'))}</div>
+        <div><div class="dk-reg-title">${esc(title)}${cat ? ' ' + DK.tag(cat, n > 0 ? 'ok' : 'mut') : ''}</div><div class="dk-reg-meta">${meta}</div></div>
+        <div class="ba-amt${n > 0 ? ' in' : ''}">${esc(signed(n, a?.currency || 'USD'))}</div>
       </div>`;
     }).join('')}</div>`;
     $('ba-txn-more-wrap').hidden = list.length <= state.shown;
@@ -190,17 +296,75 @@
     $('ba-conns').querySelectorAll('[data-disconnect]').forEach(b => b.addEventListener('click', () => disconnect(b.dataset.disconnect)));
   }
 
+  // ── Render: category rules ────────────────────────────────────────────────
+  const DIRECTION_LABEL = { any: 'money in and out', in: 'money in only', out: 'money out only' };
+
+  function renderRules() {
+    $('ba-rule-open').hidden = !state.canWrite || !state.rulesOk || !$('ba-rule-form').hidden;
+    $('ba-cat-list').innerHTML = allCategories().map(c => `<option value="${esc(c)}">`).join('');
+    $('ba-count-rules').textContent = state.rules.length ? String(state.rules.length) : '';
+    const el = $('ba-rules');
+    if (!state.rulesOk) { el.innerHTML = '<p class="dk-empty">Category rules are not available yet.</p>'; return; }
+    if (!state.rules.length) {
+      el.innerHTML = `<p class="dk-empty">No rules yet. A rule like "gusto" is <strong>Payroll</strong> sorts every matching transaction, past and future.</p>`;
+      return;
+    }
+    // How many loaded transactions each rule actually decides (first match wins).
+    const decided = new Map();
+    for (const t of state.txns) {
+      const hay = Cat.haystack(t);
+      const dir = Number(t.amount) > 0 ? 'in' : 'out';
+      const r = state.compiled.find(x => (x.direction === 'any' || x.direction === dir) && hay.includes(x.needle));
+      if (r) decided.set(r, (decided.get(r) || 0) + 1);
+    }
+    const countFor = (rule) => {
+      const needle = String(rule.pattern).trim().toLowerCase();
+      const c = state.compiled.find(x => x.needle === needle && x.category === String(rule.category).trim() && x.direction === (rule.direction || 'any'));
+      return c ? (decided.get(c) || 0) : 0;
+    };
+    el.innerHTML = `<div class="dk-register">${state.rules.map(r => {
+      const n = countFor(r);
+      return `<div class="dk-reg-row">
+        <div><div class="dk-reg-title"><span class="ba-pattern">"${esc(r.pattern)}"</span> → ${DK.tag(r.category, r.direction === 'in' ? 'ok' : 'acc')}</div>
+          <div class="dk-reg-meta">${esc(DIRECTION_LABEL[r.direction] || DIRECTION_LABEL.any)}<span class="sep">·</span>${n} transaction${n === 1 ? '' : 's'}</div></div>
+        ${state.canWrite ? `<div class="dk-reg-act"><button class="dk-linkbtn d" type="button" data-rule-del="${esc(r.id)}">Delete</button></div>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+    el.querySelectorAll('[data-rule-del]').forEach(b => b.addEventListener('click', () => deleteRule(b.dataset.ruleDel)));
+  }
+
   function renderAll() {
     renderDeskbar();
     renderAccounts();
+    renderCats();
     renderTxnToolbar();
     renderTxns();
     renderConns();
+    renderRules();
   }
 
   async function reload() { if (await load()) renderAll(); }
 
-  // ── Actions ───────────────────────────────────────────────────────────────
+  // ── Filters ───────────────────────────────────────────────────────────────
+  function setAccountFilter(id) {
+    state.accountFilter = id;
+    state.shown = PAGE;
+    $('ba-txn-account').value = id;
+    renderAccounts();
+    renderCats();
+    renderTxns();
+  }
+
+  function setCatFilter(cat, scroll) {
+    state.catFilter = cat;
+    state.shown = PAGE;
+    $('ba-txn-cat').value = cat;
+    renderCats();
+    renderTxns();
+    if (scroll && cat) $('ba-sec-txns').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ── Actions: connections ──────────────────────────────────────────────────
   async function syncNow(btn) {
     btn.disabled = true;
     const label = btn.textContent;
@@ -266,12 +430,59 @@
     }
   });
 
-  $('ba-txn-account').addEventListener('change', (e) => {
-    state.accountFilter = e.target.value;
-    state.shown = PAGE;
-    renderAccounts();
-    renderTxns();
+  // ── Actions: category rules ───────────────────────────────────────────────
+  function openRuleForm(open) {
+    $('ba-rule-form').hidden = !open;
+    $('ba-rule-open').hidden = open || !state.canWrite;
+    if (open) $('ba-rule-pattern').focus();
+    else { $('ba-rule-pattern').value = ''; $('ba-rule-category').value = ''; $('ba-rule-direction').value = 'any'; }
+  }
+
+  $('ba-rule-open').addEventListener('click', () => openRuleForm(true));
+  $('ba-rule-cancel').addEventListener('click', () => openRuleForm(false));
+  $('ba-rule-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pattern = $('ba-rule-pattern').value.trim();
+    const category = $('ba-rule-category').value.trim();
+    const direction = $('ba-rule-direction').value;
+    if (pattern.length < 2) { Utils.toast('Enter at least 2 characters to match on.', 'error'); return; }
+    if (!category) { Utils.toast('Enter a category.', 'error'); return; }
+    const btn = $('ba-rule-submit');
+    btn.disabled = true;
+    try {
+      const profile = await Auth.getProfile().catch(() => null);
+      const { error } = await db.from('bank_category_rules')
+        .insert({ pattern, category, direction, created_by: profile?.id || null });
+      if (error) throw new Error(error.message);
+      openRuleForm(false);
+      await loadRules();
+      renderCats(); renderTxnToolbar(); renderTxns(); renderRules();
+      Utils.toast(`Rule added: "${pattern}" is ${category}.`, 'success');
+    } catch (err) {
+      Utils.toast(`Could not add the rule: ${err.message}`, 'error', 7000);
+    } finally {
+      btn.disabled = false;
+    }
   });
+
+  async function deleteRule(id) {
+    const r = state.rules.find(x => x.id === id);
+    const ok = await Utils.confirm(`Delete the rule "${r?.pattern}" → ${r?.category}? Matching transactions go back to uncategorized (or to the next rule that matches).`,
+      { danger: true, confirmLabel: 'Delete' });
+    if (!ok) return;
+    const { error } = await db.from('bank_category_rules').delete().eq('id', id);
+    if (error) { Utils.toast(`Could not delete the rule: ${error.message}`, 'error', 7000); return; }
+    await loadRules();
+    renderCats(); renderTxnToolbar(); renderTxns(); renderRules();
+  }
+
+  // ── Filter controls ───────────────────────────────────────────────────────
+  $('ba-txn-account').addEventListener('change', (e) => setAccountFilter(e.target.value));
+  $('ba-txn-cat').addEventListener('change', (e) => setCatFilter(e.target.value, false));
+  document.querySelectorAll('#ba-period [data-days]').forEach(b => b.addEventListener('click', () => {
+    state.days = Number(b.dataset.days);
+    renderCats();
+  }));
   let searchTimer;
   $('ba-txn-search').addEventListener('input', (e) => {
     clearTimeout(searchTimer);

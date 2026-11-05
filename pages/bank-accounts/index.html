@@ -1,6 +1,7 @@
 <!-- Bank Accounts (bank_feeds module) — the firm's own balances + transactions, pulled
      from a bank-data provider (SimpleFIN first) once a day. Owner only by default.
-     Loaded into #page-content by menu.js; logic in bank-accounts.js. -->
+     Loaded into #page-content by menu.js; logic in bank-accounts.js, categories in
+     categorize.js (ES module, unit-tested). -->
 <div class="dk-masthead">
   <div class="dk-kicker rise" style="animation-delay:.04s">Finance · Bank Accounts</div>
   <h1 class="dk-title rise" style="animation-delay:.09s">The firm's <em>bank accounts</em>.</h1>
@@ -9,15 +10,29 @@
 
 <div id="ba-deskbar"></div>
 
-<section class="dk-sec" id="ba-sec-accounts">
-  <div class="dk-sec-head"><h2>Accounts</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-accounts"></span></div>
-  <div id="ba-accounts"><p class="dk-empty">Loading…</p></div>
-</section>
+<div class="ba-top">
+  <section class="dk-sec" id="ba-sec-accounts">
+    <div class="dk-sec-head"><h2>Accounts</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-accounts"></span></div>
+    <div id="ba-accounts" class="ba-compact"><p class="dk-empty">Loading…</p></div>
+  </section>
+
+  <section class="dk-sec" id="ba-sec-cats">
+    <div class="dk-sec-head">
+      <h2>Top categories</h2><span class="dk-sec-rule"></span>
+      <span class="ba-period" id="ba-period" role="group" aria-label="Period">
+        <button type="button" class="dk-linkbtn" data-days="30">30 days</button>
+        <button type="button" class="dk-linkbtn" data-days="90">90 days</button>
+      </span>
+    </div>
+    <div id="ba-cats" class="ba-compact"><p class="dk-empty">Loading…</p></div>
+  </section>
+</div>
 
 <section class="dk-sec" id="ba-sec-txns">
   <div class="dk-sec-head"><h2>Transactions</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-txns"></span></div>
   <div class="ba-toolbar" id="ba-txn-toolbar" hidden>
     <select id="ba-txn-account" aria-label="Account"></select>
+    <select id="ba-txn-cat" aria-label="Category"></select>
     <input type="text" inputmode="search" id="ba-txn-search" placeholder="Search payee, description or amount" aria-label="Search transactions">
   </div>
   <div id="ba-txns"><p class="dk-empty">Loading…</p></div>
@@ -50,25 +65,84 @@
   <div id="ba-conns"><p class="dk-empty">Loading…</p></div>
 </section>
 
+<section class="dk-sec" id="ba-sec-rules">
+  <div class="dk-sec-head"><h2>Category rules</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-rules"></span><button class="dk-sec-add" id="ba-rule-open" type="button" hidden>+ Add rule</button></div>
+
+  <form class="ba-connect ba-rule-form" id="ba-rule-form" hidden autocomplete="off">
+    <p class="ba-steps">A transaction gets the category of the first rule whose text appears in its payee or description (capitals don't matter). Rules higher in the list win.</p>
+    <div class="ba-rule-fields">
+      <div class="field">
+        <label for="ba-rule-pattern">When it mentions <span class="required">*</span></label>
+        <input type="text" id="ba-rule-pattern" maxlength="100" placeholder="e.g. gusto">
+      </div>
+      <div class="field">
+        <label for="ba-rule-category">Category <span class="required">*</span></label>
+        <input type="text" id="ba-rule-category" maxlength="60" list="ba-cat-list" placeholder="e.g. Payroll">
+        <datalist id="ba-cat-list"></datalist>
+      </div>
+      <div class="field">
+        <label for="ba-rule-direction">Applies to</label>
+        <select id="ba-rule-direction">
+          <option value="any">Money in and out</option>
+          <option value="in">Money in only</option>
+          <option value="out">Money out only</option>
+        </select>
+      </div>
+    </div>
+    <div class="ba-connect-actions">
+      <button class="btn btn--primary" id="ba-rule-submit" type="submit">Add rule</button>
+      <button class="btn btn--ghost" id="ba-rule-cancel" type="button">Cancel</button>
+    </div>
+  </form>
+
+  <div id="ba-rules"><p class="dk-empty">Loading…</p></div>
+</section>
+
 <style>
   /* Page-scoped bits the Docket kit doesn't have: the money column on a register row,
-     the transaction filter bar and the connect form. Tokens only. */
+     the side-by-side Accounts / Top categories row, category bars, the filter bar and
+     the two inline forms. Tokens only. */
+  .ba-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 34px; align-items: start; margin-bottom: 34px; }
+  .ba-top > .dk-sec { margin-bottom: 0; }
+  @media (max-width: 980px) { .ba-top { grid-template-columns: minmax(0, 1fr); } }
+
+  .ba-compact .dk-reg-row { padding: 10px 16px; }
+  .ba-compact .dk-reg-title { font-size: 14.5px; }
+  .ba-compact .dk-reg-meta { margin-top: 2px; font-size: 12px; }
+
   .ba-amt { font-family: var(--font-serif); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
-  .ba-amt.lg { font-size: 19px; }
+  .ba-amt.lg { font-size: 17px; }
   .ba-amt.in { color: var(--color-success); }
   .ba-amt.neg { color: var(--color-danger); }
   .ba-amt-sub { display: block; font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; color: var(--ink-soft); margin-top: 2px; }
+
   .dk-reg-row.ba-pick { cursor: pointer; }
   .dk-reg-row.ba-pick.is-active { box-shadow: inset 3px 0 0 var(--money); }
+
+  .ba-period { display: inline-flex; gap: 2px; }
+  .ba-period .dk-linkbtn[aria-pressed="true"] { background: var(--paper-deep); color: var(--ink); }
+  .ba-bar { display: block; height: 4px; border-radius: 2px; background: var(--paper-deep); margin-top: 6px; overflow: hidden; }
+  .ba-bar > i { display: block; height: 100%; border-radius: 2px; background: var(--money); }
+  .ba-bar.in > i { background: var(--color-success); }
+  .ba-cat-foot { font-size: 12.5px; color: var(--ink-soft); padding: 10px 16px; border-top: 1px solid var(--line); }
+  .ba-cat-foot button { font-size: 12.5px; }
+
   .ba-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-  .ba-toolbar select { flex: 0 1 260px; }
-  .ba-toolbar input { flex: 1 1 240px; }
+  .ba-toolbar select { flex: 0 1 230px; }
+  .ba-toolbar input { flex: 1 1 220px; }
   .ba-more { text-align: center; margin-top: 12px; }
+
   .ba-connect { background: var(--surface); border-top: 2px solid var(--ink); border-radius: 0 0 var(--r-card) var(--r-card); box-shadow: var(--card-shadow); padding: 18px 20px; margin-bottom: 14px; display: grid; gap: 14px; }
   .ba-connect textarea { font-size: 12.5px; word-break: break-all; }
   .ba-steps { margin: 0; padding-left: 20px; font-size: var(--text-sm); color: var(--ink-soft); display: grid; gap: 4px; }
+  p.ba-steps { padding-left: 0; }
   .ba-connect-actions { display: flex; gap: 8px; }
   .ba-steps a { color: var(--color-primary); font-weight: 600; }
+  .ba-rule-fields { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 14px; }
+  .ba-rule-fields .field { margin: 0; display: flex; flex-direction: column; }
+  @media (max-width: 720px) { .ba-rule-fields { grid-template-columns: 1fr; } }
+  .ba-pattern { font-family: var(--font-sans); font-weight: 600; }
+
   /* The display rules above would otherwise beat the [hidden] attribute. */
   .ba-connect[hidden], .ba-toolbar[hidden], .ba-more[hidden] { display: none; }
 </style>
