@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  compileRules, categorize, summarize, since, haystack, UNCATEGORIZED,
+  compileRules, categorize, summarize, summarizeFlows, since, haystack, UNCATEGORIZED,
 } from '../../pages/bank-accounts/categorize.js';
 
 const rule = (pattern, category, direction = 'any', extra = {}) => ({ pattern, category, direction, ...extra });
@@ -108,5 +108,32 @@ describe('since / haystack', () => {
   it('joins the searchable fields in lower case', () => {
     expect(haystack({ payee: 'Payroll Co', description: 'ACH', memo: null })).toBe('payroll co ach');
     expect(UNCATEGORIZED).toBe('Uncategorized');
+  });
+});
+
+describe('summarizeFlows', () => {
+  const rules = compileRules([
+    rule('merchant service', 'Card Deposits', 'in'),
+    rule('merchant service', 'Merchant Fees', 'out'),
+    rule('legalplan', 'Legal Plan', 'in'),
+    rule('software co', 'Office Software'),
+    rule('payroll co', 'Payroll'),
+  ]);
+  const f = summarizeFlows([
+    tx(1800, 'Merchant Service Merch Dep'), tx(3500, 'Example Insurance', 'EXAMPLELEGALPLAN;EDI'),
+    tx(250, 'Mobile Deposit'),
+    tx(-340.12, 'Merchant Services', 'MERCH FEE'), tx(-1294, 'Payroll Co'),
+    tx(-30, 'Software Co'), tx(12, 'Software Co', 'REFUND'), tx(0, 'Zero'),
+    tx(-44.3, 'PayPal'),
+  ], rules);
+
+  it('puts every deposit under income and every payment under expenses', () => {
+    expect(f.income.categories.map(c => [c.category, c.total])).toEqual([['Legal Plan', 3500], ['Card Deposits', 1800], ['Office Software', 12]]);
+    expect(f.expenses.categories.map(c => [c.category, c.total])).toEqual([['Payroll', -1294], ['Merchant Fees', -340.12], ['Office Software', -30]]);
+  });
+
+  it('keeps uncategorized deposits and payments apart, and skips zero amounts', () => {
+    expect(f.income.uncategorized).toEqual({ count: 1, total: 250 });
+    expect(f.expenses.uncategorized).toEqual({ count: 1, total: -44.3 });
   });
 });

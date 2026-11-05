@@ -67,6 +67,22 @@ export function summarize(txns, compiled) {
   return { categories, uncategorized: { count: uCount, total: uCents / 100 } };
 }
 
+// Money in and money out, summarized separately. Every deposit lands under income and
+// every payment under expenses, each grouped by category. A category that has both
+// (e.g. a refund from a software vendor) shows in each column with just that side,
+// and nothing is netted across the two.
+//   { income: summarize(deposits), expenses: summarize(payments) }
+export function summarizeFlows(txns, compiled) {
+  const moneyIn = [];
+  const moneyOut = [];
+  for (const t of txns || []) {
+    const n = Number(t?.amount);
+    if (!Number.isFinite(n) || n === 0) continue;
+    (n > 0 ? moneyIn : moneyOut).push(t);
+  }
+  return { income: summarize(moneyIn, compiled), expenses: summarize(moneyOut, compiled) };
+}
+
 // Transactions posted on or after `since` (a Date).
 export function since(txns, sinceDate) {
   const cut = sinceDate.getTime();

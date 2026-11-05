@@ -11,7 +11,8 @@
   const esc = (s) => Utils.esc(s == null ? '' : String(s));
   const $ = (id) => document.getElementById(id);
   const PAGE = 150;
-  const TOP_N = 5;
+  const TOP_IN = 5;    // income categories shown (deposits)
+  const TOP_OUT = 7;   // expense categories shown (payments)
   const NONE = '__none__';   // category filter value for "Uncategorized"
 
   let Cat;
@@ -149,54 +150,91 @@
     }));
   }
 
-  // ── Render: top categories ────────────────────────────────────────────────
+  // ── Render: income / expenses ─────────────────────────────────────────────
+  // Deposits and payments are summarized separately (categorize.summarizeFlows):
+  // Income lists every deposit category plus uncategorized deposits; Expenses lists
+  // the biggest payment categories. Both follow the account filter and the period.
   function summaryTxns() {
-    const cutoff = new Date(Date.now() - state.days * 86400000);
+    const cutoff = Date.now() - state.days * 86400000;
     return state.txns.filter(t =>
-      (!state.accountFilter || t.account_id === state.accountFilter) && Date.parse(t.posted_at) >= cutoff.getTime());
+      (!state.accountFilter || t.account_id === state.accountFilter) && Date.parse(t.posted_at) >= cutoff);
+  }
+
+  function flowList(summary, { limit, kind, cur }) {
+    const top = summary.categories.slice(0, limit);
+    const unc = summary.uncategorized;
+    const otherLabel = kind === 'in' ? 'Other deposits' : 'Uncategorized';
+    // Uncategorized deposits are a real line of income, so they sit in the list;
+    // uncategorized payments go in the footer, so a pile of them can't push out
+    // a real category.
+    const showOtherRow = kind === 'in' && unc.count > 0;
+    const rows = top.map(c => ({ ...c, other: false }));
+    if (showOtherRow) rows.push({ category: otherLabel, total: unc.total, count: unc.count, other: true });
+    if (!rows.length) return { html: '', hasRows: false };
+
+    const max = Math.max(...rows.map(c => Math.abs(c.total))) || 1;
+    const html = rows.map(c => {
+      const pct = Math.max(2, Math.round(Math.abs(c.total) / max * 100));
+      const key = c.other ? NONE : c.category;
+      const active = state.catFilter === key;
+      return `<div class="dk-reg-row ba-pick${active ? ' is-active' : ''}${c.other ? ' ba-other' : ''}" data-cat="${esc(key)}" title="Show these transactions">
+        <div><div class="dk-reg-title">${esc(c.category)}</div>
+          <div class="dk-reg-meta">${c.count} ${kind === 'in' ? 'deposit' : 'payment'}${c.count === 1 ? '' : 's'}</div>
+          <span class="ba-bar${kind === 'in' ? ' in' : ''}"><i style="width:${pct}%"></i></span></div>
+        <div class="ba-amt${kind === 'in' ? ' in' : ''}">${esc(signed(c.total, cur))}</div>
+      </div>`;
+    }).join('');
+
+    const feet = [];
+    const hidden = summary.categories.length - top.length;
+    if (hidden > 0) feet.push(`${hidden} more categor${hidden === 1 ? 'y' : 'ies'}`);
+    if (kind === 'out' && unc.count) {
+      feet.push(`<button class="dk-linkbtn" type="button" data-cat="${NONE}">${unc.count} uncategorized (${esc(signed(unc.total, cur))})</button>`);
+    }
+    const foot = feet.length ? `<div class="ba-cat-foot">${feet.join(' · ')}</div>` : '';
+    return { html: `<div class="dk-register">${html}${foot}</div>`, hasRows: true };
   }
 
   function renderCats() {
     document.querySelectorAll('#ba-period [data-days]').forEach(b =>
       b.setAttribute('aria-pressed', String(Number(b.dataset.days) === state.days)));
-
-    const el = $('ba-cats');
-    if (!state.txns.length) { el.innerHTML = '<p class="dk-empty">Categories appear once transactions come in.</p>'; return; }
-    if (!state.rulesOk) { el.innerHTML = '<p class="dk-empty">Categories are not available yet.</p>'; return; }
+    const inEl = $('ba-in');
+    const outEl = $('ba-out');
+    const setTotals = (i, o) => { $('ba-total-in').textContent = i; $('ba-total-out').textContent = o; };
 
     const acct = state.accountFilter ? accountById().get(state.accountFilter) : null;
-    const scope = acct ? ` in ${esc(acct.name)}` : '';
-    const { categories, uncategorized } = Cat.summarize(summaryTxns(), state.compiled);
-    if (!state.rules.length) {
-      el.innerHTML = `<p class="dk-empty">No category rules yet. ${state.canWrite ? 'Add some under <strong>Category rules</strong> below (e.g. "gusto" is Payroll).' : ''}</p>`;
-      return;
-    }
-    if (!categories.length) {
-      el.innerHTML = `<p class="dk-empty">Nothing categorized in the last ${state.days} days${scope}.</p>`;
-      return;
-    }
-    const top = categories.slice(0, TOP_N);
-    const max = Math.max(...top.map(c => Math.abs(c.total))) || 1;
-    const cur = currencyOf();
-    const rows = top.map(c => {
-      const pct = Math.max(2, Math.round(Math.abs(c.total) / max * 100));
-      const active = state.catFilter === c.category;
-      return `<div class="dk-reg-row ba-pick${active ? ' is-active' : ''}" data-cat="${esc(c.category)}" title="Show these transactions">
-        <div><div class="dk-reg-title">${esc(c.category)}</div>
-          <div class="dk-reg-meta">${c.count} transaction${c.count === 1 ? '' : 's'}</div>
-          <span class="ba-bar${c.total > 0 ? ' in' : ''}"><i style="width:${pct}%"></i></span></div>
-        <div class="ba-amt${c.total > 0 ? ' in' : ''}">${esc(signed(c.total, cur))}</div>
-      </div>`;
-    }).join('');
-    const more = categories.length > TOP_N ? `${categories.length - TOP_N} more categor${categories.length - TOP_N === 1 ? 'y' : 'ies'}` : '';
-    const unc = uncategorized.count
-      ? `<button class="dk-linkbtn" type="button" data-cat="${NONE}">${uncategorized.count} uncategorized (${esc(signed(uncategorized.total, cur))})</button>` : '';
-    const foot = [more, unc].filter(Boolean).join(' · ');
-    el.innerHTML = `<div class="dk-register">${rows}${foot ? `<div class="ba-cat-foot">Last ${state.days} days${scope}${foot ? ' · ' + foot : ''}</div>` : ''}</div>`;
+    $('ba-period-note').textContent = `Income and expenses: last ${state.days} days${acct ? ` in ${acct.name}` : ''}`;
 
-    el.querySelectorAll('[data-cat]').forEach(r => r.addEventListener('click', () => {
+    if (!state.txns.length) {
+      setTotals('', '');
+      inEl.innerHTML = outEl.innerHTML = '<p class="dk-empty">Appears once transactions come in.</p>';
+      return;
+    }
+    if (!state.rulesOk) {
+      setTotals('', '');
+      inEl.innerHTML = outEl.innerHTML = '<p class="dk-empty">Categories are not available yet.</p>';
+      return;
+    }
+
+    const cur = currencyOf();
+    const { income, expenses } = Cat.summarizeFlows(summaryTxns(), state.compiled);
+    const sum = (s) => s.categories.reduce((n, c) => n + Math.round(c.total * 100), Math.round(s.uncategorized.total * 100)) / 100;
+    const totalIn = sum(income);
+    const totalOut = sum(expenses);
+    setTotals(totalIn ? signed(totalIn, cur) : '', totalOut ? signed(totalOut, cur) : '');
+
+    const hint = state.rules.length ? '' : (state.canWrite ? ' Add category rules below to sort them.' : '');
+    const inList = flowList(income, { limit: TOP_IN, kind: 'in', cur });
+    const outList = flowList(expenses, { limit: TOP_OUT, kind: 'out', cur });
+    inEl.innerHTML = inList.hasRows ? inList.html : `<p class="dk-empty">No deposits in the last ${state.days} days.</p>`;
+    outEl.innerHTML = outList.hasRows ? outList.html
+      : expenses.uncategorized.count
+        ? `<p class="dk-empty">${expenses.uncategorized.count} payments, none categorized yet.${hint}</p>`
+        : `<p class="dk-empty">No payments in the last ${state.days} days.</p>`;
+
+    [inEl, outEl].forEach(el => el.querySelectorAll('[data-cat]').forEach(r => r.addEventListener('click', () => {
       setCatFilter(state.catFilter === r.dataset.cat ? '' : r.dataset.cat, true);
-    }));
+    })));
   }
 
   // ── Render: transactions ──────────────────────────────────────────────────
