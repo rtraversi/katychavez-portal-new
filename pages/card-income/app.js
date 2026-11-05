@@ -5,6 +5,7 @@ import {
   MONTHS, MONTHS_LONG, CATEGORIES, buildIndex, yearSummary, monthToDate, monthRows,
   cumulative, dayOfYear, yearGrid, heat, dailyForMonth, monthsWithDaily, yearHasTerminal,
   categoryByMonth, categoryLabel, fmtMoney, fmtCompact, fmtPct, fmtDay, monthOf, yearOf,
+  pickCheckingAccount,
 } from './model.js';
 import { drawCumulative, drawMonths } from './charts.js';
 
@@ -26,9 +27,29 @@ export async function mountCardIncome({ db, auth }) {
   const loadedYears = new Set();
   let ro = null;   // ResizeObserver redrawing the charts at new widths
 
-  $('ci-refresh').addEventListener('click', () => { loadedYears.clear(); load(state.year); });
+  // Checking balance tile: only when the Bank Accounts module is on and this user can
+  // read it. Loaded once, independent of the year shown; Refresh reloads it too.
+  let bank = await loadBank();
+
+  $('ci-refresh').addEventListener('click', async () => { loadedYears.clear(); bank = await loadBank(); load(state.year); });
 
   await load(null);
+
+  async function loadBank() {
+    if (!accessible.has('bank_feeds')) return null;
+    try {
+      const { data: on } = await db.from('enabled_modules').select('module_key').eq('module_key', 'bank_feeds').maybeSingle();
+      if (!on) return null;
+      const [a, c] = await Promise.all([
+        db.from('bank_accounts').select('name, institution, currency, balance, balance_date, present, connection_id').eq('present', true).order('name'),
+        db.from('bank_connections').select('id, status, last_error'),
+      ]);
+      if (a.error || c.error) return { error: true };
+      return { account: pickCheckingAccount(a.data), anyAccounts: (a.data || []).length > 0, connections: c.data || [] };
+    } catch {
+      return { error: true };
+    }
+  }
 
   // ── Data ─────────────────────────────────────────────────────────────────
   async function load(year) {
@@ -156,7 +177,35 @@ export async function mountCardIncome({ db, auth }) {
       tiles.push(tile('Per active day', fmtMoney(s.amount / s.activeDays),
         `<div class="dk-stat-delta">${esc(s.activeDays)} days with card income</div>`));
     }
+    const bt = bankTile();
+    if (bt) tiles.push(bt);
     $('ci-stats').innerHTML = tiles.join('');
+    $('ci-stats').querySelectorAll('[data-href]').forEach(el => {
+      const go = () => { window.location.hash = el.dataset.href; };
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
+  }
+
+  // Current checking balance from the Bank Accounts module. Opens that page on click.
+  function bankTile() {
+    if (!bank) return '';
+    const wrap = (value, deltaHtml) =>
+      `<div class="dk-stat ci-bank" role="link" tabindex="0" data-href="#bank-accounts" title="Open Bank Accounts">` +
+      `<div class="dk-stat-label">Checking balance</div><div class="dk-stat-value">${esc(value)}</div>${deltaHtml}</div>`;
+    if (bank.error) return wrap('—', '<div class="dk-stat-delta">Could not load the bank balance</div>');
+    if (!bank.account) {
+      return wrap('—', `<div class="dk-stat-delta">${esc(bank.anyAccounts ? 'No checking account found' : 'Bank not connected yet')} →</div>`);
+    }
+    const a = bank.account;
+    const conn = bank.connections.find(c => c.id === a.connection_id);
+    const when = a.balance_date && window.Utils ? `as of ${window.Utils.formatDate(a.balance_date)}` : '';
+    const where = a.institution || a.name;
+    const meta = [where, when].filter(Boolean).join(' · ');
+    const warn = conn?.status === 'revoked' ? 'Connection revoked · may be stale'
+      : conn?.last_error ? 'Bank needs attention' : '';
+    return wrap(fmtMoney(Number(a.balance)),
+      `<div class="dk-stat-delta">${warn ? `<b class="down">${esc(warn)}</b> · ` : ''}${esc(meta)}</div>`);
   }
 
   function legend(id, Y, hasPrev, box) {

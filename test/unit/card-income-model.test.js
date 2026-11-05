@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildIndex, yearSummary, monthToDate, monthRows, cumulative, valueAt, yearGrid, heat,
   dayOfYear, sameDayIn, fmtMoney, fmtCompact, fmtPct, categoryByMonth, monthsWithDaily,
+  pickCheckingAccount,
 } from '../../pages/card-income/model.js';
 import { niceTicks } from '../../pages/card-income/charts.js';
 
@@ -162,5 +163,34 @@ describe('card income: DACA renewals', () => {
     ], 2026, 'daca_renewal');
     expect(counts[9]).toBe(2);
     expect(counts.reduce((a, b) => a + b)).toBe(2);
+  });
+});
+
+describe('pickCheckingAccount (bank balance tile)', () => {
+  const acct = (name, extra = {}) => ({ name, present: true, ...extra });
+  const pick = (...names) => pickCheckingAccount(names.map(n => acct(n)))?.name ?? null;
+
+  it('finds checking under the names banks and credit unions use', () => {
+    expect(pick('Share Savings', 'Share Draft')).toBe('Share Draft');
+    expect(pick('REGULAR SHARES', 'PREMIUM CHECKING', 'VISA PLATINUM')).toBe('PREMIUM CHECKING');
+    expect(pick('Business Savings', 'Operating Account')).toBe('Operating Account');
+    // First Flight's own names, as SimpleFIN reports them (account suffix included).
+    expect(pick('16 BUSINESS SAVINGS 16 (16)', '76 BUS BASIC CHECKING 76 (76)')).toBe('76 BUS BASIC CHECKING 76 (76)');
+  });
+
+  it('never picks savings, certificates, cards or loans', () => {
+    expect(pick('Savings', 'Visa Signature')).toBeNull();
+    expect(pick('12 Month Certificate', 'Auto Loan')).toBeNull();
+  });
+
+  it('falls back to a lone deposit account, but will not guess between several', () => {
+    expect(pick('Main Account')).toBe('Main Account');
+    expect(pick('Main', 'Other')).toBeNull();
+  });
+
+  it('ignores accounts the bank no longer reports', () => {
+    expect(pickCheckingAccount([acct('Old Checking', { present: false }), acct('Savings')])).toBeNull();
+    expect(pickCheckingAccount([])).toBeNull();
+    expect(pickCheckingAccount(null)).toBeNull();
   });
 });

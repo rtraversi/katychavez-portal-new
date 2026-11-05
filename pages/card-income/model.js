@@ -328,3 +328,19 @@ export function categoryByMonth(transactions, year, category) {
   }
   return out;
 }
+
+// ── Bank balance tile (bank_feeds module) ──────────────────────────────────
+// Which connected account counts as "checking". Banks and credit unions name it
+// differently ("Checking", "Share Draft", "Operating"); savings, certificates,
+// cards and loans are never picked. With no name match, a lone remaining deposit
+// account is used; otherwise none, and the tile says so rather than guess.
+const CHECKING_RE = /checking|share draft|draft|operating/i;
+const NOT_CHECKING_RE = /saving|money market|certificate|cd|credit|visa|mastercard|card|loan|mortgage|line of credit|heloc/i;
+
+export function pickCheckingAccount(accounts) {
+  const live = (accounts || []).filter(a => a && a.present !== false);
+  const named = live.filter(a => CHECKING_RE.test(a.name || '') && !NOT_CHECKING_RE.test(a.name || ''));
+  if (named.length) return named[0];
+  const deposit = live.filter(a => !NOT_CHECKING_RE.test(a.name || ''));
+  return deposit.length === 1 ? deposit[0] : null;
+}
