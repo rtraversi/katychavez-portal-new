@@ -165,3 +165,5 @@
 2200_ai_chat.sql
 2300_estate_planning_intake.sql
 2301_matter_additional_case_types.sql
+2400_bank_feeds_module.sql
+2401_bank_feeds_schema.sql
