@@ -159,7 +159,11 @@ import { runBookingReminders }                     from './functions/api/_bookin
 import { run as runFormEditionCheck }              from './functions/api/process-form-edition-check.js';
 import { onRequest as formEditionsVerify }         from './functions/api/form-editions-verify.js';
 
+import { onRequest as bankFeeds }                  from './functions/api/bank-feeds.js';
+import { runBankFeedRefresh }                      from './functions/api/_bank-feeds.js';
+
 export const routes = {
+  '/api/bank-feeds':            bankFeeds,   // Bank Accounts (bank_feeds premium module)
   '/api/confirm-upload':    confirmUpload,
   '/api/storage-sync-recon':    storageSyncRecon,
   '/api/storage-sync-status':   storageSyncStatus,
@@ -345,6 +349,7 @@ const HTML_REWRITES = {
 //   RL_STANDARD — messaging + email-sending (spam / Resend-quota abuse)
 //   RL_BEACON   — high-volume demo analytics beacon (block only egregious bots)
 export const RATE_LIMITS = {
+  '/api/bank-feeds':           'RL_STANDARD',
   '/api/mfa-recover':          'RL_STRICT',
   '/api/update-password':      'RL_STRICT',
   '/api/reset-user-password':  'RL_STRICT',
@@ -437,6 +442,10 @@ function addSecurityHeaders(response) {
 export default {
   async scheduled(event, env, ctx) {
     if (event.cron === '0 14 * * *') {
+      // Daily - pull balances + transactions for each active bank feed (no-ops
+      // unless the bank_feeds premium module is enabled). One provider request per
+      // connection per day.
+      ctx.waitUntil(runBankFeedRefresh(env));
       // Daily 9am CST — process document reminders
       ctx.waitUntil(runDocReminders(env));
       // Daily — permanently purge documents that have been in the Trash past

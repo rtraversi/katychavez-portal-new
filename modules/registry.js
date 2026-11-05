@@ -261,6 +261,26 @@ window.MODULE_REGISTRY = [
     badge:       'VIEW LEDGER →',
   },
   {
+    // Owner only by default (role_module_access, migration 2400). Read-only bank feed:
+    // balances + transactions from the firm's own accounts via the bank-feed adapter.
+    key:         'bank_feeds',
+    name:        'Bank Accounts',
+    group:       'money',
+    icon:        'bank-flat',
+    navIcon:     'credit-card',
+    route:       'bank-accounts',
+    wave:        1,
+    sortOrder:   58,
+    staffOnly:   true,
+    premium:     true,
+    description: 'Current balances and recent transactions from the firm\'s own bank accounts.',
+    badge:       'VIEW →',
+    badgeFn:     async db => {
+      const { count } = await db.from('bank_accounts').select('*', { count: 'exact', head: true }).eq('present', true);
+      return count ? `${count} ACCOUNT${count === 1 ? '' : 'S'} →` : 'CONNECT →';
+    },
+  },
+  {
     // KCL-only. Replaces the 'ai_brain' coming-soon tile. All staff roles get
     // write, Owner admin (2200_ai_chat.sql); each user sees only their own chats.
     key:         'ai_chat',

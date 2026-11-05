@@ -1,0 +1,74 @@
+<!-- Bank Accounts (bank_feeds module) — the firm's own balances + transactions, pulled
+     from a bank-data provider (SimpleFIN first) once a day. Owner only by default.
+     Loaded into #page-content by menu.js; logic in bank-accounts.js. -->
+<div class="dk-masthead">
+  <div class="dk-kicker rise" style="animation-delay:.04s">Finance · Bank Accounts</div>
+  <h1 class="dk-title rise" style="animation-delay:.09s">The firm's <em>bank accounts</em>.</h1>
+  <p class="dk-sub rise" style="animation-delay:.13s">Current balances and recent transactions, pulled from the bank about once a day. Read-only: nothing here can move money.</p>
+</div>
+
+<div id="ba-deskbar"></div>
+
+<section class="dk-sec" id="ba-sec-accounts">
+  <div class="dk-sec-head"><h2>Accounts</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-accounts"></span></div>
+  <div id="ba-accounts"><p class="dk-empty">Loading…</p></div>
+</section>
+
+<section class="dk-sec" id="ba-sec-txns">
+  <div class="dk-sec-head"><h2>Transactions</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-txns"></span></div>
+  <div class="ba-toolbar" id="ba-txn-toolbar" hidden>
+    <select id="ba-txn-account" aria-label="Account"></select>
+    <input type="text" inputmode="search" id="ba-txn-search" placeholder="Search payee, description or amount" aria-label="Search transactions">
+  </div>
+  <div id="ba-txns"><p class="dk-empty">Loading…</p></div>
+  <div class="ba-more" id="ba-txn-more-wrap" hidden><button class="btn btn--ghost btn--sm" id="ba-txn-more" type="button">Show more</button></div>
+</section>
+
+<section class="dk-sec" id="ba-sec-conns">
+  <div class="dk-sec-head"><h2>Bank connections</h2><span class="dk-sec-rule"></span><button class="dk-sec-add" id="ba-connect-open" type="button">+ Connect a bank</button></div>
+
+  <form class="ba-connect" id="ba-connect-form" hidden autocomplete="off">
+    <ol class="ba-steps">
+      <li>Sign in to <a href="https://bridge.simplefin.org/" target="_blank" rel="noopener noreferrer">SimpleFIN Bridge</a> and link your bank there under <strong>Financial Institutions</strong>.</li>
+      <li>Under <strong>Apps</strong>, choose <strong>New app connection</strong> and copy the setup token it shows.</li>
+      <li>Paste the token below. Each token works once. If this fails after SimpleFIN accepted it, make a new one.</li>
+    </ol>
+    <div class="field">
+      <label for="ba-connect-label">Name for this connection</label>
+      <input type="text" id="ba-connect-label" maxlength="80" placeholder="e.g. Operating accounts">
+    </div>
+    <div class="field">
+      <label for="ba-connect-token">SimpleFIN setup token <span class="required">*</span></label>
+      <textarea id="ba-connect-token" rows="3" spellcheck="false" autocapitalize="off" placeholder="Paste the setup token"></textarea>
+    </div>
+    <div class="ba-connect-actions">
+      <button class="btn btn--primary" id="ba-connect-submit" type="submit">Connect</button>
+      <button class="btn btn--ghost" id="ba-connect-cancel" type="button">Cancel</button>
+    </div>
+  </form>
+
+  <div id="ba-conns"><p class="dk-empty">Loading…</p></div>
+</section>
+
+<style>
+  /* Page-scoped bits the Docket kit doesn't have: the money column on a register row,
+     the transaction filter bar and the connect form. Tokens only. */
+  .ba-amt { font-family: var(--font-serif); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+  .ba-amt.lg { font-size: 19px; }
+  .ba-amt.in { color: var(--color-success); }
+  .ba-amt.neg { color: var(--color-danger); }
+  .ba-amt-sub { display: block; font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; color: var(--ink-soft); margin-top: 2px; }
+  .dk-reg-row.ba-pick { cursor: pointer; }
+  .dk-reg-row.ba-pick.is-active { box-shadow: inset 3px 0 0 var(--money); }
+  .ba-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .ba-toolbar select { flex: 0 1 260px; }
+  .ba-toolbar input { flex: 1 1 240px; }
+  .ba-more { text-align: center; margin-top: 12px; }
+  .ba-connect { background: var(--surface); border-top: 2px solid var(--ink); border-radius: 0 0 var(--r-card) var(--r-card); box-shadow: var(--card-shadow); padding: 18px 20px; margin-bottom: 14px; display: grid; gap: 14px; }
+  .ba-connect textarea { font-size: 12.5px; word-break: break-all; }
+  .ba-steps { margin: 0; padding-left: 20px; font-size: var(--text-sm); color: var(--ink-soft); display: grid; gap: 4px; }
+  .ba-connect-actions { display: flex; gap: 8px; }
+  .ba-steps a { color: var(--color-primary); font-weight: 600; }
+  /* The display rules above would otherwise beat the [hidden] attribute. */
+  .ba-connect[hidden], .ba-toolbar[hidden], .ba-more[hidden] { display: none; }
+</style>
