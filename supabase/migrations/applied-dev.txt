@@ -163,3 +163,4 @@
 2004_proof_scan_v2_jobs.sql
 2100_cc_income.sql
 2200_ai_chat.sql
+2300_estate_planning_intake.sql
