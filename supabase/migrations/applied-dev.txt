@@ -167,3 +167,4 @@
 2301_matter_additional_case_types.sql
 2400_bank_feeds_module.sql
 2401_bank_feeds_schema.sql
+2402_bank_category_rules.sql
