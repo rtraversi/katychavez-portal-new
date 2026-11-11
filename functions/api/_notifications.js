@@ -480,9 +480,10 @@ export async function notifyStructuredProofScan(env, { toEmail, result }) {
   return sendEmail(env, toEmail, message.subject, message.html, 'proof_scan');
 }
 
-// ── Proof Scan v2 stage result (D-61) ────────────────────────────────────────
-// Optional, staff choose it per run. Only the stage and its official result,
-// with a link. Possible issues never generate email (D-36).
+// ── Proof Scan v2 stage result (D-61, D-151) ─────────────────────────────────
+// Optional, staff choose it per run. The stage's report, built by code from the
+// stored result (_proof-scan-email.js), with a link to the case. Possible
+// issues never generate email (D-36).
 export async function notifyProofScanStage(env, { toEmail, result, caseId, people }) {
   if (!toEmail) return false;
   const message = buildProofScanStageEmail(result, {

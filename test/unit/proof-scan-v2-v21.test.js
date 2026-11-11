@@ -26,9 +26,9 @@ import { FACT_FIELDS } from '../../functions/api/_proof-scan-v2-ai.js';
 import { reportView } from '../../functions/api/_proof-scan-v2-view.js';
 import { mergeFacts } from '../../functions/api/_proof-scan-v2-merge.js';
 import {
-  parseAgeTiers, misspeltCardholder, languageDecision, tallyRows, nextTallyState, relationshipMismatch,
+  parseAgeTiers, misspeltCardholder, languageDecision, tallyRows, nextTallyState, relationshipMismatch, ageOn,
 } from '../../functions/api/_proof-scan-v2-aos.js';
-import { stageSummaryLines } from '../../functions/api/_proof-scan-email.js';
+import { buildProofScanStageEmail } from '../../functions/api/_proof-scan-email.js';
 import { buildAosSeedSql, generatedBlock } from '../../scripts/proof-scan-v2-aos-seed.mjs';
 import aosSeed from '../../functions/api/proof-scan-profiles/v2-aos-seed.json';
 import { stepState } from '../../pages/proof-scan-v2/model.js';
@@ -178,10 +178,15 @@ describe('starting an AOS case (D-131, D-144)', () => {
 // ── Fees (Q-63, Q-64) ────────────────────────────────────────────────────────
 
 describe('fees (Q-63, Q-64)', () => {
+  // The applicant's age on the day the test runs (the scan date is today), so
+  // the expected titles do not go stale on her birthday. Any age 14 to 78 is
+  // the same fee tier.
+  const age = ageOn(BEN.date_of_birth, new Date().toISOString().slice(0, 10));
+
   it('the I-485 fee by age: a plainly wrong amount is counted; the right one is clear', async () => {
     const id = await aosCase();
     const wrong = await physical(id, { aos: { fee_payments: [pay('I-130', '$675', petName), pay('I-485', '$950'), pay('I-765', '$260')] } });
-    expect(check(wrong, 'AOS-FEE-I485')).toMatchObject({ status: 'needs_attention', title: 'The I-485 fee is $950. The applicant is 34, so the fee is $1,440.', expected: '$1,440 (age 14 to 78)' });
+    expect(check(wrong, 'AOS-FEE-I485')).toMatchObject({ status: 'needs_attention', title: `The I-485 fee is $950. The applicant is ${age}, so the fee is $1,440.`, expected: '$1,440 (age 14 to 78)' });
     expect(kinds(wrong)).toContain('check');
     const right = await physical(id);
     expect(check(right, 'AOS-FEE-I485').status).toBe('clear');
@@ -216,7 +221,7 @@ describe('fees (Q-63, Q-64)', () => {
     const id = await aosCase();
     const edit = (expected) => call(rulesRoute, '/api/proof-scan-v2-rules', { method: 'PATCH', body: { rule_id: 'AOS-FEE-I485', case_type: 'aos', changes: { expected } } });
     expect((await edit('under 14: $950 · 14 to 78: $1,500 · 79 and older: $1,140')).status).toBe(200);
-    expect(check(await physical(id), 'AOS-FEE-I485').title).toBe('The I-485 fee is $1,440. The applicant is 34, so the fee is $1,500.');
+    expect(check(await physical(id), 'AOS-FEE-I485').title).toBe(`The I-485 fee is $1,440. The applicant is ${age}, so the fee is $1,500.`);
     await edit('about fifteen hundred');
     expect(check(await physical(id), 'AOS-FEE-I485').status).toBe('not_checked');
     expect(parseAgeTiers('under 14: $950 · 14 to 78: $1,440 · 79 and older: $1,140')).toMatchObject({ child: 14, adultFee: 1440, senior: 79, seniorFee: 1140 });
@@ -738,15 +743,27 @@ describe('Evidence Zero in an AOS case (Q-61)', () => {
   });
 });
 
-// ── The stage email (D-114, Q-51) ────────────────────────────────────────────
+// ── The stage email (D-114, D-151) ───────────────────────────────────────────
 
 describe('the stage email', () => {
-  it('a merged fact is one line from its structured fields, never a value', () => {
-    const lines = stageSummaryLines({ case_type: 'aos', attention: [
-      { kind: 'fact', person_role: 'beneficiary', field: 'date_of_birth', forms: ['I-485', 'I-765'], title: 'x 03/11/1991' },
-      { kind: 'missing_item', form: null, title: 'The divorce certificate is missing' },
-    ] });
-    expect(lines).toEqual(["The forms differ on the beneficiary's date of birth (I-485, I-765).", 'A document is missing from the package.']);
+  it('a merged fact shows each value on the forms, which forms carry it, and a missing item its detail', () => {
+    const m = buildProofScanStageEmail({
+      stage: 'physical_scan', case_type: 'aos', report_state: 'items_need_attention', attention_count: 2,
+      primary_report_language: '2 items need attention',
+      attention: [
+        { kind: 'fact', person_role: 'beneficiary', field: 'date_of_birth', title: 'The forms disagree on the beneficiary\'s date of birth',
+          on_forms: [{ value: '03/11/1991', forms: [{ form: 'I-485', n: 1 }] }, { value: '11/03/1991', forms: [{ form: 'I-765', n: 1 }] }],
+          sources: [], fix_on: [], forms: [] },
+        { kind: 'missing_item', form: null, title: 'The divorce certificate is missing from the package. It is needed because the petitioner was married before.' },
+      ],
+    }, { portalUrl: 'https://portal.example.test', people: [{ role: 'beneficiary', is_main: true, last_name: 'Vega' }] });
+    expect(m.subject).toBe('Proof Scan: VEGA: Physical Scan: 2 items need attention');
+    expect(m.html).toContain('On the forms: I-485');
+    expect(m.html).toContain('03/11/1991');
+    expect(m.html).toContain('On the forms: I-765');
+    expect(m.html).toContain('11/03/1991');
+    expect(m.html).toContain('The divorce certificate is missing from the package<');
+    expect(m.html).toContain('It is needed because the petitioner was married before.');
   });
 });
 

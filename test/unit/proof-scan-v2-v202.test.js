@@ -18,7 +18,8 @@ import { onRequest as suppressionsRoute } from '../../functions/api/proof-scan-v
 import { onRequest as editionsRoute } from '../../functions/api/proof-scan-v2-editions.js';
 import { run as runEditionCheck } from '../../functions/api/process-form-edition-check.js';
 import { parseEditionNotices, acceptedEditions } from '../../functions/api/_uscis-editions.js';
-import { buildProofScanStageEmail, stageSummaryLines } from '../../functions/api/_proof-scan-email.js';
+import { buildProofScanStageEmail } from '../../functions/api/_proof-scan-email.js';
+import { reportStateLanguage } from '../../functions/api/proof-scan-contract.js';
 import { FACT_FIELDS } from '../../functions/api/_proof-scan-v2-ai.js';
 import {
   sameValue, sameDate, normText, compareNames, canonicalCountry, sameEmployer, normalizeDate, toCardValue,
@@ -486,44 +487,114 @@ describe('D-113, Q-49, Q-50: Draft Review and Pre-flight ask gently for the EAD 
 
 // ── F. Stage email ───────────────────────────────────────────────────────────
 
-describe('D-114, Q-51: the stage email', () => {
+// D-151 (Max 2026-11-11) supersedes Q-51: the email carries the report, like
+// the v1 email. Still last names only for the case (D-114), no case card block,
+// never a Possible issue (D-36), and built by code from the stored result.
+describe('D-151: the stage email carries the report', () => {
   const people = [
     { role: 'beneficiary', is_main: true, first_name: 'Lucia', last_name: 'Reyes' },
     { role: 'petitioner', is_main: false, first_name: 'Mateo', last_name: 'Morales' },
   ];
-  const base = { stage: 'physical_scan', case_type: 'general', not_checked_count: 0 };
+  const id = '11111111-2222-4333-8444-555555555555';
+  const base = {
+    stage: 'physical_scan', case_type: 'general', case_type_label: 'General', not_checked_count: 0,
+    scan: { files: [{ filename: 'package.pdf', kind: 'package' }] },
+  };
+  const withIssues = {
+    ...base, report_state: 'items_need_attention', attention_count: 2, primary_report_language: '2 items need attention',
+    attention: [
+      { kind: 'fact', key: 'fact:beneficiary:date_of_birth:x', person_role: 'beneficiary', field: 'date_of_birth',
+        title: "The beneficiary's date of birth does not match",
+        on_forms: [{ value: '05/03/1995', forms: [{ form: 'I-485', n: 1 }, { form: 'G-1450', n: 2 }] }],
+        sources: [{ value: '03/05/1995', labels: ['the case card', 'the birth certificate'] }],
+        fix_on: [{ form: 'I-485', n: 1 }, { form: 'G-1450', n: 2 }], forms: ['I-485', 'G-1450'] },
+      { kind: 'check', key: 'rule:PS-101', rule_id: 'PS-101', title: 'The I-485 page 3 is the 01/20/25 edition. The rest of the I-485 is current.' },
+    ],
+    checks: [
+      { rule_id: 'PS-101', status: 'needs_attention', title: 'Edition date is current on every page.', form: null, expected: '04/01/26', where: 'p.3', reason: 'The footer reads 01/20/25.' },
+      { rule_id: 'PS-102', status: 'clear', title: 'Page count correct.', form: null },
+      { rule_id: 'PS-201', status: 'clear', title: 'Signed.', form: 'I-485' },
+      { rule_id: 'PS-202', status: 'clear', title: 'Name present.', form: 'I-485' },
+      { rule_id: 'PS-203', status: 'needs_info', title: 'No A-Number on the case card to compare.', form: 'G-1450' },
+      { rule_id: 'PS-204', status: 'clear', title: 'Card details complete.', form: 'G-1450' },
+      { rule_id: 'PS-205', status: 'please_confirm', title: 'Is the interpreter box as intended?', form: 'I-485' },
+    ],
+    forms_found: [
+      { form: 'G-1450', file: 'package.pdf', pages: '1', person_role: 'beneficiary', values: {} },
+      { form: 'G-1450', file: 'package.pdf', pages: '2', person_role: 'beneficiary', values: {} },
+      { form: 'I-485', file: 'package.pdf', pages: '3-22', person_role: 'beneficiary', values: {} },
+    ],
+    // Two documents on file and in the package: each counted once per place.
+    evidence_matches: [
+      { evidence: 'birth_certificate', source: 'evidence_zero', owner_roles: ['beneficiary'], form: 'I-485', field: 'date_of_birth', ok: false },
+      { evidence: 'birth_certificate', source: 'package', owner_roles: ['beneficiary'], form: 'I-485', field: 'date_of_birth', ok: false },
+      { evidence: 'passport', source: 'package', owner_roles: ['beneficiary'], form: 'I-485', field: 'last_name', ok: true },
+      { evidence: 'passport', source: 'package', owner_roles: ['beneficiary'], form: 'I-485', field: 'first_name', ok: true },
+    ],
+  };
 
-  it('names the case by last names only, links to that case, and lists what needs attention without personal info', () => {
-    const result = {
-      ...base, report_state: 'items_need_attention', attention_count: 3, primary_report_language: '3 items need attention',
-      attention: [
-        { kind: 'evidence_difference', field: 'date_of_birth', form: 'I-485', doc_type: 'birth_certificate', person_role: 'beneficiary',
-          title: "The beneficiary's birth certificate (acta.pdf, page 3) shows date of birth 03/05/1995. The I-485 shows 05/03/1995." },
-        { kind: 'check', rule_id: 'PS-101', rule_title: 'Edition date is current on every page.', form: null, title: 'The I-485 page 3 is the 01/20/25 edition.' },
-        { kind: 'case_card_difference', field: 'a_number', forms: ['I-130'], person_role: 'petitioner', title: 'The package shows A-123456789.' },
-      ],
-    };
-    const id = '11111111-2222-4333-8444-555555555555';
-    const m = buildProofScanStageEmail(result, { portalUrl: 'https://portal.example.test', caseId: id, people });
-    expect(m.subject).toBe('Proof Scan: REYES & MORALES: Physical Scan: 3 items need attention');
-    expect(m.html).toContain(`https://portal.example.test/portal?ps2case=${id}#proof-scan-v2`);
-    expect(m.html).toContain('The birth certificate and the I-485 differ on the beneficiary&#39;s date of birth.');
-    expect(m.html).toContain('Not met: Edition date is current on every page');
-    for (const secret of ['Lucia', 'Mateo', '1995', '03/05', '01/20/25', '123456789', 'acta.pdf', 'page 3']) expect(m.html, secret).not.toContain(secret);
+  it('names the case by last names, links to it, and shows each problem with its values', () => {
+    const m = buildProofScanStageEmail(withIssues, { portalUrl: 'https://portal.example.test', caseId: id, people });
+    expect(m.subject).toBe('Proof Scan: REYES & MORALES: Physical Scan: 2 items need attention');
     expect(m.subject).not.toContain('Lucia');
+    expect(m.html).toContain('Case: REYES &amp; MORALES');
+    expect(m.html).not.toContain('Lucia');
+    expect(m.html).toContain(`https://portal.example.test/portal?ps2case=${id}#proof-scan-v2`);
+    // The merged fact (D-135): the forms' value, the truth, where to fix it.
+    for (const s of ['The beneficiary&#39;s date of birth does not match', '05/03/1995', 'On the case card and birth certificate', '03/05/1995', 'I-485, G-1450 ×2']) expect(m.html, s).toContain(s);
+    // A check: its first sentence is the title, then the page's detail lines.
+    for (const s of ['The I-485 page 3 is the 01/20/25 edition<', 'The rest of the I-485 is current.', '04/01/26', 'The footer reads 01/20/25.']) expect(m.html, s).toContain(s);
+    expect(m.html).not.toContain('—');
   });
 
-  it('a clean result says it is good to go', () => {
-    const m = buildProofScanStageEmail({ ...base, report_state: 'no_issues_found', attention_count: 0, primary_report_language: 'No issues found', attention: [] },
-      { portalUrl: 'https://portal.example.test', people });
+  it('summarizes what passed, form by form with its pages, as the page counts it', () => {
+    const m = buildProofScanStageEmail(withIssues, { portalUrl: 'https://portal.example.test', caseId: id, people });
+    expect(m.html).toContain('What passed');
+    expect(m.html).toContain('G-1450 ×2');
+    expect(m.html).toContain('p.1, 2');
+    // Only a needs-info item open: clean, but not "all passed".
+    expect(m.html).toContain('✓ 1 passed, 1 to follow up');
+    expect(m.html).toContain('p.3-22');
+    expect(m.html).toContain('✓ All 2 passed');
+    expect(m.html).toContain('Page count correct');
+    expect(m.html).toContain('Evidence: 0 of 1 in Evidence Zero and 1 of 2 in the package match the forms');
+    // A gentle confirm is a count, never a finding.
+    expect(m.html).toContain('Also on the page: 1 item to confirm.');
+    expect(m.html).not.toContain('Is the interpreter box as intended?');
+  });
+
+  it('a clean result says it is good to go and still shows what passed', () => {
+    const m = buildProofScanStageEmail({
+      ...withIssues, report_state: 'no_issues_found', attention_count: 0, primary_report_language: 'No issues found', attention: [],
+      checks: withIssues.checks.filter((c) => c.status === 'clear'), evidence_matches: [],
+    }, { portalUrl: 'https://portal.example.test', people });
     expect(m.html).toContain('Good to go.');
+    expect(m.html).toContain('✓ All 2 passed');
+    expect(m.html).not.toContain('>Needs attention</p>');
   });
 
-  it('every attention kind has a line built from its fields alone', () => {
-    const kinds = ['missing_item', 'reference_difference', 'case_card_difference', 'evidence_difference', 'form_difference', 'translation', 'correction', 'not_carried', 'check', 'mystery'];
-    const lines = stageSummaryLines({ ...base, attention: kinds.map((kind) => ({ kind, form: 'I-130', field: 'last_name', forms: ['I-130'], title: 'SECRET TITLE 1234' })), not_checked_count: 2 });
-    expect(lines.length).toBeGreaterThanOrEqual(kinds.length);
-    for (const l of lines) { expect(l).not.toContain('SECRET'); expect(l).not.toContain('['); }
+  it('escapes every value and splits titles the way the page does', () => {
+    const m = buildProofScanStageEmail({
+      ...withIssues,
+      attention: [{ ...withIssues.attention[1], title: 'The petitioner is a U.S. citizen. The I-130 says <script>alert(1)</script>.' }],
+      attention_count: 1, primary_report_language: '1 item needs attention',
+    }, { portalUrl: 'https://portal.example.test', people });
+    expect(m.html).toContain('The petitioner is a U.S. citizen<');
+    expect(m.html).not.toContain('<script>');
+    expect(m.html).toContain('&lt;script&gt;');
+  });
+
+  it('lists what could not be checked, with the reason', () => {
+    const result = {
+      ...base, report_state: 'review_incomplete', attention_count: 0,
+      primary_report_language: reportStateLanguage('review_incomplete', 0), attention: [],
+      checks: [{ rule_id: 'PS-301', status: 'not_checked', title: 'Signed.', form: 'I-485', reason: 'Page 22 is too faint to read.' }],
+    };
+    const m = buildProofScanStageEmail(result, { portalUrl: 'https://portal.example.test', people });
+    expect(m.html).toContain('Not checked');
+    expect(m.html).toContain('Page 22 is too faint to read.');
+    expect(m.html).toContain('Why it could not be checked');
+    expect(m.html).not.toContain('Good to go.');
   });
 });
 

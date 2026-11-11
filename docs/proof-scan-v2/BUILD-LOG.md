@@ -293,3 +293,20 @@ questions are still counted, never flagged.
 - Copy from Max: `v21.pi.pattern.*`, new `v21.patterns.hint` and `v21.patterns.sometimes`.
   No schema change; the 2006 tally comment is reworded. The preview seeds I-485 item 44 as
   suggested, so OKAFOR & BELLO's Yes shows under Possible issues.
+
+## v2.1 follow-up (D-151, 2026-11-11)
+- **D-151:** the stage email carries the report, like the v1 email. `buildProofScanStageEmail`
+  (`functions/api/_proof-scan-email.js`) now draws, from the stored result through
+  `reportView()`: Needs attention with each card's lines (values, Fix on, Expected, Where,
+  Why), Not checked with the reason, and What passed (one row per form with its pages and
+  count, the package-wide checks by name, the evidence once per document), plus the number of
+  gentle confirms. No case card block; never a Possible issue (D-36); last names only (D-114).
+  Titles split with the page's `headlineCut` (imported from `pages/proof-scan-v2/ui.js`, pure).
+  `stageSummaryLines` and its `v202.email.line.*` / `v21.email.line.*` copy are removed; new
+  copy `v21.email.*`; `email.hint` reworded (it said "Sends only the stage result and a link").
+- Tests: the Q-51 "no values" email tests are replaced by D-151 tests (values, pass summary,
+  needs-info tally, evidence counted once, escaping, title splitting, Not checked).
+- Test fix, not a code change: the two AOS fee tests had the applicant's age hard-coded as 34;
+  she turned 35 on 2026-11-03 and they failed on the pushed branch. The age is now worked out
+  from today with `ageOn`.
+- Suite: 1029 passed (48 files). No schema change, no migration.

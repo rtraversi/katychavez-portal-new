@@ -17,8 +17,11 @@
 
 import { validateStoredScanResult, reportStateLanguage, STAFF_REVIEW_REMINDER } from './proof-scan-contract.js';
 import { buildReportModel } from '../../pages/proof-scan/report-model.js';
-import { FIELD_LABELS, ROLE_LABELS, DOC_TYPE_LABELS } from './_proof-scan-v2-common.js';
 import { copyText } from './_proof-scan-v2-copy.js';
+import { reportView } from './_proof-scan-v2-view.js';
+// The v2 page's own title splitter. Pure: ui.js touches the DOM only when a
+// drawing helper is called, which is why the server can import it.
+import { headlineCut } from '../../pages/proof-scan-v2/ui.js';
 
 // Same shaping the portal renders, so a line in the email is the line on screen.
 // report-model.js is pure — no DOM, no fetch — which is why it can be imported here.
@@ -144,16 +147,21 @@ export function buildProofScanEmail(result, { firmName, portalUrl } = {}) {
   return { subject, html };
 }
 
-// ── Proof Scan v2: the optional stage email (D-61, D-114, Q-51) ──────────────
+// ── Proof Scan v2: the optional stage email (D-61, D-114, D-151) ─────────────
 //
-// v2.0.2 (D-114): the case's last names, a link that opens that exact case,
-// and a summary of what needs attention; "good to go" when nothing does.
-// Q-51: no personal information beyond the last names. Every summary line is
-// built from the structured fields of an attention item (its kind, the form,
-// the field, the document type, the person's role), never from its title or
-// any value, so no date, number, address or first name can reach an inbox.
-// Never a Possible issue (D-36), and never a gentle confirm: neither is counted.
-// The words are placeholders in pages/proof-scan-v2/copy.js (D-87).
+// v2.1 (D-151, Max 2026-11-11): the email carries the report, like the v1
+// email the firm finds useful. What needs attention, with the values; what
+// could not be checked; and what passed, form by form with its pages (v1's
+// PASS rows and page map in one table). Supersedes Q-51 (no personal
+// information) and the summary half of D-114. Still: the case's last names
+// and a link to that exact case (D-114), no case card block (Max 2026-11-11),
+// never a Possible issue (D-36), and gentle confirms only as a count.
+//
+// Built by code, never by the model: every line comes from the stored result
+// through reportView(), the same view the page draws, in the page's own words
+// (pages/proof-scan-v2/copy.js, D-87), so the email and the page cannot
+// disagree. Every value is escaped. SSNs reach a result already masked to the
+// last four (the engine never stores more).
 const V2_STAGE_LABELS = { draft_review: 'Draft Review', preflight: 'Pre-flight', physical_scan: 'Physical Scan' };
 const LAST_NAME_ROLE_ORDER = ['petitioner', 'beneficiary', 'applicant', 'sponsor', 'joint_sponsor', 'household_member'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -179,39 +187,139 @@ export function proofScanCaseUrl(portalUrl, caseId) {
   return url.href;
 }
 
-// One line per attention item, from its structured fields only.
-export function stageSummaryLines(result) {
-  // General and AOS have several people, so the role is named (D-94, D-131).
-  const general = result?.case_type === 'general' || result?.case_type === 'aos';
-  const who = (role) => (general && ROLE_LABELS[role] ? `the ${ROLE_LABELS[role].toLowerCase()}'s ` : '');
-  const field = (f) => FIELD_LABELS[f] || '';
-  const formName = (f) => String(f || '').replace(/[^A-Za-z0-9 -]/g, '').slice(0, 20);
-  const forms = (xs) => [...new Set((xs || []).map(formName).filter(Boolean))].join(', ');
-  const lines = [];
-  for (const a of result?.attention || []) {
-    const vars = { form: formName(a.form), field: field(a.field), who: who(a.person_role), forms: forms(a.forms) };
-    let line;
-    switch (a.kind) {
-      case 'missing_item': line = copyText(vars.form ? 'v202.email.line.missing_item' : 'v21.email.line.missing_evidence', vars); break;
-      // v2.1, D-135: one line per wrong fact, naming the forms to fix.
-      case 'fact': line = copyText(vars.forms ? 'v21.email.line.fact' : 'v21.email.line.fact_no_forms', vars); break;
-      case 'document_difference': line = copyText('v21.email.line.document_difference', vars); break;
-      case 'reference_difference': line = copyText('v202.email.line.reference_difference', vars); break;
-      case 'case_card_difference': line = copyText('v202.email.line.case_card_difference', vars); break;
-      case 'evidence_difference': line = copyText('v202.email.line.evidence_difference', { ...vars, doc: (DOC_TYPE_LABELS[a.doc_type] || DOC_TYPE_LABELS.other).toLowerCase() }); break;
-      case 'form_difference': line = copyText('v202.email.line.form_difference', vars); break;
-      case 'translation': line = copyText('v202.email.line.translation', vars); break;
-      case 'correction': line = copyText('v202.email.line.correction', vars); break;
-      case 'not_carried': line = copyText('v202.email.line.not_carried', vars); break;
-      case 'check': line = a.rule_title
-        ? copyText(a.form ? 'v202.email.line.check_form' : 'v202.email.line.check', { ...vars, rule: String(a.rule_title).replace(/\.$/, '') })
-        : copyText('v202.email.line.other'); break;
-      default: line = copyText('v202.email.line.other');
+// ── The report blocks (D-151). Each draws what the page draws for the same
+// stored result (results.js renderStageResult), in the page's words. ─────────
+
+const RED = '#b91c1c';
+const GREY = '#6b7280';
+const joinAnd = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+const formKey = (f) => String(f ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// "I-765 · p.3, item 27 · I-765 page 3" says page 3 twice; keep the precise
+// one. The same rule as the page's tidyWhere (results.js).
+function tidyWhere(where) {
+  const parts = String(where || '').split(' · ').filter(Boolean);
+  return parts.filter((p) => {
+    const m = p.match(/^(.+) page (\d+)$/);
+    return !(m && parts.some((q) => q !== p && q.includes(`p.${m[2]}`)));
+  }).join(' · ');
+}
+
+// The title says what is wrong (D-136): its first sentence; the rest is detail.
+function firstSentence(s) {
+  const text = String(s ?? '');
+  const cut = headlineCut(text);
+  return cut > 0 ? [text.slice(0, cut), text.slice(cut).trim()] : [text, null];
+}
+
+function detailRow(label, value, color = '#111') {
+  if (value == null || value === '') return '';
+  return `<tr>
+      <td style="padding:2px 10px 2px 0;color:${GREY};font-size:12px;vertical-align:top">${esc(label)}</td>
+      <td style="padding:2px 0;font-size:12px;color:${color};vertical-align:top">${esc(value)}</td>
+    </tr>`;
+}
+
+// One problem, with the lines of its card on the page (results.js issueCard).
+function issueItem(item) {
+  let title = item.title;
+  let rows = '';
+  if (item.kind === 'fact') {
+    const many = (item.on_forms || []).length > 1;
+    for (const v of item.on_forms || []) {
+      const label = many ? `${copyText('v21.on_forms')}: ${(v.forms || []).map((f) => f.form).join(', ')}` : copyText('v21.on_forms');
+      rows += detailRow(label, v.value || copyText('review.blank'), RED);
     }
-    if (!lines.includes(line)) lines.push(line);
+    for (const s of item.sources || []) {
+      rows += detailRow(copyText('v21.on_sources', { sources: joinAnd((s.labels || []).map((l) => String(l).replace(/^the /, ''))) }), s.value);
+    }
+    if (item.fix_on?.length) rows += detailRow(copyText('v21.fix_on'), item.fix_on.map(({ form, n }) => (n > 1 ? `${form} ×${n}` : form)).join(', '));
+  } else if (item.kind === 'document_difference') {
+    title = firstSentence(item.title)[0];
+    for (const d of item.documents || []) rows += detailRow(copyText('v21.on_sources', { sources: String(d.label || '').toLowerCase() }), d.value, RED);
+  } else {
+    const [head, rest] = firstSentence(item.title);
+    title = head;
+    rows += detailRow(copyText('v21.detail'), [rest, item.detail].filter(Boolean).join(' '));
+    rows += detailRow(copyText('v21.expected'), item.expected);
+    rows += detailRow(copyText('v21.where'), tidyWhere(item.where));
+    // A one-word reason ("Observed.") says nothing the title did not.
+    if (/\s/.test(String(item.reason || '').trim())) rows += detailRow(item.why_label || copyText('v21.why'), item.reason);
   }
-  if (result?.not_checked_count > 0) lines.push(copyText('v202.email.not_checked', { n: result.not_checked_count }));
-  return lines;
+  return `<li style="margin:0 0 14px;font-size:13px;color:#111;line-height:1.5">
+      <span style="font-weight:600">${esc(String(title || '').replace(/\.$/, ''))}</span>
+      ${rows ? `<table style="border-collapse:collapse;margin-top:4px">${rows}</table>` : ''}
+    </li>`;
+}
+
+function issueSection(heading, items) {
+  if (!items.length) return '';
+  return `<p style="margin:22px 0 8px;font-size:13px;font-weight:700;color:#111">${esc(heading)}</p>
+    <ol style="margin:0;padding-left:20px">${items.join('')}</ol>`;
+}
+
+// One form's count, as the page's fold counts it: a form whose only open
+// items are needs-info is clean, but not "all passed".
+function groupTally(g) {
+  const open = g.outstanding.filter((o) => o.status === 'needs_attention').length;
+  const unread = g.outstanding.filter((o) => o.status === 'not_checked').length;
+  const base = g.passed === g.total
+    ? (g.total === 1 ? copyText('v21.email.passed_one') : copyText('v21.email.passed_all', { n: g.total }))
+    : g.clean ? copyText('v21.email.passed_soft', { a: g.passed, b: g.total - g.passed })
+      : copyText('v21.email.passed_some', { a: g.passed, b: g.total });
+  const extra = [
+    open ? copyText(open === 1 ? 'v21.email.attention_one' : 'v21.email.attention_many', { n: open }) : '',
+    unread ? copyText('v21.email.not_checked_n', { n: unread }) : '',
+  ].filter(Boolean).join(', ');
+  return `<span style="color:${g.clean ? '#374151' : '#111'}">${esc(base)}</span>${extra ? ` <span style="color:${RED}">· ${esc(extra)}</span>` : ''}`;
+}
+
+// Each document once, grouped the way the page groups them (evidenceRows in
+// _proof-scan-v2-view.js): on file in Evidence Zero, or in the package.
+function evidenceLine(result) {
+  const docs = new Map();
+  for (const e of result?.evidence_matches || []) {
+    const k = `${e.evidence}|${e.source}|${e.evidence_where || ''}`;
+    if (!docs.has(k)) docs.set(k, { inPackage: e.source === 'package', ok: true });
+    if (!(e.ok || e.gentle)) docs.get(k).ok = false;
+  }
+  const part = (inPackage, key) => {
+    const list = [...docs.values()].filter((d) => d.inPackage === inPackage);
+    return list.length ? copyText(key, { a: list.filter((d) => d.ok).length, b: list.length }) : '';
+  };
+  const parts = [part(false, 'v21.email.evidence_on_file'), part(true, 'v21.email.evidence_in_package')].filter(Boolean);
+  return parts.length ? copyText('v21.email.evidence', { parts: joinAnd(parts) }) : '';
+}
+
+// What passed: v1's PASS rows and page map in one table. Each form's checks
+// with its pages, then the package-wide checks by name, then the evidence.
+function whatPassed(view, result) {
+  if (!view.groups.length) return '';
+  const td = 'padding:5px 12px 5px 0;font-size:12px;vertical-align:top;border-top:1px solid #e5e7eb';
+  const row = (name, pages, body) => `<tr><td style="${td};font-weight:600;white-space:nowrap">${esc(name)}</td>
+      <td style="${td};color:${GREY}">${esc(pages)}</td><td style="${td}">${body}</td></tr>`;
+  const found = result?.forms_found || [];
+  const manyFiles = new Set(found.map((f) => f.file)).size > 1;
+  const forms = view.groups.filter((g) => g.form).map((g) => {
+    const mine = found.filter((f) => formKey(f.form) === formKey(g.form));
+    const pages = manyFiles
+      ? mine.filter((f) => f.pages).map((f) => `${f.file} p.${f.pages}`).join(', ')
+      : (() => { const p = [...new Set(mine.map((f) => f.pages).filter(Boolean))]; return p.length ? `p.${p.join(', ')}` : ''; })();
+    return row(mine.length > 1 ? `${g.form} ×${mine.length}` : g.form, pages, groupTally(g));
+  }).join('');
+  const whole = view.groups.find((g) => !g.form);
+  let wholeRow = '';
+  if (whole) {
+    const passed = whole.rows.filter((r) => r.kind !== 'evidence' && (r.status === 'clear' || r.cleared))
+      .map((r) => String(r.title || '').replace(/\.$/, ''));
+    const evidence = evidenceLine(result);
+    wholeRow = row(copyText('r12.package_group'), '', `${groupTally(whole)}
+        ${passed.length ? `<div style="margin-top:3px;color:${GREY};line-height:1.5">${esc(passed.join(' · '))}</div>` : ''}
+        ${evidence ? `<div style="margin-top:3px;color:${GREY}">${esc(evidence)}</div>` : ''}`);
+  }
+  return `<p style="margin:24px 0 2px;font-size:13px;font-weight:700;color:#111">${esc(copyText('v21.email.passed_heading'))}</p>
+    <p style="margin:0 0 6px;font-size:11px;color:${GREY}">${esc(copyText('v21.email.passed_note'))}</p>
+    <table style="border-collapse:collapse;width:100%">${forms}${wholeRow}</table>`;
 }
 
 export function buildProofScanStageEmail(result, { firmName, portalUrl, caseId, people } = {}) {
@@ -225,27 +333,42 @@ export function buildProofScanStageEmail(result, { firmName, portalUrl, caseId, 
     : copyText('v202.email.subject_unnamed', { stage: stageLabel, result: language })).slice(0, SUBJECT_LIMIT);
   const tone = TONE[result.report_state] || '#374151';
   const caseUrl = proofScanCaseUrl(portalUrl, caseId);
-  const clean = result.report_state === 'no_issues_found';
-  const lines = clean ? [] : stageSummaryLines(result);
-  const summary = clean
-    ? `<p style="margin:0 0 16px;font-size:14px;color:#111">${esc(copyText('v202.email.good_to_go'))}</p>`
-    : `<p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#111">${esc(copyText('v202.email.needs_heading'))}</p>
-    <ul style="margin:0 0 16px;padding-left:18px">${lines.map((l) => `<li style="margin:0 0 6px;font-size:13px;color:#111;line-height:1.5">${esc(l)}</li>`).join('')}</ul>`;
+  // The email goes out as the run is stored, before anyone can clear an item,
+  // so this is the page exactly as it first opens on this run.
+  const view = reportView(result, [], {});
+  const open = view.attention.filter((a) => !a.cleared);
+  const notChecked = view.not_checked.filter((x) => !x.cleared);
+  const clean = !open.length && !notChecked.length;
+  const confirm = view.confirm.filter((x) => !x.cleared).length;
+  const files = result.scan?.files || [];
+  const fileLine = result.scope === 'individual' && result.form ? copyText('review.individual_file', { form: result.form })
+    : files.length === 1 ? files[0].filename
+      : files.length ? copyText('review.n_files', { n: files.length }) : '';
+  const caseKind = [result.case_type_label, stageLabel].filter(Boolean).join(' · ');
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
-<div style="max-width:520px;margin:40px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)">
+<div style="max-width:640px;margin:40px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)">
   <div style="background:#1a3a5c;padding:22px 32px">
     <p style="margin:0;color:#fff;font-size:17px;font-weight:600">${esc(firmName || 'Your Law Firm')}</p>
     <p style="margin:2px 0 0;color:#fff;font-size:12px;opacity:.8">Proof Scan result</p>
   </div>
   <div style="padding:24px 32px 4px">
-    ${names ? `<p style="margin:0 0 4px;font-size:13px;color:#111">${esc(copyText('v202.email.case', { names }))}</p>` : ''}
-    <p style="margin:0 0 4px;font-size:13px;color:#6b7280">${esc(stageLabel)}</p>
-    <p style="margin:0 0 16px;font-size:18px;font-weight:700;color:${tone}">${esc(language)}</p>
-    ${summary}
+    <p style="margin:0 0 4px;font-size:18px;font-weight:700;color:${tone}">${esc(language)}</p>
+    ${names ? `<p style="margin:0 0 2px;font-size:13px;color:#111">${esc(copyText('v202.email.case', { names }))}</p>` : ''}
+    <p style="margin:0 0 2px;font-size:12px;color:${GREY}">${esc(caseKind)}</p>
+    ${fileLine ? `<p style="margin:0 0 4px;font-size:12px;color:${GREY}">${esc(fileLine)}</p>` : ''}
   </div>
-  <div style="margin:0 32px;padding:12px 16px;background:#f9fafb;border-left:3px solid #1a3a5c">
+  <div style="padding:0 32px">
+    ${clean ? `<p style="margin:12px 0 0;font-size:14px;color:#111">${esc(copyText('v202.email.good_to_go'))}</p>` : ''}
+    ${issueSection(copyText('v21.needs_attention'), open.map(issueItem))}
+    ${issueSection(copyText('r12.not_checked'), notChecked.map((c) => issueItem({
+    kind: 'check', title: c.title, where: c.where, reason: c.reason, why_label: copyText('r12.why_not_checked'),
+  })))}
+    ${whatPassed(view, result)}
+    ${confirm ? `<p style="margin:16px 0 0;font-size:12px;color:${GREY}">${esc(copyText(confirm === 1 ? 'v21.email.confirm_one' : 'v21.email.confirm_many', { n: confirm }))}</p>` : ''}
+  </div>
+  <div style="margin:24px 32px 0;padding:12px 16px;background:#f9fafb;border-left:3px solid #1a3a5c">
     <p style="margin:0;font-size:12px;color:#374151">${esc(STAFF_REVIEW_REMINDER)}</p>
   </div>
   ${caseUrl ? `<div style="padding:20px 32px 28px">

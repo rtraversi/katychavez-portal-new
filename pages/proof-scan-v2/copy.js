@@ -368,7 +368,7 @@ export const COPY = {
 
   // ── Email (D-61, D-43) ──
   'email.toggle': 'Email the result',
-  'email.hint': 'Off unless turned on. Sends only the stage result and a link to the report.',
+  'email.hint': 'Off unless turned on. Sends the report: what needs attention with the values, and what passed.',
   'email.not_sent': 'Preview only. Nothing is sent.',
   'email.to': 'To',
   'email.to_value': 'Firm notification address (not set in this preview)',
@@ -541,7 +541,8 @@ export const PORTAL = {
   'signoff.error': 'The sign-off was not saved: {error}',
 
   // ── Email (D-61) ──
-  'email.hint': 'Off unless turned on. Sends only the stage result and a link to the report, to the firm notification address.',
+  // D-151: the email carries the report.
+  'email.hint': 'Off unless turned on. Sends the report to the firm notification address: what needs attention with the values, and what passed.',
   'email.sent': 'Emailed to the firm notification address.',
   'email.not_sent': 'The review was saved, but the email was not sent.',
   'email.no_address': 'No firm notification address is set, so nothing was emailed.',
@@ -643,25 +644,13 @@ export const PORTAL = {
   'v202.pi.never_unavailable': 'This one can only be dismissed for this case.',
   // Suggest as a rule: a general rule, never this case (D-125).
   'suggest.prefill_default': 'Check that the facts on the evidence match the forms of the person the evidence belongs to.',
-  // The stage email (D-114, Q-51). No personal information beyond last names.
+  // The stage email (D-114): the case's last names and a link to that case.
+  // Its report blocks reuse the page's words; their own words are v21.email.*.
   'v202.email.subject': 'Proof Scan: {names}: {stage}: {result}',
   'v202.email.subject_unnamed': 'Proof Scan: {stage}: {result}',
   'v202.email.case': 'Case: {names}',
   'v202.email.good_to_go': 'Good to go. Nothing needs attention.',
-  'v202.email.needs_heading': 'What needs attention',
   'v202.email.open_case': 'Open the case',
-  'v202.email.line.missing_item': 'The {form} is missing from the package.',
-  'v202.email.line.reference_difference': 'The {form} differs from the case card on {who}{field}.',
-  'v202.email.line.case_card_difference': 'The package differs from the case card on {who}{field} ({forms}).',
-  'v202.email.line.evidence_difference': 'The {doc} and the {form} differ on {who}{field}.',
-  'v202.email.line.form_difference': 'The forms disagree on {who}{field} ({forms}).',
-  'v202.email.line.translation': 'A document in a foreign language has no English translation.',
-  'v202.email.line.correction': 'A client correction on the {form} needs checking.',
-  'v202.email.line.not_carried': 'A correction did not reach the {form}.',
-  'v202.email.line.check': 'Not met: {rule}',
-  'v202.email.line.check_form': 'Not met on the {form}: {rule}',
-  'v202.email.line.other': 'An item needs attention.',
-  'v202.email.not_checked': '{n} check(s) could not be completed.',
   // USCIS editions on demand (D-128).
   'v202.editions.button': 'Check USCIS editions now',
   'v202.editions.running': 'Checking uscis.gov…',
@@ -752,11 +741,21 @@ export const PORTAL = {
   'v21.patterns.declined': 'Declined',
   'v21.patterns.none': 'No suggestions yet.',
   'rulebook.origin.answer_pattern': 'Approved from an answer pattern',
-  // The stage email (D-114, Q-51): structured fields only.
-  'v21.email.line.fact': 'The forms differ on {who}{field} ({forms}).',
-  'v21.email.line.fact_no_forms': 'The forms differ on {who}{field}.',
-  'v21.email.line.document_difference': 'Two documents differ on {who}{field}.',
-  'v21.email.line.missing_evidence': 'A document is missing from the package.',
+  // The stage email's report (D-151, Max 2026-11-11). Placeholders (D-87).
+  'v21.email.passed_heading': 'What passed',
+  'v21.email.passed_note': "Each form's own checks. Differences between forms or documents are in Needs attention.",
+  'v21.email.passed_all': '✓ All {n} passed',
+  'v21.email.passed_one': '✓ Passed',
+  'v21.email.passed_some': '{a} of {b} passed',
+  'v21.email.passed_soft': '✓ {a} passed, {b} to follow up',
+  'v21.email.attention_one': '{n} needs attention',
+  'v21.email.attention_many': '{n} need attention',
+  'v21.email.not_checked_n': '{n} not checked',
+  'v21.email.evidence': 'Evidence: {parts} match the forms',
+  'v21.email.evidence_on_file': '{a} of {b} in Evidence Zero',
+  'v21.email.evidence_in_package': '{a} of {b} in the package',
+  'v21.email.confirm_one': 'Also on the page: 1 item to confirm.',
+  'v21.email.confirm_many': 'Also on the page: {n} items to confirm.',
   // Q-61: passport number and expiry on the case card.
   'field.passport_number': 'Passport number',
   'field.passport_expiration': 'Passport expiration',

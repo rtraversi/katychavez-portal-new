@@ -1688,6 +1688,10 @@ Date: 2026-10-21. Max picked "Keep it suggested (Recommended)". See D-149.
 **R-11: An early Yes blocking a question from ever being suggested (D-138). Reversed.**
 Date: 2026-10-21. Max: "No. An early Yes shouldn't block it." See D-150.
 
+**R-12: A stage email with no personal information and no values (Q-51, D-114's summary). Reversed.**
+Date: 2026-11-11. "i want a similar report to be sent like the one we already send for v1. we
+find it useful." See D-151.
+
 **R-6 — Letting the model resolve a fact conflict on its own.**
 Date: 2026-09-04. A confidence score is not human confirmation.
 
@@ -2668,6 +2672,32 @@ you'd use instead."
   "Questions sometimes answered Yes never qualify" (R-11).
 - Copy for D-149/D-150: Max, verbatim: "just have it write it. or suggest something".
   Claude's suggested lines went into the terminal prompt.
+
+**The stage email, 2026-11-11.** Verbatim, from the Claude Code session on Max's machine:
+"right now checker v2 ships email without anything in the email. it was so no customer info
+was shared on email. but we already do this for v1. so lets coalesce. i want a similar report
+to be sent like the one we already send for v1. we find it useful." After seeing examples:
+"show a summary of the passes", "v2 no case card summary please. only report from the issues
+ok. similar to what works on v1", and on whether the AI should write it: "let the AI write the
+report following always the same structure yes? is that better? honest opinion." [Claude]
+Recommended code over the model: the model already reads the package and writes each finding's
+sentence; a model-written email could disagree with the page, reorder or invent findings (N-001,
+N-018), cost a second call, and put model HTML in an inbox (the v1.2 rule
+`_proof-scan-email.js` was built on: nothing model-authored is forwarded). Approved: "i approve the version you had suggested before".
+- **D-151: The stage email carries the report.** Supersedes Q-51 and the summary half of D-114
+  (R-12). In order: the result line; the case's last names (D-114, unchanged), case type, stage
+  and file; Needs attention, each problem with the lines of its card on the page (the values,
+  where to fix them, Expected, Where, Why); Not checked, with the reason; What passed, one row
+  per form with its pages and its count, then the package-wide checks by name and the evidence
+  (each document once, in Evidence Zero and in the package); the number of gentle confirms;
+  the staff reminder and the link to the case. No case card block. Never a Possible issue
+  (D-36). Built by code from the stored result through `reportView()`, the page's own view, in
+  the page's words; new words are placeholders in `copy.js` (`v21.email.*`, D-87). SSNs reach
+  a result masked to the last four, so an SSN difference shows `***-**-1234`, as on the page.
+- [Claude, verified 2026-11-11] Before this, the live portal (v2.0.1) emailed only the stage,
+  the result line and a link; v2.1 added the last names and one line per problem with no values.
+- Not changed, noticed: the email orders multi-person last names main person first ("VEGA &
+  SANTOS") while the case folder reads "SANTOS & VEGA" (D-101). Open, for Max.
 
 **v2.1 built and in PR #5, 2026-10-17.** [Claude] Branch `proof-scan-v2.1` (worktree
 `~/sites/katychavez-portal-v21`), stacked on #4: https://github.com/rtraversi/katychavez-portal-new/pull/5

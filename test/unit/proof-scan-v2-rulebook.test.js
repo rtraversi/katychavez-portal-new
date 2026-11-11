@@ -245,8 +245,8 @@ describe('Possible issues (D-36 to D-39, D-59, D-60)', () => {
   });
 });
 
-describe('the optional stage email (D-61)', () => {
-  it('sends the stage result, what needs attention and a link to the case, never Possible issues, only when asked and stored', async () => {
+describe('the optional stage email (D-61, D-151)', () => {
+  it('sends the stage report and a link to the case, never Possible issues, only when asked and stored', async () => {
     const caseId = generalCase();
     const sent = [];
     mockModel(vi, [
@@ -266,8 +266,10 @@ describe('the optional stage email (D-61)', () => {
     expect(sent[0].subject).toBe('Proof Scan: Physical Scan: 1 item needs attention');
     // D-114 (v2.0.2): the link opens this exact case.
     expect(sent[0].html).toContain(`https://portal.example.test/portal?ps2case=${caseId}#proof-scan-v2`);
-    // ...and says what needs attention, in the firm's own words for the check.
-    expect(sent[0].html).toContain('Not met: Edition date is current on every page');
+    // ...and carries the report (D-151): what needs attention, then what passed.
+    expect(sent[0].html).toContain('Needs attention');
+    expect(sent[0].html).toContain('Edition date is current on every page');
+    expect(sent[0].html).toContain('What passed');
     expect(sent[0].html).not.toContain('SECRET IDEA');
     expect(sent[0].html).not.toContain('Zeta'); // never the case label (it can carry a first name)
     expect(sent[0].html).not.toContain('—');
