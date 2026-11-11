@@ -96,7 +96,9 @@ const v2Sources = import.meta.glob(['../../functions/api/*proof-scan-v2*.js', '.
 describe('static guards', () => {
   it('registers every v2 route in the worker', () => {
     const files = Object.keys(v2Sources).map((p) => p.split('/').pop()).filter((f) => !f.startsWith('_'));
-    expect(files.length).toBe(13); // 11 from the v2 build, proof-scan-v2-process (staged runs), proof-scan-v2-editions (D-128)
+    // 11 from the v2 build, proof-scan-v2-process (staged runs), proof-scan-v2-editions (D-128),
+    // proof-scan-v2-clear (D-132) and proof-scan-v2-patterns (D-138).
+    expect(files.length).toBe(15);
     for (const f of files) expect(routes[`/api/${f.replace(/\.js$/, '')}`], f).toBeTypeOf('function');
   });
 

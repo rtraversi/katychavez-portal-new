@@ -1,0 +1,1460 @@
+{
+  "schema_version": 1,
+  "_note": "Proof Scan v2.1 AOS case type (D-129 to D-147, Q-59 to Q-81). Seeded by migration 2006 (generated block, scripts/proof-scan-v2-aos-seed.mjs). The firm-wide checks are copied from the General case type's current version at migration time; here only the AOS case-type checks and package items are kept. Source: the firm's AOS Checklist.docx, with page numbers moved to the current editions (I-485 09/18/26, I-864 and I-864A 08/24/26, I-130 and I-130A 04/01/24, I-765 08/21/25, I-131 01/20/25). I-485 Question 61 is left out: item 61 in the current edition is not a yes/no question (see BUILD-LOG v2.1).",
+  "case_type": "aos",
+  "version": 1,
+  "label": "Adjustment of Status",
+  "source_note": "The firm's AOS checklist (D-129 to D-147, Q-59 to Q-81), seeded by migration 2006 with the firm-wide checks of the General case type.",
+  "package_items": [
+    {
+      "item_id": "AOS-F-G1450-I130",
+      "form": "G-1450",
+      "instance": "I-130 fee",
+      "label": "Card (G-1450) or bank (G-1650) payment of the I-130 fee",
+      "pages": 1,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-F-G1450-I485",
+      "form": "G-1450",
+      "instance": "I-485 fee",
+      "label": "Card (G-1450) or bank (G-1650) payment of the I-485 fee",
+      "pages": 1,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-F-G1450-I765",
+      "form": "G-1450",
+      "instance": "I-765 fee",
+      "label": "Card (G-1450) or bank (G-1650) payment of the I-765 fee",
+      "pages": 1,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-F-G1450-I131",
+      "form": "G-1450",
+      "instance": "I-131 fee",
+      "label": "Card (G-1450) or bank (G-1650) payment of the I-131 fee, when an I-131 is filed",
+      "pages": 1,
+      "kind": "form",
+      "applies_when": "i131"
+    },
+    {
+      "item_id": "AOS-F-G1145",
+      "form": "G-1145",
+      "label": "E-notification",
+      "pages": 1,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-F-G28-PET",
+      "form": "G-28",
+      "instance": "for the I-130",
+      "label": "Notice of entry of appearance, the petitioner's",
+      "pages": 4,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-F-G28-APP",
+      "form": "G-28",
+      "instance": "for the I-485 and I-765",
+      "label": "Notice of entry of appearance, the applicant's",
+      "pages": 4,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-F-I130",
+      "form": "I-130",
+      "label": "Petition for alien relative",
+      "pages": 12,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-F-I130A",
+      "form": "I-130A",
+      "label": "Supplemental information for spouse beneficiary (spousal cases)",
+      "pages": 6,
+      "kind": "form",
+      "applies_when": "spousal"
+    },
+    {
+      "item_id": "AOS-F-I485",
+      "form": "I-485",
+      "label": "Application to adjust status",
+      "pages": 24,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-F-I765",
+      "form": "I-765",
+      "label": "Application for employment authorization",
+      "pages": 7,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-F-I864",
+      "form": "I-864",
+      "instance": "petitioner",
+      "label": "Affidavit of support, the petitioner's",
+      "pages": 12,
+      "kind": "form"
+    },
+    {
+      "item_id": "AOS-E-BC-BEN",
+      "form": "Evidence",
+      "label": "Beneficiary's birth certificate",
+      "pages": 1,
+      "kind": "evidence"
+    },
+    {
+      "item_id": "AOS-E-BC-PET",
+      "form": "Evidence",
+      "label": "Petitioner's birth certificate",
+      "pages": 1,
+      "kind": "evidence"
+    },
+    {
+      "item_id": "AOS-E-NATZ-PET",
+      "form": "Evidence",
+      "label": "Petitioner's naturalization certificate (when the I-130 says the petitioner naturalized)",
+      "pages": 1,
+      "kind": "evidence",
+      "applies_when": "naturalized"
+    },
+    {
+      "item_id": "AOS-E-MC",
+      "form": "Evidence",
+      "label": "Marriage certificate (spousal cases)",
+      "pages": 1,
+      "kind": "evidence",
+      "applies_when": "spousal"
+    },
+    {
+      "item_id": "AOS-E-DIV",
+      "form": "Evidence",
+      "label": "Divorce certificate (when the I-130 or I-130A lists an earlier marriage ended by divorce)",
+      "pages": 1,
+      "kind": "evidence",
+      "applies_when": "divorce"
+    },
+    {
+      "item_id": "AOS-E-PASSPORT",
+      "form": "Evidence",
+      "label": "Beneficiary's passport photo page",
+      "pages": 1,
+      "kind": "evidence"
+    },
+    {
+      "item_id": "AOS-E-VISA",
+      "form": "Evidence",
+      "label": "Beneficiary's U.S. visa",
+      "pages": 1,
+      "kind": "evidence",
+      "missing_confirm": true
+    },
+    {
+      "item_id": "AOS-E-I94",
+      "form": "Evidence",
+      "label": "Beneficiary's I-94",
+      "pages": 1,
+      "kind": "evidence",
+      "missing_confirm": true
+    },
+    {
+      "item_id": "AOS-E-TAX-PET",
+      "form": "Evidence",
+      "label": "Petitioner's most recent tax return",
+      "pages": 1,
+      "kind": "evidence"
+    },
+    {
+      "item_id": "AOS-E-W2-PET",
+      "form": "Evidence",
+      "label": "Petitioner's W-2",
+      "pages": 1,
+      "kind": "evidence"
+    },
+    {
+      "item_id": "AOS-E-PAY-PET",
+      "form": "Evidence",
+      "label": "Petitioner's pay stubs or employer letter",
+      "pages": 1,
+      "kind": "evidence"
+    },
+    {
+      "item_id": "AOS-E-TAX-J",
+      "form": "Evidence",
+      "label": "Co-sponsor's most recent tax return",
+      "pages": 1,
+      "kind": "evidence",
+      "applies_when": "joint_sponsor"
+    },
+    {
+      "item_id": "AOS-E-W2-J",
+      "form": "Evidence",
+      "label": "Co-sponsor's W-2",
+      "pages": 1,
+      "kind": "evidence",
+      "applies_when": "joint_sponsor"
+    },
+    {
+      "item_id": "AOS-E-PAY-J",
+      "form": "Evidence",
+      "label": "Co-sponsor's pay stubs or employer letter",
+      "pages": 1,
+      "kind": "evidence",
+      "applies_when": "joint_sponsor"
+    },
+    {
+      "item_id": "AOS-E-STATUS-J",
+      "form": "Evidence",
+      "label": "Co-sponsor's proof of U.S. citizenship or permanent residence",
+      "pages": 1,
+      "kind": "evidence",
+      "applies_when": "joint_sponsor"
+    },
+    {
+      "item_id": "AOS-E-I693",
+      "form": "Evidence",
+      "label": "Medical exam: the first page of the I-693 (Physical Scan only; one page is complete)",
+      "pages": 1,
+      "kind": "evidence"
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "AOS-FEE-I130",
+      "title": "I-130 fee: $675, in the petitioner's name.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-1450",
+      "page": "1",
+      "pass_text": "I-130 fee: $675, in the petitioner's name.",
+      "applies_to_item_ids": [
+        "AOS-F-G1450-I130"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "expected": "$675",
+      "note": "Paid by G-1450, or by G-1650 if the client asks; a G-1650 is not an error (Q-63). The cardholder can be anyone (D-134). The amount is the firm's and can be corrected here.",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-FEE-I485",
+      "title": "I-485 fee matches the applicant's age, in the applicant's name.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-1450",
+      "page": "1",
+      "pass_text": "I-485 fee matches the applicant's age.",
+      "applies_to_item_ids": [
+        "AOS-F-G1450-I485"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "expected": "under 14: $950 · 14 to 78: $1,440 · 79 and older: $1,140",
+      "note": "Q-64: age from the birth certificate or case card date of birth only; when that is not settled the fee is not checked. Within a month of turning 14 or 79 a gentle confirm. Under 14, only that an I-485 fee payment is there. Amounts are the firm's and can be corrected here, in this format.",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-FEE-I765",
+      "title": "I-765 fee: $260, in the applicant's name.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-1450",
+      "page": "1",
+      "pass_text": "I-765 fee: $260, in the applicant's name.",
+      "applies_to_item_ids": [
+        "AOS-F-G1450-I765"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "expected": "$260",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-FEE-I131",
+      "title": "I-131 fee: $630, in the applicant's name.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-1450",
+      "page": "1",
+      "pass_text": "I-131 fee: $630, in the applicant's name.",
+      "applies_to_item_ids": [
+        "AOS-F-G1450-I131"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "expected": "$630",
+      "note": "Only when an I-131 is filed (Q-70).",
+      "applies_when": "i131",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G1450-CARD",
+      "title": "Card number, card type, expiration date, cardholder name and billing address are complete on every G-1450.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-1450",
+      "page": "1",
+      "pass_text": "Card details complete.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "The cardholder can be anyone; a name that looks like a misspelling of someone on the case is a gentle confirm (D-134).",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G1450-SIGN",
+      "title": "Every G-1450 is signed by the cardholder.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-1450",
+      "page": "1",
+      "pass_text": "Signed by the cardholder.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "Q-78. The G-1450 has no date beside the signature.",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G1450-CONTACT",
+      "title": "The G-1450s' email and phone agree with each other and belong to the petitioner or the beneficiary.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-1450",
+      "page": "1",
+      "pass_text": "Email and phone agree and belong to someone on the case.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "Q-79: the petitioner may pay the beneficiary's fees and the beneficiary the petitioner's.",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G1145-001",
+      "title": "Petitioner's name, email and phone.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-1145",
+      "page": "1",
+      "pass_text": "Petitioner's name, email and phone.",
+      "applies_to_item_ids": [
+        "AOS-F-G1145"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "The G-1145 is under the petitioner's information and is compared with the petitioner's case card (Q-66).",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G28P-001",
+      "title": "Petitioner's G-28 (for the I-130): the petitioner's name, and the Petitioner box ticked.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-28",
+      "page": "2",
+      "pass_text": "Petitioner's G-28 (for the I-130): the petitioner's name, and the Petitioner box ticked.",
+      "applies_to_item_ids": [
+        "AOS-F-G28-PET"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G28P-002",
+      "title": "Petitioner's G-28: the form-number box lists the I-130.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-28",
+      "page": "2",
+      "item": "1.b",
+      "pass_text": "Petitioner's G-28: the form-number box lists the I-130.",
+      "applies_to_item_ids": [
+        "AOS-F-G28-PET"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "expected": "I-130",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G28P-003",
+      "title": "Petitioner's G-28: petitioner and attorney signatures, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-28",
+      "page": "3",
+      "pass_text": "Petitioner's G-28: petitioner and attorney signatures, signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-G28-PET"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G28A-001",
+      "title": "Applicant's G-28 (for the I-485 and I-765): the applicant's name, the Applicant box ticked, and the applicant's address.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-28",
+      "page": "2",
+      "pass_text": "Applicant's G-28 (for the I-485 and I-765): the applicant's name, the Applicant box ticked, and the applicant's address.",
+      "applies_to_item_ids": [
+        "AOS-F-G28-APP"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G28A-002",
+      "title": "Applicant's G-28: the form-number box lists the I-485 and the I-765, and the I-131 when one is filed.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-28",
+      "page": "2",
+      "item": "1.b",
+      "pass_text": "Applicant's G-28: the form-number box lists the I-485 and the I-765, and the I-131 when one is filed.",
+      "applies_to_item_ids": [
+        "AOS-F-G28-APP"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "expected": "I-485 and I-765 (and I-131 when filed)",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G28A-003",
+      "title": "Applicant's G-28: where the card is delivered.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-28",
+      "page": "3",
+      "item": "Part 4, 1.a-1.c",
+      "pass_text": "Card delivered home.",
+      "applies_to_item_ids": [
+        "AOS-F-G28-APP"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "D-107: all delivery boxes empty means home, which is fine; the office box ticked is a gentle confirm, never counted.",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-G28A-004",
+      "title": "Applicant's G-28: applicant and attorney signatures, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "G-28",
+      "page": "3",
+      "pass_text": "Applicant's G-28: applicant and attorney signatures, signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-G28-APP"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-130-001",
+      "title": "Petitioner's name (page 1), date of birth and address (page 2).",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-130",
+      "page": "1-2",
+      "pass_text": "Petitioner's name (page 1), date of birth and address (page 2).",
+      "applies_to_item_ids": [
+        "AOS-F-I130"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-130-002",
+      "title": "Beneficiary's name, date of birth and address.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-130",
+      "page": "5",
+      "pass_text": "Beneficiary's name, date of birth and address.",
+      "applies_to_item_ids": [
+        "AOS-F-I130"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-130-003",
+      "title": "Petitioner's signature, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-130",
+      "page": "9",
+      "item": "6.a",
+      "pass_text": "Petitioner's signature, signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I130"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-130-004",
+      "title": "Katy's signature (preparer), signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-130",
+      "page": "11",
+      "item": "8.a",
+      "pass_text": "Katy's signature (preparer), signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I130"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-130A-001",
+      "title": "Spouse beneficiary's name and address.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-130A",
+      "page": "1",
+      "pass_text": "Spouse beneficiary's name and address.",
+      "applies_to_item_ids": [
+        "AOS-F-I130A"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "spousal",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-130A-002",
+      "title": "Beneficiary's signature, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-130A",
+      "page": "3",
+      "item": "6.a",
+      "pass_text": "Beneficiary's signature, signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I130A"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "spousal",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-130A-003",
+      "title": "Katy's signature (preparer), signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-130A",
+      "page": "5",
+      "item": "8.a",
+      "pass_text": "Katy's signature (preparer), signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I130A"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "spousal",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-130A-LANG",
+      "title": "English or interpreter box (Part 4, item 1), and the interpreter section (Part 5).",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-130A",
+      "page": "3-4",
+      "pass_text": "English or interpreter box as intended.",
+      "applies_to_item_ids": [
+        "AOS-F-I130A"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "Q-67, decided by the server from what the model reads.",
+      "applies_when": "spousal",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-485-001",
+      "title": "Applicant's name and date of birth.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-485",
+      "page": "1",
+      "pass_text": "Applicant's name and date of birth.",
+      "applies_to_item_ids": [
+        "AOS-F-I485"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-485-002",
+      "title": "Applicant's signature, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-485",
+      "page": "22",
+      "item": "4",
+      "pass_text": "Applicant's signature, signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I485"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-485-003",
+      "title": "Katy's signature (preparer), signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-485",
+      "page": "23",
+      "item": "6",
+      "pass_text": "Katy's signature (preparer), signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I485"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-485-LANG",
+      "title": "Interpreter section (Part 11): signed and dated when it is filled in.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-485",
+      "page": "22",
+      "pass_text": "Interpreter section as intended.",
+      "applies_to_item_ids": [
+        "AOS-F-I485"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "Q-67. The 09/18/26 edition has no English or interpreter box in Part 10; the box test applies only to an edition that has them.",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-765-001",
+      "title": "Initial permission to accept employment, and the applicant's name.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-765",
+      "page": "1",
+      "item": "1.a",
+      "pass_text": "Initial permission to accept employment, and the applicant's name.",
+      "applies_to_item_ids": [
+        "AOS-F-I765"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-765-002",
+      "title": "Applicant's mailing and physical address.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-765",
+      "page": "2",
+      "item": "5-7",
+      "pass_text": "Applicant's mailing and physical address.",
+      "applies_to_item_ids": [
+        "AOS-F-I765"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-765-003",
+      "title": "Eligibility category (c)(9), adjustment applicant.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-765",
+      "page": "3",
+      "item": "27",
+      "pass_text": "Eligibility category (c)(9), adjustment applicant.",
+      "applies_to_item_ids": [
+        "AOS-F-I765"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "expected": "(c)(9)",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-765-004",
+      "title": "Applicant's signature, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-765",
+      "page": "4",
+      "item": "7.a",
+      "pass_text": "Applicant's signature, signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I765"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-765-005",
+      "title": "Katy's signature (preparer), signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-765",
+      "page": "6",
+      "item": "8.a",
+      "pass_text": "Katy's signature (preparer), signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I765"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-765-LANG",
+      "title": "English or interpreter box (Part 3, item 1), and the interpreter section (Part 4), signed and dated when needed.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-765",
+      "page": "4-5",
+      "pass_text": "English or interpreter box as intended.",
+      "applies_to_item_ids": [
+        "AOS-F-I765"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "Q-67, decided by the server from what the model reads.",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864P-001",
+      "title": "Petitioner's I-864: the sponsor's name and address, and the immigrant's name and address.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864",
+      "page": "1-3",
+      "pass_text": "Petitioner's I-864: the sponsor's name and address, and the immigrant's name and address.",
+      "applies_to_item_ids": [
+        "AOS-F-I864"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864P-002",
+      "title": "Petitioner's I-864: current individual annual income, current annual household income and the most recent tax year's income are filled in.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864",
+      "page": "5-7",
+      "item": "7, 12, 16.a",
+      "pass_text": "Petitioner's I-864: current individual annual income, current annual household income and the most recent tax year's income are filled in.",
+      "applies_to_item_ids": [
+        "AOS-F-I864"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "Q-69: filled in only; never matched to the tax return or W-2, never checked against the poverty guideline.",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864P-003",
+      "title": "Petitioner's I-864: sponsor's signature, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864",
+      "page": "10",
+      "item": "6",
+      "pass_text": "Petitioner's I-864: sponsor's signature, signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I864"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864P-004",
+      "title": "Petitioner's I-864: Katy's signature (preparer), signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864",
+      "page": "11",
+      "item": "6",
+      "pass_text": "Petitioner's I-864: Katy's signature (preparer), signed and dated.",
+      "applies_to_item_ids": [
+        "AOS-F-I864"
+      ],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864J-001",
+      "title": "Co-sponsor's I-864: the co-sponsor's name and address, and the immigrant's name and address.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864",
+      "page": "1-3",
+      "pass_text": "Co-sponsor's I-864: the co-sponsor's name and address, and the immigrant's name and address.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "joint_sponsor",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864J-002",
+      "title": "Co-sponsor's I-864: current individual annual income and the recent tax years' income are filled in.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864",
+      "page": "5-7",
+      "item": "7, 16.a-16.c",
+      "pass_text": "Co-sponsor's I-864: current individual annual income and the recent tax years' income are filled in.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "Q-69: filled in only.",
+      "applies_when": "joint_sponsor",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864J-003",
+      "title": "Co-sponsor's I-864: co-sponsor's signature, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864",
+      "page": "10",
+      "item": "6",
+      "pass_text": "Co-sponsor's I-864: co-sponsor's signature, signed and dated.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "joint_sponsor",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864J-004",
+      "title": "Co-sponsor's I-864: Katy's signature (preparer), signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864",
+      "page": "11",
+      "item": "6",
+      "pass_text": "Co-sponsor's I-864: Katy's signature (preparer), signed and dated.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "joint_sponsor",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864A-001",
+      "title": "Household member's name and address (page 1), employment and income (page 2), and the intending immigrant's name (page 3).",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864A",
+      "page": "1-3",
+      "pass_text": "Household member's name and address (page 1), employment and income (page 2), and the intending immigrant's name (page 3).",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "Q-69: income filled in only.",
+      "applies_when": "household_member",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864A-002",
+      "title": "Sponsor's signature, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864A",
+      "page": "4",
+      "item": "10",
+      "pass_text": "Sponsor's signature, signed and dated.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "household_member",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864A-003",
+      "title": "Household member's signature, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864A",
+      "page": "6",
+      "item": "7",
+      "pass_text": "Household member's signature, signed and dated.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "household_member",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-864A-004",
+      "title": "Katy's signature (preparer), signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-864A",
+      "page": "7",
+      "item": "6",
+      "pass_text": "Katy's signature (preparer), signed and dated.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "household_member",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-131-001",
+      "title": "Applicant's signature, signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-131",
+      "page": "11",
+      "item": "4",
+      "pass_text": "Applicant's signature, signed and dated.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "i131",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-131-002",
+      "title": "Katy's signature (preparer), signed and dated.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": "I-131",
+      "page": "13",
+      "item": "6",
+      "pass_text": "Katy's signature (preparer), signed and dated.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "applies_when": "i131",
+      "stages": {
+        "draft_review": {
+          "state": "later"
+        },
+        "preflight": {
+          "state": "checked"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    },
+    {
+      "rule_id": "AOS-ASM-001",
+      "title": "Pages are in order inside each form.",
+      "severity": "fatal",
+      "check_kind": "pdf",
+      "form": null,
+      "page": null,
+      "pass_text": "Pages in order inside each form.",
+      "applies_to_item_ids": [],
+      "scope": "case_type",
+      "origin": "firm_checklist",
+      "note": "Q-71: the order of the forms in the package is not checked; \"All forms in order\" stays a staff task.",
+      "stages": {
+        "draft_review": {
+          "state": "checked"
+        },
+        "preflight": {
+          "state": "not_this_stage"
+        },
+        "physical_scan": {
+          "state": "checked"
+        }
+      }
+    }
+  ]
+}

@@ -19,7 +19,7 @@
 
 import { z } from 'zod';
 import {
-  DOC_TYPES, ROLES, REFERENCE_FIELDS, ROLE_LABELS, formatName,
+  DOC_TYPES, ROLES, REFERENCE_FIELDS, ROLE_LABELS, formatName, AOS_KIND_LABELS,
 } from './_proof-scan-v2-common.js';
 import { modelFor } from './_models.js';
 import { readSseStream } from '../utils/anthropic-stream.js';
@@ -210,13 +210,38 @@ export function evidenceZeroSchema() {
             : `${f.replace(/_/g, ' ')} exactly as printed on the document, or null if it is not printed there.`,
         )])),
       },
+      people: peopleSchema(),
     },
   };
 }
 
+// v2.1: a document about more than one person (a marriage certificate) prints
+// each person's own name and date of birth. One entry per person; empty for a
+// document about one person, whose facts are in "facts".
+export const PERSON_FACT_FIELDS = ['first_name', 'middle_name', 'last_name', 'date_of_birth'];
+function peopleSchema() {
+  return {
+    type: 'array',
+    description: 'Only for a document about more than one person, such as a marriage certificate: each person\'s name and date of birth exactly as printed, with their role on the case. Empty for a document about one person.',
+    items: {
+      type: 'object', additionalProperties: false, required: ['role', ...PERSON_FACT_FIELDS],
+      properties: {
+        role: { type: 'string', enum: ROLES },
+        ...Object.fromEntries(PERSON_FACT_FIELDS.map((f) => [f, nullableString(`${f.replace(/_/g, ' ')} as printed, or null`)])),
+      },
+    },
+  };
+}
+const zPeople = z.array(z.object({
+  role: z.enum(ROLES),
+  ...Object.fromEntries(PERSON_FACT_FIELDS.map((f) => [f, z.string().max(300).nullable()])),
+}).strict()).max(6).optional().transform((v) => v ?? []);
+
 // v2.0.2 fields are optional here so an answer without them still validates;
 // the request always asks for them.
 const zOptionalText = (max) => z.string().max(max).nullable().optional().transform((v) => v ?? null);
+// v2.1 facts, optional in validation for the same reason.
+const OPTIONAL_FACTS = new Set(['passport_number', 'passport_expiration']);
 
 const EvidenceZeroOutput = z.object({
   doc_type: z.enum(DOC_TYPES),
@@ -227,7 +252,8 @@ const EvidenceZeroOutput = z.object({
   unreadable_fields: z.array(z.enum(FACT_FIELDS)).max(FACT_FIELDS.length),
   issued_date: zText,
   owner_roles: z.array(z.enum(ROLES)).max(6),
-  facts: z.object(Object.fromEntries(FACT_FIELDS.map((f) => [f, z.string().max(300).nullable()]))).strict(),
+  facts: z.object(Object.fromEntries(FACT_FIELDS.map((f) => [f, OPTIONAL_FACTS.has(f) ? zOptionalText(300) : z.string().max(300).nullable()]))).strict(),
+  people: zPeople,
 }).strict();
 
 export function parseEvidenceZero(json) {
@@ -251,7 +277,8 @@ You report what the document says. You never decide whether anything is right or
 4. issued_date: the issue date, as printed, or null.
 5. owner_roles: which of the people below this document is about. A document about two people (a marriage certificate) lists both. Leave it empty if you cannot tell.
 6. doc_title, issuing_country, language: the document's own title, the country that issued it, and its language. Never a name, number or date in doc_title.
-7. facts: every listed fact exactly as printed on THIS document. null when the document does not print it. Never normalise, correct, or complete a value. Address parts such as In Care Of, province, postal code and country are filled only when the document prints them. expiration_date is the document's own expiry (a passport, I-94, EAD or green card), if it has one. The ssn field may carry the full number when it is printed; no other field may.
+7. facts: every listed fact exactly as printed on THIS document. null when the document does not print it. Never normalise, correct, or complete a value. Address parts such as In Care Of, province, postal code and country are filled only when the document prints them. expiration_date is the document's own expiry (a passport, I-94, EAD or green card), if it has one. For a passport, passport_number and passport_expiration are its number and expiry. The ssn field may carry the full number when it is printed; no other field may.
+8. people: only for a document about more than one person (a marriage certificate): each person's name and date of birth as printed, with their role. Leave the name fields in facts empty for such a document.
 
 People on the case:
 ${describePeople(people)}`;
@@ -269,10 +296,10 @@ export const EVIDENCE_FACT_FIELDS = [
   'first_name', 'middle_name', 'last_name', 'date_of_birth', 'a_number',
   'uscis_account_number', 'country_of_birth', 'country_of_citizenship', 'i94_number', 'i94_expiration',
   'last_entry_date', 'port_of_entry', 'employer', 'marriage_date', 'marriage_place', 'expiration_date',
-  'city_of_birth',
+  'city_of_birth', 'passport_number', 'passport_expiration',
 ];
-// Added in v2.0.2: optional in validation (Q-56).
-const OPTIONAL_EVIDENCE_FACTS = new Set(['city_of_birth']);
+// Added in v2.0.2 (Q-56) and v2.1 (Q-61): optional in validation.
+const OPTIONAL_EVIDENCE_FACTS = new Set(['city_of_birth', 'passport_number', 'passport_expiration']);
 export const PAGE_PROBLEM_KINDS = ['blank', 'duplicate'];
 // Fields a client may correct by hand (D-68). 'departures' switches on the
 // I-821D departures check at Pre-flight (D-71); 'other' is anything else.
@@ -284,7 +311,7 @@ const stringArray = (description) => ({ type: 'array', items: { type: 'string' }
 
 // Built from the rules and items THIS run sends, so the IDs are closed enums.
 // A section with nothing to ask is left out (an empty enum is not a schema).
-export function stageRunSchema({ ruleIds, itemIds, withMarkups, withPages = false }) {
+export function stageRunSchema({ ruleIds, itemIds, withMarkups, withPages = false, withAos = false }) {
   const properties = {};
   const required = [];
   if (ruleIds.length) {
@@ -344,7 +371,7 @@ export function stageRunSchema({ ruleIds, itemIds, withMarkups, withPages = fals
     type: 'array',
     description: 'Supporting documents in these files that are not USCIS forms (an EAD copy, a birth certificate, a marriage certificate).',
     items: {
-      type: 'object', additionalProperties: false, required: ['doc_type', 'doc_title', 'issuing_country', 'file', 'pages', 'owner_roles', 'read_quality', 'language', 'has_english_translation', 'facts'],
+      type: 'object', additionalProperties: false, required: ['doc_type', 'doc_title', 'issuing_country', 'file', 'pages', 'owner_roles', 'read_quality', 'language', 'has_english_translation', 'facts', 'people'],
       properties: {
         doc_type: { type: 'string', enum: DOC_TYPES },
         doc_title: nullableString(DOC_TITLE_NOTE),
@@ -359,9 +386,14 @@ export function stageRunSchema({ ruleIds, itemIds, withMarkups, withPages = fals
           type: 'object', additionalProperties: false, required: EVIDENCE_FACT_FIELDS,
           properties: Object.fromEntries(EVIDENCE_FACT_FIELDS.map((f) => [f, nullableString(`${f.replace(/_/g, ' ')} as printed, or null`)])),
         },
+        people: peopleSchema(),
       },
     },
   };
+  if (withAos) {
+    required.push('aos');
+    properties.aos = aosSchema();
+  }
   if (withMarkups) {
     required.push('markups');
     properties.markups = {
@@ -422,7 +454,7 @@ const zShort = z.string().max(300);
 const zLocations = z.array(z.string().max(500)).max(50);
 const zNullable = z.string().max(2000).nullable();
 
-export function stageRunValidator({ ruleIds, itemIds, withMarkups, withPages = false }) {
+export function stageRunValidator({ ruleIds, itemIds, withMarkups, withPages = false, withAos = false }) {
   const shape = {
     forms_found: z.array(z.object({
       form: zShort, file: zShort, pages: z.string().max(100), person_role: z.enum(ROLES).nullable(),
@@ -434,6 +466,7 @@ export function stageRunValidator({ ruleIds, itemIds, withMarkups, withPages = f
       owner_roles: z.array(z.enum(ROLES)).max(6), read_quality: z.enum(['clear', 'partial', 'unreadable']),
       language: z.string().trim().min(1).max(60), has_english_translation: z.boolean(),
       facts: z.object(Object.fromEntries(EVIDENCE_FACT_FIELDS.map((f) => [f, OPTIONAL_EVIDENCE_FACTS.has(f) ? zOptionalText(300) : z.string().max(300).nullable()]))).strict(),
+      people: zPeople,
     }).strict()).max(60),
     possible_issues: z.array(z.object({
       title: z.string().min(1).max(300), description: z.string().max(2000), evidence: z.string().max(2000),
@@ -441,6 +474,7 @@ export function stageRunValidator({ ruleIds, itemIds, withMarkups, withPages = f
       general_rule: zOptionalText(500),
     }).strict()).max(20),
   };
+  if (withAos) shape.aos = AosOutput;
   if (withPages) {
     shape.page_problems = z.array(z.object({
       kind: z.enum(PAGE_PROBLEM_KINDS), file: zShort, pages: z.string().max(100),
@@ -482,9 +516,99 @@ export function stageRunValidator({ ruleIds, itemIds, withMarkups, withPages = f
     };
     if (!coverage(data.rule_results, 'rule_id', ruleIds)) return failed('rule_id_coverage');
     if (!coverage(data.package_items, 'item_id', itemIds)) return failed('item_id_coverage');
-    return { ok: true, data: { rule_results: [], package_items: [], markups: [], page_problems: [], ...data } };
+    return { ok: true, data: { rule_results: [], package_items: [], markups: [], page_problems: [], aos: null, ...data } };
   };
 }
+
+// ── v2.1: what an AOS package shows beyond the checks ───────────────────────
+// Observations only (D-18): the server decides the fee by age (Q-64), the
+// payment method (Q-63), the cardholder (D-134), the G-1450 email and phone
+// (Q-79), the interpreter boxes (Q-67), the relationship box against the kind
+// (D-131), which "if needed" items apply (Q-72) and the answer tally (D-138).
+export const FEE_FORMS = ['I-130', 'I-485', 'I-765', 'I-131', 'unknown'];
+export const PAYMENT_METHODS = ['g1450', 'g1650', 'money_order', 'other'];
+export const LANGUAGE_FORMS = ['I-130A', 'I-485', 'I-765'];
+const YES_NO_UNKNOWN = ['yes', 'no', 'not_shown'];
+
+function aosSchema() {
+  return {
+    type: 'object', additionalProperties: false,
+    required: ['i130_relationship', 'petitioner_citizenship', 'prior_divorce_listed', 'fee_payments', 'language_statements', 'yes_no_answers'],
+    description: 'Adjustment of Status facts read from the package. Report what is printed; never decide whether it is right.',
+    properties: {
+      i130_relationship: nullableEnum(['spouse', 'parent', 'child', 'sibling'], 'I-130 Part 1, item 1: the relationship box ticked (the petitioner is filing for their ...). null if there is no I-130 or no box is ticked.'),
+      petitioner_citizenship: nullableEnum(['birth', 'naturalization', 'parents', 'permanent_resident'], 'I-130 Part 2: how the petitioner is a U.S. citizen (birth in the U.S., naturalization, or through parents), or permanent_resident. null if not shown.'),
+      prior_divorce_listed: { type: 'string', enum: YES_NO_UNKNOWN, description: 'yes when the I-130 or I-130A lists an earlier marriage of either spouse that ended by divorce; no when they list none or only other endings; not_shown when neither form says.' },
+      fee_payments: {
+        type: 'array',
+        description: 'Every fee payment form in the files: each G-1450 (card), each G-1650 (bank), and any money order copy or other payment.',
+        items: {
+          type: 'object', additionalProperties: false,
+          required: ['method', 'fee_for', 'amount', 'payer_name', 'cardholder_name', 'cardholder_phone', 'cardholder_email', 'file', 'pages'],
+          properties: {
+            method: { type: 'string', enum: PAYMENT_METHODS },
+            fee_for: { type: 'string', enum: FEE_FORMS, description: 'Which form\'s fee it pays, as the payment shows or as it is placed in the package. unknown when it cannot be told.' },
+            amount: nullableString('The amount exactly as printed, e.g. "$1,440.00".'),
+            payer_name: nullableString('The applicant\'s, petitioner\'s or requester\'s full name printed on it (on the G-1450, "Applicant\'s/Petitioner\'s/Requester\'s Information").'),
+            cardholder_name: nullableString('The card holder\'s (or account holder\'s) name as printed.'),
+            cardholder_phone: nullableString('The card holder\'s phone as printed.'),
+            cardholder_email: nullableString('The card holder\'s email as printed.'),
+            file: { type: 'string' },
+            pages: { type: 'string' },
+          },
+        },
+      },
+      language_statements: {
+        type: 'array',
+        description: 'For each I-130A, I-485 and I-765 in the files: the applicant\'s statement about English and the interpreter section.',
+        items: {
+          type: 'object', additionalProperties: false,
+          required: ['form', 'has_boxes', 'english_box', 'interpreter_box', 'interpreter_section_filled', 'interpreter_signed_dated'],
+          properties: {
+            form: { type: 'string', enum: LANGUAGE_FORMS },
+            has_boxes: { type: 'boolean', description: 'Whether this edition of the form has the two boxes "I can read and understand English" and "The interpreter named ... read to me".' },
+            english_box: { type: 'boolean', description: 'The English box is ticked.' },
+            interpreter_box: { type: 'boolean', description: 'The interpreter box is ticked.' },
+            interpreter_section_filled: { type: 'boolean', description: 'The interpreter\'s section (name and language) is filled in.' },
+            interpreter_signed_dated: { type: 'string', enum: ['yes', 'no', 'not_applicable'], description: 'The interpreter\'s signature and date are there. not_applicable when the section is empty.' },
+          },
+        },
+      },
+      yes_no_answers: {
+        type: 'array',
+        description: 'Every yes/no question on the I-485, I-130, I-130A, I-765, I-864, I-864A and I-131 in the files, with how it is answered.',
+        items: {
+          type: 'object', additionalProperties: false, required: ['form', 'item', 'topic', 'answer'],
+          properties: {
+            form: { type: 'string', description: 'The form number, e.g. "I-485".' },
+            item: { type: 'string', description: 'The item number as printed, e.g. "53.b".' },
+            topic: { type: 'string', description: 'What the question asks, in at most eight general words, e.g. "ever committed genocide". Never a name, place, number or date from these files.' },
+            answer: { type: 'string', enum: ['yes', 'no', 'blank'] },
+          },
+        },
+      },
+    },
+  };
+}
+
+const zName = z.string().max(300).nullable();
+const AosOutput = z.object({
+  i130_relationship: z.enum(['spouse', 'parent', 'child', 'sibling']).nullable(),
+  petitioner_citizenship: z.enum(['birth', 'naturalization', 'parents', 'permanent_resident']).nullable(),
+  prior_divorce_listed: z.enum(YES_NO_UNKNOWN),
+  fee_payments: z.array(z.object({
+    method: z.enum(PAYMENT_METHODS), fee_for: z.enum(FEE_FORMS), amount: z.string().max(40).nullable(),
+    payer_name: zName, cardholder_name: zName, cardholder_phone: z.string().max(60).nullable(),
+    cardholder_email: z.string().max(200).nullable(), file: zShort, pages: z.string().max(100),
+  }).strict()).max(20),
+  language_statements: z.array(z.object({
+    form: z.enum(LANGUAGE_FORMS), has_boxes: z.boolean(), english_box: z.boolean(), interpreter_box: z.boolean(),
+    interpreter_section_filled: z.boolean(), interpreter_signed_dated: z.enum(['yes', 'no', 'not_applicable']),
+  }).strict()).max(10),
+  yes_no_answers: z.array(z.object({
+    form: z.string().max(20), item: z.string().max(20), topic: z.string().max(120), answer: z.enum(['yes', 'no', 'blank']),
+  }).strict()).max(300),
+}).strict();
 
 // v2.0.1: the firm's meaning for checks whose wording alone misleads the model.
 // D-107: on the G-28, an EAD delivery choice left blank means home, which is fine.
@@ -492,6 +616,8 @@ export const RULE_GUIDANCE = {
   'DACA-G28-003': 'All delivery boxes left empty means the EAD goes to the applicant\'s home: that is clear. Home ticked is clear. Report needs_attention only when the office box is ticked.',
   // v2.0.2, D-112, D-120, D-126: name consistency is read the way a person reads it.
   'PS-301': 'Capitals and accents never make a difference (DOE = Doe, José = Jose). A first name printed together with the middle name is the same name. Report needs_attention only when the words of the name themselves differ.',
+  // v2.1, D-107 for AOS (Q-65): the applicant's G-28, as DACA's.
+  'AOS-G28A-003': 'All delivery boxes left empty means the card goes to the applicant\'s home: that is clear. Home ticked is clear. Report needs_attention only when the office box is ticked.',
 };
 
 function describeRule(r, stage) {
@@ -518,6 +644,19 @@ function describeCards(people) {
   }).join('\n');
 }
 
+// v2.1: what the firm's AOS package is (D-129 to D-147, Q-59 to Q-81).
+function aosNotes(kind) {
+  return `CASE NOTES (Adjustment of Status${kind ? `, ${AOS_KIND_LABELS[kind] || kind}` : ''})
+- Whose form: the I-130 is the petitioner's; the I-130A, I-485, I-765 and I-131 are the beneficiary's (the applicant); the petitioner's I-864 is the petitioner's; a second I-864 from a co-sponsor is the joint_sponsor's; the I-864A is the household_member's; the G-1145 is the petitioner's; each G-1450 or G-1650 is the person named in its applicant/petitioner information.
+- There are two G-28s: the petitioner's (for the I-130) and the applicant's (for the I-485 and I-765, and the I-131 when filed).
+- Multiple G-1450 or G-1650 forms are normal, one per fee, and are not duplicates. A G-1650 in place of a G-1450 is fine. The G-1450 cardholder can be anyone. The G-1450 has no date beside the signature.
+- The medical exam is included as the first page of the I-693 only, and only in the final package: one page is complete. Never report it under page count or missing pages.
+- Every page of a USCIS form prints its edition date in the footer. Read every one.
+
+AOS FACTS (the "aos" section)
+Report the I-130 relationship box, how the petitioner is a citizen, whether an earlier marriage ended by divorce is listed, every fee payment form with its amount, names, phone and email, each applicant's statement about English and the interpreter, and every yes/no answer on the forms. Report exactly what is printed.`;
+}
+
 const DACA_NOTES = `CASE NOTES (DACA renewal)
 - Multiple G-1450 forms in one package are normal, one per fee. They are not duplicates. G-1450 is the credit-card form and carries no routing number.
 - G-1450 does not require a date beside the signature.
@@ -527,6 +666,7 @@ const DACA_NOTES = `CASE NOTES (DACA renewal)
 
 export function stageRunPrompt({
   caseTypeLabel, caseType, stageLabel, scope, form, rules, stage, items, people, files, withMarkups, withPages = false, suppressions, formEditions,
+  aosKind = null,
 }) {
   const fileList = files.map((f, i) => `${i + 1}. ${f.filename} (${FILE_KINDS[f.kind || 'package']})`).join('\n');
   return `You are reviewing USCIS filing material for an immigration law firm. Case type, chosen by the firm: ${caseTypeLabel}. Stage: ${stageLabel}.${scope ? ` Scope: ${scope === 'individual' ? `one form only, the ${form}. Ignore the rest of the package.` : 'the whole set of forms provided.'}` : ''}
@@ -570,5 +710,5 @@ ${describeCards(people)}
 
 USCIS FORM REFERENCE (the editions USCIS accepts today for each form, from uscis.gov; a footer that matches ANY listed edition is current)
 ${formEditions}
-${caseType === 'daca_renewal' ? `\n${DACA_NOTES}` : ''}`;
+${caseType === 'daca_renewal' ? `\n${DACA_NOTES}` : ''}${caseType === 'aos' ? `\n${aosNotes(aosKind)}` : ''}`;
 }

@@ -15,6 +15,7 @@ import { ssnEncrypt } from '../../functions/api/_helpers.js';
 import {
   seededDb, call, ENV, STAFF, CLIENT, NO_TOKEN, pdfFile, oversizePdf, mockModel,
   observations, formValues, evidenceFacts, askedRuleIds, askedItemIds,
+  findings,
 } from '../support/proof-scan-v2-harness.js';
 
 let db;
@@ -78,7 +79,7 @@ function dacaForms(over = {}) {
 }
 
 const run = (body, env) => call(runRoute, '/api/proof-scan-v2-run', { method: 'POST', body: { files: [pdfFile()], ...body } }, env);
-const attentionKinds = (r) => r.body.result.attention.map((a) => a.kind);
+const attentionKinds = (r) => findings(r.body.result).map((a) => a.kind);
 const check = (r, id) => r.body.result.checks.find((c) => c.rule_id === id);
 
 // ── Access, input, gate ──────────────────────────────────────────────────────
@@ -126,7 +127,7 @@ describe('access and input', () => {
       // No EAD anywhere: a gentle ask, never counted, never a lock (Q-50).
       const ask = r.body.result.checks.find((c) => c.rule_id === 'confirm:ead_missing');
       expect(ask.status).toBe('please_confirm');
-      expect(r.body.result.attention.some((a) => String(a.key).includes('ead'))).toBe(false);
+      expect(findings(r.body.result).some((a) => String(a.key).includes('ead'))).toBe(false);
     }
   });
 
@@ -241,12 +242,12 @@ describe('result and storage', () => {
     expect(r.status).toBe(200);
     expect(r.body.result).toMatchObject({
       report_state: 'no_issues_found', primary_report_language: 'No issues found', attention_count: 0,
-      staff_review_reminder: 'Staff review is still required before filing.', schema_version: 2, rule_set_version: 1,
+      staff_review_reminder: 'Staff review is still required before filing.', schema_version: 3, rule_set_version: 1,
     });
     expect(r.body.result).not.toHaveProperty('client_observed'); // D-89
     expect(db.rows('proof_scans')[0]).toMatchObject({
       case_id: caseId, stage: 'draft_review', scope: 'whole', rule_set_version: 1, scan_profile: 'daca_renewal',
-      profile_version: 1, status: 'structured', result_schema_version: 2, report_state: 'no_issues_found', attention_count: 0,
+      profile_version: 1, status: 'structured', result_schema_version: 3, report_state: 'no_issues_found', attention_count: 0,
     });
   });
 
@@ -347,7 +348,7 @@ describe('stage states', () => {
     mockModel(vi, [observations({ forms: dacaForms(), rules: { 'PS-201': { status: 'needs_attention', summary: 'The I-765 signature page (page 6) is missing.' } } })]);
     const r = await run({ case_id: caseId, stage: 'physical_scan' });
     expect(check(r, 'PS-201')).toMatchObject({ status: 'needs_attention', title: 'The I-765 signature page (page 6) is missing.', summary: null });
-    expect(r.body.result.attention.find((a) => a.rule_id === 'PS-201').title).toBe('The I-765 signature page (page 6) is missing.');
+    expect(findings(r.body.result).find((a) => a.rule_id === 'PS-201').title).toBe('The I-765 signature page (page 6) is missing.');
   });
 
   it('the EAD without the full middle name is a gentle confirm, never counted (v2.0.1)', async () => {
@@ -445,7 +446,7 @@ describe('missing package items', () => {
       rules: { 'DACA-G28-001': 'not_checked', 'DACA-G28-002': 'not_checked', 'DACA-G28-003': 'not_checked' },
     })]);
     const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(r.body.result.attention).toEqual([expect.objectContaining({ kind: 'missing_item', title: 'The G-28 is missing from the package.' })]);
+    expect(findings(r.body.result)).toEqual([expect.objectContaining({ kind: 'missing_item', title: 'The G-28 is missing from the package.' })]);
     expect(r.body.result.checks.map((c) => c.rule_id)).not.toContain('DACA-G28-001');
     expect(r.body.result.report_state).toBe('items_need_attention');
   });
@@ -455,7 +456,7 @@ describe('missing package items', () => {
     const calls = mockModel(vi, [observations({ forms: dacaForms({ omit: ['G-1145', 'G-28'] }) })]);
     const r = await run({ case_id: caseId, stage: 'preflight', scope: 'whole' });
     expect(askedItemIds(calls[0].body)).toEqual([]);
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(r.body.result.notes.filter((n) => /missing/i.test(n.title))).toEqual([]);
   });
 
@@ -463,7 +464,7 @@ describe('missing package items', () => {
     const { caseId } = readyDaca();
     mockModel(vi, [observations({ forms: dacaForms(), items: { 'DACA-COMP-EAD-CARD': 'missing' } })]);
     const r = await run({ case_id: caseId, stage: 'physical_scan' });
-    expect(r.body.result.attention.map((a) => a.title)).toEqual(['The EAD card is missing from the package.']);
+    expect(findings(r.body.result).map((a) => a.title)).toEqual(['The EAD card is missing from the package.']);
   });
 
   it('an unreadable item makes the review incomplete, not clean', async () => {
@@ -480,7 +481,7 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
     const { caseId } = readyDaca();
     mockModel(vi, [observations({ forms: dacaForms({ 'I-821D': { street: '9 OTHER ST' }, 'I-765': { street: '9 OTHER ST' } }) })]);
     const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(r.body.result.attention.map((a) => a.title)).toEqual([
+    expect(findings(r.body.result).map((a) => a.title)).toEqual([
       'The I-821D shows street 9 OTHER ST. The case card has 1 TEST ST.',
       'The I-765 shows street 9 OTHER ST. The case card has 1 TEST ST.',
     ]);
@@ -490,20 +491,20 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
     const { caseId } = readyDaca();
     mockModel(vi, [observations({ forms: dacaForms({ 'G-1450': { phone: '', email: '' } }) })]);
     const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(r.body.result.attention).toHaveLength(4);
-    expect(r.body.result.attention[0].title).toBe('The G-1450 leaves phone blank. The case card has 5550100100.');
+    expect(findings(r.body.result)).toHaveLength(4);
+    expect(findings(r.body.result)[0].title).toBe('The G-1450 leaves phone blank. The case card has 5550100100.');
   });
 
   it('A-Number format is never a difference', async () => {
     const { caseId } = readyDaca();
     mockModel(vi, [observations({ forms: dacaForms({ 'G-28': { a_number: 'A 123 456 789' } }) })]);
-    expect((await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' })).body.result.attention).toEqual([]);
+    expect(findings((await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' })).body.result)).toEqual([]);
   });
 
   it('compares each form only on the address parts it has (D-81)', async () => {
     const { caseId } = readyDaca();
     mockModel(vi, [observations({ forms: dacaForms({ 'G-1145': { street: '9 OTHER ST' }, 'G-28': { in_care_of: 'SOMEONE' } }) })]);
-    expect((await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' })).body.result.attention).toEqual([]);
+    expect(findings((await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' })).body.result)).toEqual([]);
   });
 
   it('a value with no reference is needs info at Draft Review (D-47) and nothing at Pre-flight (D-105)', async () => {
@@ -514,18 +515,18 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
     ]);
     const draft = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
     expect(draft.body.result.notes).toEqual([expect.objectContaining({ kind: 'needs_info', field: 'phone' })]);
-    expect(draft.body.result.attention).toEqual([]);
+    expect(findings(draft.body.result)).toEqual([]);
     const pre = await run({ case_id: caseId, stage: 'preflight', scope: 'whole' });
     // D-105 (v2.0.1): no "no reference" light note any more.
     expect(pre.body.result.notes.map((n) => n.kind)).not.toContain('no_reference');
-    expect(pre.body.result.attention).toEqual([]);
+    expect(findings(pre.body.result)).toEqual([]);
   });
 
   it('a difference already proposed as a suggestion is not reported again', async () => {
     const { caseId, personId } = readyDaca();
     db.rows('proof_scan_suggestions').push({ id: 'sg', person_id: personId, field: 'street', value: '9 OTHER ST', status: 'open', source_label: 'Intake' });
     mockModel(vi, [observations({ forms: dacaForms({ 'I-821D': { street: '9 OTHER ST' } }) })]);
-    expect((await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' })).body.result.attention).toEqual([]);
+    expect(findings((await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' })).body.result)).toEqual([]);
   });
 
   describe('General: two people', () => {
@@ -544,7 +545,7 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
         form('I-130A', { first_name: 'BEA', last_name: 'TESTER', date_of_birth: '01/01/1990' }, 'beneficiary'),
       ] })]);
       const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-      expect(r.body.result.attention).toEqual([]);
+      expect(findings(r.body.result)).toEqual([]);
       expect(check(r, 'PS-304').status).toBe('clear');
     });
 
@@ -552,7 +553,7 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
       const { caseId } = family();
       mockModel(vi, [observations({ forms: [form('I-130', { first_name: 'PAT', last_name: 'TESTER', date_of_birth: '05/06/1985' }, 'petitioner')] })]);
       const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-      expect(r.body.result.attention.map((a) => a.title)).toEqual(["The I-130 shows the petitioner's date of birth 05/06/1985. The case card has 05/05/1985."]);
+      expect(findings(r.body.result).map((a) => a.title)).toEqual(["The I-130 shows the petitioner's date of birth 05/06/1985. The case card has 05/05/1985."]);
     });
 
     it('evidence against the forms: each difference is its own attention item (D-98)', async () => {
@@ -565,7 +566,7 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
         form('I-130', { first_name: 'PAT', last_name: 'TESTOR', date_of_birth: '05/06/1985' }, 'petitioner'),
       ] })]);
       const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-      expect(r.body.result.attention.map((a) => a.title)).toEqual([
+      expect(findings(r.body.result).map((a) => a.title)).toEqual([
         "The petitioner's birth certificate (birth_certificate.pdf) shows last name TESTER. The I-130 (package.pdf, page 1) shows TESTOR.",
         "The petitioner's birth certificate (birth_certificate.pdf) shows date of birth 05/05/1985. The I-130 (package.pdf, page 1) shows 05/06/1985.",
       ]);
@@ -584,7 +585,7 @@ describe('reference comparison (D-79, D-81, D-94, D-99, N-016)', () => {
       const pet = first.body.case_view.people.find((p) => p.role === 'petitioner');
       expect(pet).toMatchObject({ first_name: 'PAT', field_sources: { first_name: { kind: 'forms', label: 'I-130' } } });
       const second = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-      expect(second.body.result.attention).toEqual([]); // PAT came from a draft, so PATRICK is not "wrong"
+      expect(findings(second.body.result)).toEqual([]); // PAT came from a draft, so PATRICK is not "wrong"
     });
   });
 
@@ -603,7 +604,7 @@ describe('Physical Scan', () => {
     const { caseId } = readyDaca();
     mockModel(vi, [observations({ forms: dacaForms({ 'I-821D': { date_of_birth: '03/23/1998' }, 'I-765': { date_of_birth: '03/23/1998' } }) })]);
     const r = await run({ case_id: caseId, stage: 'physical_scan' });
-    const card = r.body.result.attention.filter((a) => a.kind === 'case_card_difference');
+    const card = findings(r.body.result).filter((a) => a.kind === 'case_card_difference');
     expect(card).toEqual([expect.objectContaining({
       title: 'The package shows the date of birth as 03/23/1998. The case card has 03/22/1998.', forms: ['I-821D', 'I-765'],
     })]);
@@ -615,7 +616,7 @@ describe('Physical Scan', () => {
       'I-821D': { middle_name: 'M.', street: '1 Test St.', a_number: 'A-123456789' },
       'G-28': { middle_name: '', city: 'Testville,' },
     }) })]);
-    expect((await run({ case_id: caseId, stage: 'physical_scan' })).body.result.attention).toEqual([]);
+    expect(findings((await run({ case_id: caseId, stage: 'physical_scan' })).body.result)).toEqual([]);
   });
 
   it('compares the SSN against the card without ever showing more than the last four', async () => {
@@ -623,7 +624,7 @@ describe('Physical Scan', () => {
     Object.assign(db.rows('proof_scan_people').find((p) => p.id === personId), { ssn_encrypted: ssnEncrypt('555123456', ENV), ssn_last4: '3456' });
     mockModel(vi, [observations({ forms: dacaForms({ 'I-765': { ssn: '555-12-0000' } }) })]);
     const r = await run({ case_id: caseId, stage: 'physical_scan' });
-    expect(r.body.result.attention.map((a) => a.title)).toEqual(['The package shows the Social Security number as ***-**-0000. The case card has ***-**-3456.']);
+    expect(findings(r.body.result).map((a) => a.title)).toEqual(['The package shows the Social Security number as ***-**-0000. The case card has ***-**-3456.']);
     expect(JSON.stringify(db.rows('proof_scans'))).not.toMatch(/555-?12-?0000|555-?12-?3456/);
   });
 
@@ -643,7 +644,7 @@ describe('Physical Scan', () => {
       evidence: [{ doc_type: 'birth_certificate', file: 'package.pdf', pages: '40', owner_roles: ['petitioner'], read_quality: 'clear', facts: evidenceFacts({ first_name: 'PAT', last_name: 'TESTER' }) }],
     })]);
     const r = await run({ case_id: caseId, stage: 'physical_scan' });
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(r.body.result.new_cards).toEqual(['petitioner']);
     const people = r.body.case_view.people;
     expect(people.map((p) => [p.role, p.first_name, p.field_sources.first_name?.kind])).toEqual([
@@ -659,8 +660,8 @@ describe('Physical Scan', () => {
       observations({ forms: [form('I-485', { date_of_birth: '01/03/1990' }, 'beneficiary')], evidence: [ev('clear')] }),
       observations({ forms: [form('I-485', { date_of_birth: '01/03/1990' }, 'beneficiary')], evidence: [ev('partial')] }),
     ]);
-    expect((await run({ case_id: caseId, stage: 'physical_scan' })).body.result.attention.map((a) => a.kind)).toEqual(['evidence_difference']);
-    expect((await run({ case_id: caseId, stage: 'physical_scan' })).body.result.attention).toEqual([]);
+    expect(findings((await run({ case_id: caseId, stage: 'physical_scan' })).body.result).map((a) => a.kind)).toEqual(['evidence_difference']);
+    expect(findings((await run({ case_id: caseId, stage: 'physical_scan' })).body.result)).toEqual([]);
   });
 
   it('evidence with no clear owner goes to Possible issues, not the count (D-94)', async () => {
@@ -668,7 +669,7 @@ describe('Physical Scan', () => {
     addPerson(caseId, 'beneficiary', {}, { is_main: true });
     mockModel(vi, [observations({ evidence: [{ doc_type: 'other', file: 'p.pdf', pages: '12', owner_roles: [], read_quality: 'clear', facts: evidenceFacts({ first_name: 'X' }) }] })]);
     const r = await run({ case_id: caseId, stage: 'physical_scan' });
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(r.body.possible_issues.map((p) => p.reasoning_key)).toEqual(['evidence_owner_unclear']);
   });
 });
@@ -689,7 +690,7 @@ describe('Pre-flight corrections', () => {
   it('fixed: proposed to the record as a suggestion, never written (D-55, D-72)', async () => {
     const { r, personId, statuses } = await preflight([markup()]);
     expect(statuses).toEqual(['fixed']);
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(db.rows('proof_scan_suggestions')).toEqual([expect.objectContaining({
       person_id: personId, field: 'street', value: '2 NEW ST', source_label: 'Client correction, I-821D page 2', run_id: r.body.run_id,
     })]);
@@ -705,26 +706,26 @@ describe('Pre-flight corrections', () => {
   it('uncertain handwriting is "check" and unreadable is "unreadable": never counted', async () => {
     const { r, statuses } = await preflight([markup({ read_confidence: 'uncertain', field: 'city', original: 'TESTVILLE', markup_read: 'TESTVIL?', corrected: 'TESTVILLE' }), markup({ read_confidence: 'unreadable', field: 'zip', original: '77001', markup_read: null, corrected: '77001' })], dacaForms());
     expect(statuses).toEqual(['check', 'unreadable']);
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
   });
 
   it('a US country the firm leaves off is left out on purpose, not missed (D-72)', async () => {
     const { statuses, r } = await preflight([markup({ field: 'country', original: '', markup_read: 'USA', corrected: null })], dacaForms());
     expect(statuses).toEqual(['omitted_ok']);
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
   });
 
   it('a marked-up form with no corrected page is counted (D-73)', async () => {
     const { statuses, r } = await preflight([markup({ form: 'I-765', corrected_page_present: false, corrected: null })], dacaForms());
     expect(statuses).toEqual(['no_page']);
-    expect(r.body.result.attention.map((a) => a.title)).toEqual(['The client marked up the I-765, but there is no corrected page for it.']);
+    expect(findings(r.body.result).map((a) => a.title)).toEqual(['The client marked up the I-765, but there is no corrected page for it.']);
   });
 
   it('a correction not carried to other forms turns the consistency check red once (D-72)', async () => {
     const { r, statuses } = await preflight([markup()], dacaForms({ 'I-821D': { street: '2 NEW ST' } }));
     expect(statuses).toEqual(['fixed', 'not_carried', 'not_carried']);
     expect(check(r, 'PS-303')).toMatchObject({ status: 'needs_attention', title: 'The street was corrected on the I-821D but not on the G-28.' });
-    expect(r.body.result.attention.filter((a) => a.rule_id === 'PS-303')).toHaveLength(1);
+    expect(findings(r.body.result).filter((a) => a.rule_id === 'PS-303')).toHaveLength(1);
   });
 });
 

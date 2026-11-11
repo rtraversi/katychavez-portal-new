@@ -109,11 +109,22 @@ export const fmtWhen = (iso) => {
   return Number.isNaN(d.valueOf()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+// v2.1: the headline ends at the first full stop that is followed by a capital
+// and is not an abbreviation, so "2207 N 16th St, Apt. 4, Phoenix" stays whole.
+// v2 only: the old checker's report.js keeps its own splitter (D-88).
+const ABBR = /\b(?:Apt|Ste|Flr|St|Ave|Rd|Dr|Blvd|Ln|Ct|Mr|Mrs|Ms|Jr|Sr|Mt|Ft|Hwy|Pkwy)$/i;
+export function headlineCut(s) {
+  const re = /\.\s+(?=[A-Z])/g;
+  let m;
+  while ((m = re.exec(s))) if (!ABBR.test(s.slice(0, m.index))) return m.index + 1;
+  return -1;
+}
+
 // The house pattern (N-023): the observed fact bold, the expectation normal.
 export function findingText(title) {
   const text = el('span', 'psr-check-text');
   const s = String(title ?? '');
-  const cut = s.search(/(?<=\.)\s+/);
+  const cut = headlineCut(s);
   if (cut > 0) {
     text.appendChild(el('strong', null, s.slice(0, cut)));
     text.appendChild(el('span', 'psr-rest', ` ${s.slice(cut).trim()}`));

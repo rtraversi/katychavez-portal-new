@@ -31,9 +31,10 @@ describe('Proof Scan v2 migrations: security', () => {
       '2003_proof_scan_v2_seed.sql',
       '2004_proof_scan_v2_jobs.sql',
       '2005_proof_scan_v2_0_2.sql',
+      '2006_proof_scan_v2_1.sql',
     ]);
     expect(policies.length).toBeGreaterThan(40);
-    expect(tables.length).toBe(13);
+    expect(tables.length).toBe(15); // v2.1: proof_scan_clears, proof_scan_answer_tally
   });
 
   it('never uses USING (true) or WITH CHECK (true) without TO authenticated', () => {

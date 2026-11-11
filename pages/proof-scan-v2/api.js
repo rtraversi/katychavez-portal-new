@@ -102,7 +102,7 @@ export function createApi({
             follow_up_error: res.data.outcome?.follow_up_error ?? null,
             notification_attempted: Boolean(res.data.outcome?.notification_attempted),
             notification_sent: Boolean(res.data.outcome?.notification_sent),
-            result: run.result_json, possible_issues: res.data.possible_issues || [],
+            result: run.result_json, possible_issues: res.data.possible_issues || [], view: res.data.view || null,
             ...(view.ok ? { case_view: view.data } : {}),
           },
         };
@@ -118,7 +118,7 @@ export function createApi({
   return {
     // Cases (D-77, D-83)
     findCases: (q) => call('GET', '/api/proof-scan-v2-cases', { query: { q } }),
-    createCase: (caseType) => call('POST', '/api/proof-scan-v2-case', { body: { case_type: caseType } }),
+    createCase: (caseType, aosKind) => call('POST', '/api/proof-scan-v2-case', { body: { case_type: caseType, ...(aosKind ? { aos_kind: aosKind } : {}) } }),
     getCase: (id) => call('GET', '/api/proof-scan-v2-case', { query: { id } }),
 
     // People and the reference record (D-10, D-94)
@@ -141,6 +141,10 @@ export function createApi({
     run: runStaged,
     getRun: (id) => call('GET', '/api/proof-scan-v2-run', { query: { id } }),
     signOff: (caseId, stage, on) => call(on ? 'POST' : 'DELETE', '/api/proof-scan-v2-signoff', { body: { case_id: caseId, stage } }),
+    // v2.1, D-132: clear one item, or undo it. Answers with the server's view.
+    clear: (caseId, stage, key, cleared) => call('POST', '/api/proof-scan-v2-clear', { body: { case_id: caseId, stage, key, cleared } }),
+    // v2.1, D-138: approve or decline an answer-pattern suggestion.
+    pattern: (id, decision) => call('POST', '/api/proof-scan-v2-patterns', { body: { id, decision } }),
 
     // Possible issues (D-59, D-60)
     possibleIssue: (body) => call('POST', '/api/proof-scan-v2-possible-issue', { body }),

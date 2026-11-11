@@ -333,6 +333,8 @@ export async function writeRuleSetVersion(admin, caseType, nextVersion, ruleSet,
     await run('copy package items', admin.from('proof_scan_package_items').insert(ruleSet.package_items.map((item, i) => ({
       rule_set_id: set.id, item_id: item.item_id, form: item.form, instance: item.instance ?? null,
       label: item.label, pages: item.pages, kind: item.kind || 'form', sort_order: i + 1,
+      ...(item.applies_when ? { applies_when: item.applies_when } : {}),
+      ...(item.missing_confirm ? { missing_confirm: true } : {}),
     }))).select());
   }
 
@@ -343,6 +345,7 @@ export async function writeRuleSetVersion(admin, caseType, nextVersion, ruleSet,
       expected: r.expected ?? null, pass_text: r.pass_text ?? null, note: r.note ?? null,
       source_note: r.source_note ?? null, applies_to_item_ids: r.applies_to_item_ids || [],
       scope: r.scope, origin: r.origin, retired: Boolean(r.retired), sort_order: i + 1,
+      ...(r.applies_when ? { applies_when: r.applies_when } : {}),
     }))).select())
     : [];
 
@@ -390,4 +393,50 @@ export async function auditSsn(admin, { entityType, entityId, action, userId, ip
 export async function ruleChangesForIssue(admin, possibleIssueId) {
   return run('rule changes for issue', admin.from('proof_scan_rule_changes').select('id')
     .eq('possible_issue_id', possibleIssueId).limit(1));
+}
+
+// ── Clears (v2.1, D-132, D-139, D-143) ───────────────────────────────────────
+// Per case, stage and item key. A re-run that finds the same item keeps it
+// cleared, because the key is the item's, not the run's.
+
+export async function listClears(admin, caseId, stage) {
+  let q = admin.from('proof_scan_clears').select('item_key, via, stage').eq('case_id', caseId);
+  if (stage) q = q.eq('stage', stage);
+  return run('list clears', q);
+}
+
+export async function insertClears(admin, rows) {
+  if (!rows.length) return [];
+  return run('insert clears', admin.from('proof_scan_clears').insert(rows).select('item_key, via, stage'));
+}
+
+export async function deleteClear(admin, caseId, stage, itemKey) {
+  await run('delete clear', admin.from('proof_scan_clears').delete()
+    .eq('case_id', caseId).eq('stage', stage).eq('item_key', itemKey));
+}
+
+// D-139: unmarking the stage, or a new run of it, takes back only the clears
+// the review made; clears made by hand stay.
+export async function deleteReviewClears(admin, caseId, stage) {
+  await run('delete review clears', admin.from('proof_scan_clears').delete()
+    .eq('case_id', caseId).eq('stage', stage).eq('via', 'review'));
+}
+
+// ── Answer tally (v2.1, D-138): counts only ──────────────────────────────────
+
+export async function listTally(admin, caseType) {
+  return run('list tally', admin.from('proof_scan_answer_tally').select('*')
+    .eq('case_type', caseType).order('form', { ascending: true }));
+}
+
+export async function getTallyRow(admin, id) {
+  return one(await run('get tally row', admin.from('proof_scan_answer_tally').select('*').eq('id', id).limit(1)));
+}
+
+export async function insertTallyRow(admin, row) {
+  return one(await run('insert tally row', admin.from('proof_scan_answer_tally').insert(row).select()));
+}
+
+export async function updateTallyRow(admin, id, patch) {
+  return one(await run('update tally row', admin.from('proof_scan_answer_tally').update(patch).eq('id', id).select()));
 }

@@ -10,6 +10,7 @@
 // data in a fixture.
 
 import { FORM_VALUE_FIELDS, EVIDENCE_FACT_FIELDS, FACT_FIELDS } from '../../../functions/api/_proof-scan-v2-ai.js';
+import { aosEvidenceZero, aosStageAnswer, AOS_SAMPLES } from './aos-scenarios.mjs';
 
 const ANA = {
   first_name: 'ANA', middle_name: 'MARIA', last_name: 'RIVERA', date_of_birth: '06/18/1994', a_number: 'A123456789',
@@ -204,16 +205,26 @@ export function modelAnswer(body) {
   const schema = body.output_config?.format?.schema || {};
   const system = String(body.system || '');
   const general = /Case type, chosen by the firm: General/.test(system);
+  // v2.1: AOS answers come from aos-scenarios.mjs (still observations only).
+  const aos = /Case type, chosen by the firm: Adjustment of Status/.test(system);
   const texts = (body.messages?.[0]?.content || []).filter((b) => b.type === 'text').map((b) => b.text);
   if ((schema.required || []).includes('doc_type')) {
     const name = (texts.join(' ').match(/File: (.+?)\. Read this one document/) || [])[1] || 'document.pdf';
-    return evidenceZeroAnswer(name, general);
+    return aos ? aosEvidenceZero(name) : evidenceZeroAnswer(name, general);
   }
   const stage = /Stage: Draft Review/.test(system) ? 'draft_review' : /Stage: Pre-flight/.test(system) ? 'preflight' : 'physical_scan';
   const scope = /Scope: one form only/.test(system) ? 'individual' : 'whole';
   const form = (system.match(/one form only, the (.+?)\. Ignore/) || [])[1] || null;
   const files = texts.map((tx) => tx.match(/^File \d+: (.+) \((\w+)\)$/)).filter(Boolean).map((m) => ({ name: m[1], kind: m[2] }));
   const props = schema.properties || {};
+  if (aos) {
+    return aosStageAnswer({
+      stage, files,
+      ruleIds: props.rule_results?.items?.properties?.rule_id?.enum || [],
+      itemIds: props.package_items?.items?.properties?.item_id?.enum || [],
+      withMarkups: Boolean(props.markups), withPages: Boolean(props.page_problems),
+    });
+  }
   return stageAnswer({
     caseType: general ? 'general' : 'daca_renewal', stage, scope, form, files,
     ruleIds: props.rule_results?.items?.properties?.rule_id?.enum || [],
@@ -229,6 +240,7 @@ export const SAMPLES = {
   'DACA, stages': ['daca-drafts.pdf', 'corrected-forms.pdf', 'client-markups.pdf', 'corrected-pages.pdf', 'final-package-scan.pdf'],
   'General': ['birth-certificate-lucia.pdf', 'birth-certificate-daniel.pdf', 'marriage-certificate.pdf', 'aos-package-scan.pdf'],
   'Size limit': ['too-big-13mb.pdf'],
+  ...AOS_SAMPLES,
 };
 
 export function samplePdf(name) {

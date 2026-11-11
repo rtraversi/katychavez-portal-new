@@ -12,7 +12,8 @@
 import { REVIEW_STAGES } from './_proof-scan-v2-common.js';
 
 export const STAGE_STATES = ['checked', 'if_filled', 'if_marked', 'if_evidence', 'later', 'not_this_stage'];
-const CASE_PREFIX = { daca_renewal: 'DACA', general: 'GEN' };
+const CASE_PREFIX = { daca_renewal: 'DACA', general: 'GEN', aos: 'AOS' };
+export const addPrefix = (scope, caseType) => (scope === 'firm' ? 'FIRM-ADD-' : `${CASE_PREFIX[caseType]}-ADD-`);
 
 // The next free ID for a staff-added or learned rule. Firm-wide rules share one
 // series across case types so the same rule keeps the same ID everywhere.
@@ -95,7 +96,7 @@ export function withRuleEdited(ruleSet, ruleId, changes = {}, stages) {
 export function rulebookView(ruleSet) {
   const live = ruleSet.rules.filter((r) => !r.retired).map((r) => ({
     rule_id: r.rule_id, title: r.title, severity: r.severity, form: r.form, page: r.page, item: r.item,
-    expected: r.expected, note: r.note, scope: r.scope, origin: r.origin,
+    expected: r.expected, note: r.note, scope: r.scope, origin: r.origin, applies_when: r.applies_when || null,
     stages: Object.fromEntries(REVIEW_STAGES.map((s) => [s, r.stages?.[s]?.state || 'not_this_stage'])),
   }));
   return {
@@ -103,6 +104,9 @@ export function rulebookView(ruleSet) {
     version: ruleSet.version,
     firm: live.filter((r) => r.scope === 'firm'),
     case_type_rules: live.filter((r) => r.scope === 'case_type'),
-    package_items: ruleSet.package_items.map((i) => ({ item_id: i.item_id, form: i.form, instance: i.instance ?? null, label: i.label, pages: i.pages, kind: i.kind })),
+    package_items: ruleSet.package_items.map((i) => ({
+      item_id: i.item_id, form: i.form, instance: i.instance ?? null, label: i.label, pages: i.pages, kind: i.kind,
+      applies_when: i.applies_when || null, missing_confirm: Boolean(i.missing_confirm),
+    })),
   };
 }

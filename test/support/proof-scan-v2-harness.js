@@ -4,8 +4,16 @@
 // hoisted per file); this module supplies everything else: a fake database
 // seeded with the real v2 rule sets, request builders, and auth profiles.
 
-import seed from '../../functions/api/proof-scan-profiles/v2-seed.json';
+import baseSeed from '../../functions/api/proof-scan-profiles/v2-seed.json';
+import aosSeed from '../../functions/api/proof-scan-profiles/v2-aos-seed.json';
+import { buildAosRuleSet } from '../../scripts/proof-scan-v2-aos-seed.mjs';
 import { createFakeSupabase } from './fake-supabase.js';
+
+// v2.1: DACA renewal, General and AOS, as 2003 and 2006 seed them.
+export const seed = {
+  ...baseSeed,
+  rule_sets: [...baseSeed.rule_sets, buildAosRuleSet(baseSeed.rule_sets.find((rs) => rs.case_type === 'general'), aosSeed)],
+};
 
 // A dummy 256-bit key, used only inside tests.
 export const ENV = {
@@ -144,7 +152,7 @@ export function evidenceFacts(facts = {}) {
 // An answer to a stage-run request: every asked ID clear (or as overridden),
 // every asked item present (or as overridden), plus the given forms, evidence,
 // markups and possible issues.
-export function observations({ rules = {}, items = {}, forms = [], evidence = [], markups, possible = [] } = {}) {
+export function observations({ rules = {}, items = {}, forms = [], evidence = [], markups, possible = [], aos, pages } = {}) {
   return (body) => {
     const props = body.output_config.format.schema.properties;
     const out = {};
@@ -161,9 +169,22 @@ export function observations({ rules = {}, items = {}, forms = [], evidence = []
     }
     out.forms_found = forms;
     // English with no translation needed, unless a test says otherwise (D-100 #6).
-    out.evidence_found = evidence.map((e) => ({ language: 'English', has_english_translation: true, ...e, facts: evidenceFacts(e.facts) }));
+    out.evidence_found = evidence.map((e) => ({ language: 'English', has_english_translation: true, people: [], ...e, facts: evidenceFacts(e.facts) }));
     if (props.markups) out.markups = markups || [];
+    if (props.page_problems) out.page_problems = pages || [];
+    // v2.1: the AOS section, defaults first (nothing found).
+    if (props.aos) {
+      out.aos = {
+        i130_relationship: null, petitioner_citizenship: null, prior_divorce_listed: 'not_shown',
+        fee_payments: [], language_statements: [], yes_no_answers: [], ...(aos || {}),
+      };
+    }
     out.possible_issues = possible;
     return out;
   };
 }
+
+// v2.1, D-135: Needs attention merges every wrong fact into one 'fact' item; the
+// findings it came from are kept under it (parts). Tests that read a single
+// finding read them through this.
+export const findings = (result) => (result?.attention || []).flatMap((a) => (a.kind === 'fact' ? a.parts : [a]));

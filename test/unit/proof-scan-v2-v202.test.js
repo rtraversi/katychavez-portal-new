@@ -18,13 +18,15 @@ import { onRequest as suppressionsRoute } from '../../functions/api/proof-scan-v
 import { onRequest as editionsRoute } from '../../functions/api/proof-scan-v2-editions.js';
 import { run as runEditionCheck } from '../../functions/api/process-form-edition-check.js';
 import { parseEditionNotices, acceptedEditions } from '../../functions/api/_uscis-editions.js';
-import { buildProofScanStageEmail, stageSummaryLines } from '../../functions/api/_proof-scan-email.js';
+import { buildProofScanStageEmail } from '../../functions/api/_proof-scan-email.js';
+import { reportStateLanguage } from '../../functions/api/proof-scan-contract.js';
 import { FACT_FIELDS } from '../../functions/api/_proof-scan-v2-ai.js';
 import {
   sameValue, sameDate, normText, compareNames, canonicalCountry, sameEmployer, normalizeDate, toCardValue,
   isNotApplicable, dateOrderFor,
 } from '../../functions/api/_proof-scan-v2-common.js';
-import { seededDb, call, STAFF, CLIENT, ENV, pdfFile, mockModel, observations, formValues, evidenceFacts } from '../support/proof-scan-v2-harness.js';
+import { seededDb, call, STAFF, CLIENT, ENV, pdfFile, mockModel, observations, formValues, evidenceFacts, findings,
+} from '../support/proof-scan-v2-harness.js';
 
 let db;
 beforeEach(() => {
@@ -66,7 +68,7 @@ const ev = (doc_type, facts, extra = {}) => ({
 });
 const run = (body) => call(runRoute, '/api/proof-scan-v2-run', { method: 'POST', body: { files: [pdfFile()], ...body } });
 const physical = (caseId) => run({ case_id: caseId, stage: 'physical_scan' });
-const titles = (r) => r.body.result.attention.map((a) => a.title);
+const titles = (r) => findings(r.body.result).map((a) => a.title);
 const confirms = (r) => r.body.result.checks.filter((c) => c.status === 'please_confirm');
 const confirmIds = (r) => confirms(r).map((c) => c.rule_id);
 
@@ -109,10 +111,10 @@ describe('D-111: a two-digit year is the same date', () => {
   it('through the engine: the EAD at 01/29/25 against the form at 01/29/2025 is no difference; 01/29/26 is', async () => {
     const ok = await evidenceRun([ev('ead', { first_name: 'ANA', last_name: 'RIVERA', expiration_date: '01/29/25', i94_expiration: '01/29/25' })],
       [form('I-485', { first_name: 'ANA', last_name: 'RIVERA', i94_expiration: '01/29/2025' })]);
-    expect(ok.body.result.attention).toEqual([]);
+    expect(findings(ok.body.result)).toEqual([]);
     const bad = await evidenceRun([ev('ead', { first_name: 'ANA', last_name: 'RIVERA', i94_expiration: '01/29/26' })],
       [form('I-485', { first_name: 'ANA', last_name: 'RIVERA', i94_expiration: '01/29/2025' })]);
-    expect(bad.body.result.attention.map((a) => a.field)).toEqual(['i94_expiration']);
+    expect(findings(bad.body.result).map((a) => a.field)).toEqual(['i94_expiration']);
   });
 
   it('century rule for the card: an expiration is 20YY; a past date is never guessed', () => {
@@ -130,22 +132,22 @@ describe('D-117: foreign documents are day first; the forms must be month first'
 
   it('MUST PASS: a Mexican 05/03/1995 (5 March) against a form saying 05/03/1995 is CAUGHT', async () => {
     const r = await evidenceRun([mexican('05/03/1995')], [form('I-485', { first_name: 'LUCIA', last_name: 'REYES', date_of_birth: '05/03/1995' })]);
-    expect(r.body.result.attention.map((a) => a.field)).toEqual(['date_of_birth']);
+    expect(findings(r.body.result).map((a) => a.field)).toEqual(['date_of_birth']);
   });
 
   it('MUST PASS: the same Mexican 05/03/1995 against a form saying 03/05/1995 passes', async () => {
     const r = await evidenceRun([mexican('05/03/1995')], [form('I-485', { first_name: 'LUCIA', last_name: 'REYES', date_of_birth: '03/05/1995' })]);
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
   });
 
   it('a day-first date the form wrote backwards is caught; a US document stays month first', async () => {
     const backwards = await evidenceRun([mexican('29/01/1995')], [form('I-485', { first_name: 'LUCIA', last_name: 'REYES', date_of_birth: '29/01/1995' })]);
-    expect(backwards.body.result.attention.map((a) => a.field)).toEqual(['date_of_birth']);
+    expect(findings(backwards.body.result).map((a) => a.field)).toEqual(['date_of_birth']);
     // A day-first document that printed a date only readable month first is read month first.
     expect(sameDate('09/30/1993', '09/30/1993', { aOrder: 'dmy' })).toBe(true);
     expect(sameValue('date_of_birth', '09/30/1993', '30/09/1993', { aOrder: 'dmy' })).toBe(false); // the form side is strict
     const us = ev('birth_certificate', { first_name: 'LUCIA', last_name: 'REYES', date_of_birth: '05/03/1995' }, { issuing_country: 'United States' });
-    expect((await evidenceRun([us], [form('I-485', { first_name: 'LUCIA', last_name: 'REYES', date_of_birth: '05/03/1995' })])).body.result.attention).toEqual([]);
+    expect(findings((await evidenceRun([us], [form('I-485', { first_name: 'LUCIA', last_name: 'REYES', date_of_birth: '05/03/1995' })])).body.result)).toEqual([]);
   });
 
   it('how a document\'s country is known: the model reports it; unknown and not in English is day first', () => {
@@ -171,7 +173,9 @@ describe('D-117: foreign documents are day first; the forms must be month first'
     expect(db.rows('proof_scan_documents')[0].facts).toMatchObject({ issuing_country: 'Mexico', doc_title: 'Acta de Nacimiento' });
     mockModel(vi, [observations({ forms: [form('I-485', { first_name: 'LUCIA', last_name: 'REYES', date_of_birth: '05/03/1995' })] })]);
     const r = await physical(caseId);
+    // D-135 (v2.1): the case card and the birth certificate are one item, naming both.
     expect(r.body.result.attention.map((a) => a.field)).toEqual(['date_of_birth']);
+    expect(r.body.result.attention[0].sources[0].labels).toEqual(['the case card', 'the birth certificate']);
   });
 });
 
@@ -220,7 +224,7 @@ describe('D-118, D-126: countries, accents, ports, "(none)"', () => {
     addPerson(caseId, 'beneficiary', { first_name: 'LUIS', middle_name: 'ALBERTO', last_name: 'GARCIA' }, { is_main: true });
     mockModel(vi, [observations({ forms: [form('I-130', { first_name: 'LUIS', middle_name: '(none)', last_name: 'GARCIA' })] })]);
     const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(r.body.result.attention.map((a) => [a.field, a.kind])).toEqual([['middle_name', 'reference_difference']]);
+    expect(findings(r.body.result).map((a) => [a.field, a.kind])).toEqual([['middle_name', 'reference_difference']]);
     expect(r.body.result.forms_found[0].values.middle_name).toBe('(none)'); // what was printed is kept
   });
 });
@@ -236,14 +240,14 @@ describe('D-112: capitals are never a difference; the reported flag was the last
     const caseId = card({ first_name: 'Jane', middle_name: null, last_name: 'Doe Douglas' });
     mockModel(vi, [observations({ forms: [form('I-130', { first_name: 'JANE', middle_name: '', last_name: 'DOE DOUGLAS' })] })]);
     const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
   });
 
   it('the cause: "Doe" held as a middle name, the forms carry DOE DOUGLAS as the last name. A gentle confirm, never counted', async () => {
     const caseId = card({ first_name: 'Jane', middle_name: 'Doe', last_name: 'Douglas' });
     mockModel(vi, [observations({ forms: [form('I-130', { first_name: 'JANE', middle_name: '', last_name: 'DOE DOUGLAS' })] })]);
     const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(confirmIds(r)).toContain('confirm:name_split:beneficiary');
     expect(r.body.result.report_state).toBe('no_issues_found');
   });
@@ -252,7 +256,7 @@ describe('D-112: capitals are never a difference; the reported flag was the last
     const caseId = card({ first_name: 'Jane', middle_name: null, last_name: 'Doe Douglas' });
     mockModel(vi, [observations({ forms: [form('I-130', { first_name: 'JANE', middle_name: '', last_name: 'DOE DOUGLASS' })] })]);
     const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(r.body.result.attention.map((a) => a.field)).toEqual(['last_name']);
+    expect(findings(r.body.result).map((a) => a.field)).toEqual(['last_name']);
     expect(compareNames({ first_name: 'Jane', last_name: 'Doe' }, { first_name: 'JANE', last_name: 'DOW' })).toBe('different');
   });
 
@@ -260,7 +264,7 @@ describe('D-112: capitals are never a difference; the reported flag was the last
     const caseId = card({ first_name: 'Jane', middle_name: 'Doe', last_name: 'Douglas' });
     mockModel(vi, [observations({ forms: [form('I-130', { first_name: 'JANE', middle_name: '', last_name: 'DOE DOUGLAS' })] })]);
     const r = await physical(caseId);
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(confirmIds(r)).toContain('confirm:name_split:beneficiary');
   });
 });
@@ -269,13 +273,13 @@ describe('D-120: a document printing first and middle name together is not a dif
   it('"ANA MARIA" as the first name on the evidence equals first ANA, middle MARIA on the form', async () => {
     const r = await evidenceRun([ev('birth_certificate', { first_name: 'ANA MARIA', last_name: 'RIVERA' })],
       [form('I-485', { first_name: 'ANA', middle_name: 'MARIA', last_name: 'RIVERA' })]);
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
   });
 
   it('a real difference is still caught: another middle name, another first name', async () => {
     const r = await evidenceRun([ev('birth_certificate', { first_name: 'ANA LUISA', last_name: 'RIVERA' })],
       [form('I-485', { first_name: 'ANA', middle_name: 'MARIA', last_name: 'RIVERA' })]);
-    expect(r.body.result.attention.map((a) => a.field)).toEqual(['first_name']);
+    expect(findings(r.body.result).map((a) => a.field)).toEqual(['first_name']);
     expect(compareNames({ first_name: 'ANA MARIA', last_name: 'RIVERA' }, { first_name: 'ANNA', middle_name: 'MARIA', last_name: 'RIVERA' })).toBe('different');
   });
 });
@@ -284,16 +288,16 @@ describe('Q-56: city of birth, only when the birth is in the US', () => {
   it('a US city of birth is compared, and a different city is caught', async () => {
     const r = await evidenceRun([ev('birth_certificate', { first_name: 'LUIS', last_name: 'GARCIA', city_of_birth: 'Durham, NC' }, { issuing_country: 'United States' })],
       [form('I-130', { first_name: 'LUIS', last_name: 'GARCIA', city_of_birth: 'RALEIGH', country_of_birth: 'UNITED STATES' })]);
-    expect(r.body.result.attention.map((a) => a.field)).toEqual(['city_of_birth']);
+    expect(findings(r.body.result).map((a) => a.field)).toEqual(['city_of_birth']);
     const same = await evidenceRun([ev('birth_certificate', { first_name: 'LUIS', last_name: 'GARCIA', city_of_birth: 'Raleigh, North Carolina' }, { issuing_country: 'US' })],
       [form('I-130', { first_name: 'LUIS', last_name: 'GARCIA', city_of_birth: 'RALEIGH, NC', country_of_birth: 'UNITED STATES' })]);
-    expect(same.body.result.attention).toEqual([]);
+    expect(findings(same.body.result)).toEqual([]);
   });
 
   it('a city outside the US is never compared', async () => {
     const r = await evidenceRun([ev('birth_certificate', { first_name: 'LUCIA', last_name: 'REYES', city_of_birth: 'Leon, Guanajuato' }, { issuing_country: 'Mexico', language: 'Spanish' })],
       [form('I-485', { first_name: 'LUCIA', last_name: 'REYES', city_of_birth: 'GUADALAJARA', country_of_birth: 'MEXICO' })]);
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
   });
 
   it('the card carries a city of birth (it is a case-card fact now)', async () => {
@@ -301,7 +305,7 @@ describe('Q-56: city of birth, only when the birth is in the US', () => {
     addPerson(caseId, 'beneficiary', { first_name: 'LUIS', last_name: 'GARCIA', city_of_birth: 'Raleigh', country_of_birth: 'UNITED STATES' }, { is_main: true });
     mockModel(vi, [observations({ forms: [form('I-130', { first_name: 'LUIS', last_name: 'GARCIA', city_of_birth: 'DURHAM', country_of_birth: 'UNITED STATES' })] })]);
     const r = await run({ case_id: caseId, stage: 'draft_review', scope: 'whole' });
-    expect(r.body.result.attention.map((a) => a.field)).toEqual(['city_of_birth']);
+    expect(findings(r.body.result).map((a) => a.field)).toEqual(['city_of_birth']);
   });
 });
 
@@ -310,17 +314,17 @@ describe('D-116: a county on the certificate against a city on the forms', () =>
     for (const city of ['RALEIGH', 'CARY']) {
       const r = await evidenceRun([ev('marriage_certificate', { marriage_place: 'Wake County, NC', marriage_date: '06/01/2020' }, { owner_roles: ['beneficiary'] })],
         [form('I-130', { marriage_place: city, marriage_date: '06/01/2020' })]);
-      expect(r.body.result.attention).toEqual([]);
+      expect(findings(r.body.result)).toEqual([]);
       expect(confirmIds(r)).toContain('confirm:county:beneficiary:marriage_place');
     }
   });
 
   it('a different city against a city is still caught; a marriage outside the US is not compared', async () => {
     const r = await evidenceRun([ev('marriage_certificate', { marriage_place: 'Durham, NC' })], [form('I-130', { marriage_place: 'RALEIGH, NC' })]);
-    expect(r.body.result.attention.map((a) => a.field)).toEqual(['marriage_place']);
+    expect(findings(r.body.result).map((a) => a.field)).toEqual(['marriage_place']);
     const abroad = await evidenceRun([ev('marriage_certificate', { marriage_place: 'Monterrey, Nuevo Leon, Mexico' }, { issuing_country: 'Mexico', language: 'Spanish' })],
       [form('I-130', { marriage_place: 'SALTILLO, MEXICO' })]);
-    expect(abroad.body.result.attention).toEqual([]);
+    expect(findings(abroad.body.result)).toEqual([]);
   });
 });
 
@@ -347,7 +351,7 @@ describe('D-119, Q-53: employers, judged the way a person would', () => {
       const caseId = caseFor();
       mockModel(vi, [observations({ forms: mk(employer), evidence: [stub] })]);
       const r = await physical(caseId);
-      expect(r.body.result.attention.map((a) => a.field), employer || 'blank').toEqual(expected);
+      expect(findings(r.body.result).map((a) => a.field), employer || 'blank').toEqual(expected);
     }
   });
 });
@@ -358,7 +362,7 @@ describe('Q-48, Q-54: caps and first names on the forms (gentle, never counted)'
   it('a last name or a country not in caps is a gentle confirm; in caps it is not', async () => {
     const r = await evidenceRun([], [form('I-130', { first_name: 'Luis', last_name: 'Garcia', country_of_birth: 'Mexico' })]);
     expect(confirmIds(r)).toEqual(expect.arrayContaining(['confirm:caps:last_name', 'confirm:caps:country']));
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     const caps = await evidenceRun([], [form('I-130', { first_name: 'Luis', last_name: 'GARCIA', country_of_birth: 'MEXICO' })]);
     expect(confirmIds(caps)).not.toContain('confirm:caps:last_name');
     expect(confirmIds(caps)).not.toContain('confirm:caps:country');
@@ -367,7 +371,7 @@ describe('Q-48, Q-54: caps and first names on the forms (gentle, never counted)'
   it('two words in the first-name field is a gentle confirm; one word is not', async () => {
     const r = await evidenceRun([], [form('I-130', { first_name: 'ANA MARIA', last_name: 'RIVERA' })]);
     expect(confirmIds(r)).toContain('confirm:first_name_words');
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     const one = await evidenceRun([], [form('I-130', { first_name: 'MARY-JANE', last_name: 'RIVERA' })]);
     expect(confirmIds(one)).not.toContain('confirm:first_name_words');
   });
@@ -384,7 +388,7 @@ describe('D-123, Q-55: blank or duplicate pages are a Possible issue, never coun
     const calls = mockModel(vi, [withPages(observations(), [{ kind: 'blank', file: 'package.pdf', pages: '14' }, { kind: 'duplicate', file: 'package.pdf', pages: '15, 16' }])]);
     const r = await physical(caseId);
     expect(calls[0].body.output_config.format.schema.properties.page_problems).toBeDefined();
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     expect(r.body.result.checks.some((c) => c.rule_id === 'PS-103')).toBe(false);
     const issue = r.body.possible_issues.find((p) => p.reasoning_key === 'blank_or_duplicate_pages');
     expect(issue.evidence).toContain('page 14');
@@ -415,7 +419,7 @@ describe('D-123, Q-55: blank or duplicate pages are a Possible issue, never coun
     const calls = mockModel(vi, [observations({ rules: { 'PS-103': 'needs_attention' } })]);
     const r = await physical(caseId);
     expect(calls[0].body.output_config.format.schema.properties.page_problems).toBeUndefined();
-    expect(r.body.result.attention.map((a) => a.rule_id)).toContain('PS-103');
+    expect(findings(r.body.result).map((a) => a.rule_id)).toContain('PS-103');
   });
 });
 
@@ -425,8 +429,8 @@ describe('D-124: PS-306 does not apply to passports', () => {
       ev('passport', { first_name: 'LUCIA', last_name: 'REYES' }, { language: 'Spanish', has_english_translation: false, issuing_country: 'Mexico' }),
       ev('birth_certificate', { first_name: 'LUCIA', last_name: 'REYES' }, { language: 'Spanish', has_english_translation: false, issuing_country: 'Mexico', pages: '7' }),
     ], [form('I-485', { first_name: 'LUCIA', last_name: 'REYES' })]);
-    expect(r.body.result.attention.map((a) => a.kind)).toEqual(['translation']);
-    expect(r.body.result.attention[0].title).toContain('birth certificate');
+    expect(findings(r.body.result).map((a) => a.kind)).toEqual(['translation']);
+    expect(findings(r.body.result)[0].title).toContain('birth certificate');
   });
 });
 
@@ -436,7 +440,7 @@ describe('D-121: every evidence finding names the document and where both sides 
   it('a tax return is a tax return, with file and page on both sides', async () => {
     const r = await evidenceRun([ev('tax_return', { first_name: 'LUIS', last_name: 'GARCIA' }, { file: 'taxes.pdf', pages: '2-5' })],
       [form('I-864', { first_name: 'LUIS', last_name: 'GARCIA', middle_name: '' }, 'beneficiary', '30-39'), form('I-130', { first_name: 'LUIS', last_name: 'GARCIA' })]);
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
     const bad = await evidenceRun([ev('tax_return', { first_name: 'LUIS', last_name: 'GARCIA' }, { file: 'taxes.pdf', pages: '2-5' })],
       [form('I-864', { first_name: 'LUIS', last_name: 'GARCIAS' }, 'beneficiary', '30-39')]);
     expect(titles(bad)).toEqual(["The beneficiary's tax return (taxes.pdf, pages 2-5) shows last name GARCIA. The I-864 (package.pdf, pages 30-39) shows GARCIAS."]);
@@ -483,44 +487,114 @@ describe('D-113, Q-49, Q-50: Draft Review and Pre-flight ask gently for the EAD 
 
 // ── F. Stage email ───────────────────────────────────────────────────────────
 
-describe('D-114, Q-51: the stage email', () => {
+// D-151 (Max 2026-11-11) supersedes Q-51: the email carries the report, like
+// the v1 email. Still last names only for the case (D-114), no case card block,
+// never a Possible issue (D-36), and built by code from the stored result.
+describe('D-151: the stage email carries the report', () => {
   const people = [
     { role: 'beneficiary', is_main: true, first_name: 'Lucia', last_name: 'Reyes' },
     { role: 'petitioner', is_main: false, first_name: 'Mateo', last_name: 'Morales' },
   ];
-  const base = { stage: 'physical_scan', case_type: 'general', not_checked_count: 0 };
+  const id = '11111111-2222-4333-8444-555555555555';
+  const base = {
+    stage: 'physical_scan', case_type: 'general', case_type_label: 'General', not_checked_count: 0,
+    scan: { files: [{ filename: 'package.pdf', kind: 'package' }] },
+  };
+  const withIssues = {
+    ...base, report_state: 'items_need_attention', attention_count: 2, primary_report_language: '2 items need attention',
+    attention: [
+      { kind: 'fact', key: 'fact:beneficiary:date_of_birth:x', person_role: 'beneficiary', field: 'date_of_birth',
+        title: "The beneficiary's date of birth does not match",
+        on_forms: [{ value: '05/03/1995', forms: [{ form: 'I-485', n: 1 }, { form: 'G-1450', n: 2 }] }],
+        sources: [{ value: '03/05/1995', labels: ['the case card', 'the birth certificate'] }],
+        fix_on: [{ form: 'I-485', n: 1 }, { form: 'G-1450', n: 2 }], forms: ['I-485', 'G-1450'] },
+      { kind: 'check', key: 'rule:PS-101', rule_id: 'PS-101', title: 'The I-485 page 3 is the 01/20/25 edition. The rest of the I-485 is current.' },
+    ],
+    checks: [
+      { rule_id: 'PS-101', status: 'needs_attention', title: 'Edition date is current on every page.', form: null, expected: '04/01/26', where: 'p.3', reason: 'The footer reads 01/20/25.' },
+      { rule_id: 'PS-102', status: 'clear', title: 'Page count correct.', form: null },
+      { rule_id: 'PS-201', status: 'clear', title: 'Signed.', form: 'I-485' },
+      { rule_id: 'PS-202', status: 'clear', title: 'Name present.', form: 'I-485' },
+      { rule_id: 'PS-203', status: 'needs_info', title: 'No A-Number on the case card to compare.', form: 'G-1450' },
+      { rule_id: 'PS-204', status: 'clear', title: 'Card details complete.', form: 'G-1450' },
+      { rule_id: 'PS-205', status: 'please_confirm', title: 'Is the interpreter box as intended?', form: 'I-485' },
+    ],
+    forms_found: [
+      { form: 'G-1450', file: 'package.pdf', pages: '1', person_role: 'beneficiary', values: {} },
+      { form: 'G-1450', file: 'package.pdf', pages: '2', person_role: 'beneficiary', values: {} },
+      { form: 'I-485', file: 'package.pdf', pages: '3-22', person_role: 'beneficiary', values: {} },
+    ],
+    // Two documents on file and in the package: each counted once per place.
+    evidence_matches: [
+      { evidence: 'birth_certificate', source: 'evidence_zero', owner_roles: ['beneficiary'], form: 'I-485', field: 'date_of_birth', ok: false },
+      { evidence: 'birth_certificate', source: 'package', owner_roles: ['beneficiary'], form: 'I-485', field: 'date_of_birth', ok: false },
+      { evidence: 'passport', source: 'package', owner_roles: ['beneficiary'], form: 'I-485', field: 'last_name', ok: true },
+      { evidence: 'passport', source: 'package', owner_roles: ['beneficiary'], form: 'I-485', field: 'first_name', ok: true },
+    ],
+  };
 
-  it('names the case by last names only, links to that case, and lists what needs attention without personal info', () => {
-    const result = {
-      ...base, report_state: 'items_need_attention', attention_count: 3, primary_report_language: '3 items need attention',
-      attention: [
-        { kind: 'evidence_difference', field: 'date_of_birth', form: 'I-485', doc_type: 'birth_certificate', person_role: 'beneficiary',
-          title: "The beneficiary's birth certificate (acta.pdf, page 3) shows date of birth 03/05/1995. The I-485 shows 05/03/1995." },
-        { kind: 'check', rule_id: 'PS-101', rule_title: 'Edition date is current on every page.', form: null, title: 'The I-485 page 3 is the 01/20/25 edition.' },
-        { kind: 'case_card_difference', field: 'a_number', forms: ['I-130'], person_role: 'petitioner', title: 'The package shows A-123456789.' },
-      ],
-    };
-    const id = '11111111-2222-4333-8444-555555555555';
-    const m = buildProofScanStageEmail(result, { portalUrl: 'https://portal.example.test', caseId: id, people });
-    expect(m.subject).toBe('Proof Scan: REYES & MORALES: Physical Scan: 3 items need attention');
-    expect(m.html).toContain(`https://portal.example.test/portal?ps2case=${id}#proof-scan-v2`);
-    expect(m.html).toContain('The birth certificate and the I-485 differ on the beneficiary&#39;s date of birth.');
-    expect(m.html).toContain('Not met: Edition date is current on every page');
-    for (const secret of ['Lucia', 'Mateo', '1995', '03/05', '01/20/25', '123456789', 'acta.pdf', 'page 3']) expect(m.html, secret).not.toContain(secret);
+  it('names the case by last names, links to it, and shows each problem with its values', () => {
+    const m = buildProofScanStageEmail(withIssues, { portalUrl: 'https://portal.example.test', caseId: id, people });
+    expect(m.subject).toBe('Proof Scan: REYES & MORALES: Physical Scan: 2 items need attention');
     expect(m.subject).not.toContain('Lucia');
+    expect(m.html).toContain('Case: REYES &amp; MORALES');
+    expect(m.html).not.toContain('Lucia');
+    expect(m.html).toContain(`https://portal.example.test/portal?ps2case=${id}#proof-scan-v2`);
+    // The merged fact (D-135): the forms' value, the truth, where to fix it.
+    for (const s of ['The beneficiary&#39;s date of birth does not match', '05/03/1995', 'On the case card and birth certificate', '03/05/1995', 'I-485, G-1450 ×2']) expect(m.html, s).toContain(s);
+    // A check: its first sentence is the title, then the page's detail lines.
+    for (const s of ['The I-485 page 3 is the 01/20/25 edition<', 'The rest of the I-485 is current.', '04/01/26', 'The footer reads 01/20/25.']) expect(m.html, s).toContain(s);
+    expect(m.html).not.toContain('—');
   });
 
-  it('a clean result says it is good to go', () => {
-    const m = buildProofScanStageEmail({ ...base, report_state: 'no_issues_found', attention_count: 0, primary_report_language: 'No issues found', attention: [] },
-      { portalUrl: 'https://portal.example.test', people });
+  it('summarizes what passed, form by form with its pages, as the page counts it', () => {
+    const m = buildProofScanStageEmail(withIssues, { portalUrl: 'https://portal.example.test', caseId: id, people });
+    expect(m.html).toContain('What passed');
+    expect(m.html).toContain('G-1450 ×2');
+    expect(m.html).toContain('p.1, 2');
+    // Only a needs-info item open: clean, but not "all passed".
+    expect(m.html).toContain('✓ 1 passed, 1 to follow up');
+    expect(m.html).toContain('p.3-22');
+    expect(m.html).toContain('✓ All 2 passed');
+    expect(m.html).toContain('Page count correct');
+    expect(m.html).toContain('Evidence: 0 of 1 in Evidence Zero and 1 of 2 in the package match the forms');
+    // A gentle confirm is a count, never a finding.
+    expect(m.html).toContain('Also on the page: 1 item to confirm.');
+    expect(m.html).not.toContain('Is the interpreter box as intended?');
+  });
+
+  it('a clean result says it is good to go and still shows what passed', () => {
+    const m = buildProofScanStageEmail({
+      ...withIssues, report_state: 'no_issues_found', attention_count: 0, primary_report_language: 'No issues found', attention: [],
+      checks: withIssues.checks.filter((c) => c.status === 'clear'), evidence_matches: [],
+    }, { portalUrl: 'https://portal.example.test', people });
     expect(m.html).toContain('Good to go.');
+    expect(m.html).toContain('✓ All 2 passed');
+    expect(m.html).not.toContain('>Needs attention</p>');
   });
 
-  it('every attention kind has a line built from its fields alone', () => {
-    const kinds = ['missing_item', 'reference_difference', 'case_card_difference', 'evidence_difference', 'form_difference', 'translation', 'correction', 'not_carried', 'check', 'mystery'];
-    const lines = stageSummaryLines({ ...base, attention: kinds.map((kind) => ({ kind, form: 'I-130', field: 'last_name', forms: ['I-130'], title: 'SECRET TITLE 1234' })), not_checked_count: 2 });
-    expect(lines.length).toBeGreaterThanOrEqual(kinds.length);
-    for (const l of lines) { expect(l).not.toContain('SECRET'); expect(l).not.toContain('['); }
+  it('escapes every value and splits titles the way the page does', () => {
+    const m = buildProofScanStageEmail({
+      ...withIssues,
+      attention: [{ ...withIssues.attention[1], title: 'The petitioner is a U.S. citizen. The I-130 says <script>alert(1)</script>.' }],
+      attention_count: 1, primary_report_language: '1 item needs attention',
+    }, { portalUrl: 'https://portal.example.test', people });
+    expect(m.html).toContain('The petitioner is a U.S. citizen<');
+    expect(m.html).not.toContain('<script>');
+    expect(m.html).toContain('&lt;script&gt;');
+  });
+
+  it('lists what could not be checked, with the reason', () => {
+    const result = {
+      ...base, report_state: 'review_incomplete', attention_count: 0,
+      primary_report_language: reportStateLanguage('review_incomplete', 0), attention: [],
+      checks: [{ rule_id: 'PS-301', status: 'not_checked', title: 'Signed.', form: 'I-485', reason: 'Page 22 is too faint to read.' }],
+    };
+    const m = buildProofScanStageEmail(result, { portalUrl: 'https://portal.example.test', people });
+    expect(m.html).toContain('Not checked');
+    expect(m.html).toContain('Page 22 is too faint to read.');
+    expect(m.html).toContain('Why it could not be checked');
+    expect(m.html).not.toContain('Good to go.');
   });
 });
 
@@ -599,7 +673,7 @@ describe('D-127: the editions USCIS accepts, read from its own page', () => {
     const r = await physical(caseId);
     expect(calls[0].body.system).toContain('G-28|4p|09/17/18 or 05/23/18');
     expect(confirmIds(r)).toContain('confirm:edition_alert:I131');
-    expect(r.body.result.attention).toEqual([]);
+    expect(findings(r.body.result)).toEqual([]);
   });
 });
 

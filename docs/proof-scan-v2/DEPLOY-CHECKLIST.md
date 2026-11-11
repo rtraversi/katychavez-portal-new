@@ -91,3 +91,34 @@ Apply the migration FIRST, then deploy. The code writes `general_rule`, `city_of
 - Rollback: 2005 only adds nullable columns and a new rule-set version. To undo the rules,
   set the new version's `is_current` to false, then the old version's to true (one current
   version per case type is enforced, so in that order).
+
+## v2.1 (branch `proof-scan-v2.1`, stacked on v2.0.2)
+
+Merge #4 (v2.0.2) first. Then apply the migrations **in this order: 2005, then 2006**, then
+deploy v2.1.
+
+Merging (checked 2026-11-11 against `origin`): v2.1 merges cleanly into
+`module/forms-page-reorg` and into `drafter-1.0.4`. Into `module/bank-feeds` there is one
+conflict, in `css/portal.css`: both branches add a block at the end of the file (bank-feeds:
+the Estate Planning styles; v2.1: the block from "Proof Scan v2.1 (D-129 to D-147)" to "end
+Proof Scan v2.1"). Keep both, one after the other. Nothing else conflicts. The v2.1 code reads `aos_kind`, `proof_scan_clears` and the new rule columns;
+before 2006 a case or a report will not open.
+
+- [ ] `2005_proof_scan_v2_0_2.sql` applied (v2.0.2 steps above).
+- [ ] Apply `supabase/migrations/2006_proof_scan_v2_1.sql` to **dev**. It is idempotent.
+      **Never apply 2005 again after 2006**: 2005 rewrites the suggestion field list without the
+      passport fields. If it happens, apply 2006 again.
+- [ ] Check on dev:
+      `select case_type, version, is_current from proof_scan_rule_sets where case_type = 'aos';`
+      one row, version 1, current.
+      `select scope, count(*) from proof_scan_rules r join proof_scan_rule_sets s on s.id = r.rule_set_id where s.case_type = 'aos' group by 1;`
+      case_type 48 (49 before D-148 withdrew AOS-485-SEC), firm the same count as General's
+      current firm-wide rules.
+      `\d proof_scan_clears` and `\d proof_scan_answer_tally` exist; the tally has no case column.
+- [ ] Apply 2006 to **production**. Update `applied-dev.txt` / `applied-prod.txt`.
+- [ ] Deploy (by hand, as before). In Proof Scan v2 start an AOS case: the kind is asked.
+- [ ] Stage email (D-151, no migration): run any stage with "Email the result" on. The email
+      to the firm notification address now carries the report: Needs attention with the values,
+      Not checked, and What passed per form with its pages. It never lists Possible issues.
+- Rollback: 2006 adds nullable columns, two tables and a new rule set. To take AOS out, set the
+  AOS rule set's `is_current` to false; existing DACA and General cases are untouched.
