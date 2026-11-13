@@ -169,6 +169,28 @@ describe('logging a staff message', () => {
     expect(upserts).toHaveLength(1);
     expect(upserts[0].text).toBeNull();
   });
+
+  // The two shapes below came out of the real queue, not from imagination --
+  // the first synthetic fixtures for this file missed both.
+  it('keeps message_thread_id, which Telegram sets on threaded messages', async () => {
+    const m = groupMessage({ message_thread_id: 118 });
+    await onRequest({ request: post(m), env: ENV });
+    expect(upserts[0].message_thread_id).toBe(118);
+  });
+
+  it('logs a voice note with null text and no media, not as an error', async () => {
+    // Slice 0 does not transcribe or store audio; the row still has to exist or
+    // the conversation has a hole in it.
+    const m = groupMessage({
+      text: undefined,
+      voice: { duration: 7, mime_type: 'audio/ogg', file_id: 'x', file_size: 11_000 },
+    });
+    const res = await onRequest({ request: post(m), env: ENV });
+    expect(res.status).toBe(200);
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0].text).toBeNull();
+    expect(upserts[0].media_paths).toEqual([]);
+  });
 });
 
 describe('edits', () => {

@@ -111,6 +111,7 @@ export async function onRequest({ request, env }) {
         sent_at: new Date(msg.date * 1000).toISOString(),
         text,
         reply_to_message_id: msg.reply_to_message?.message_id ?? null,
+        message_thread_id: msg.message_thread_id ?? null,
         media_paths: mediaPaths,
         raw: update,
       },

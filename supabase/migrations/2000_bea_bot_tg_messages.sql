@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS public.tg_messages (
 
   reply_to_message_id bigint,       -- threads a staff question to Katy's answer
 
+  -- Telegram's own thread grouping. Present on messages that belong to a reply
+  -- thread, and on every message in a forum-style group with topics enabled.
+  -- Phase 2 has to reconstruct conversations out of this log, so the grouping
+  -- Telegram already computed is worth keeping rather than re-deriving.
+  message_thread_id   bigint,
+
   -- R2 object keys for photos and image/PDF documents on this message. The
   -- files live in R2, never in the DB — house rule in CLAUDE.md.
   media_paths text[]      NOT NULL DEFAULT '{}',
@@ -47,6 +53,8 @@ CREATE INDEX IF NOT EXISTS idx_tg_messages_sent_at   ON public.tg_messages (sent
 CREATE INDEX IF NOT EXISTS idx_tg_messages_chat_sent ON public.tg_messages (chat_id, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tg_messages_reply_to  ON public.tg_messages (reply_to_message_id)
   WHERE reply_to_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tg_messages_thread    ON public.tg_messages (message_thread_id)
+  WHERE message_thread_id IS NOT NULL;
 
 -- RLS on, and deliberately NO policy yet.
 --
