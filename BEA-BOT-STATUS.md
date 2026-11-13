@@ -142,8 +142,9 @@ Each is argued where it lives; summarised here so nobody re-opens them by accide
    `463b69ce…`, which also holds the `katychavez-portal` R2 bucket. Max's token reaches
    Rob@builtsmartbyrob.com's account and Solarsaiko@gmail.com's; the Worker is in neither.
    Better asked as "add me permanently" than "deploy this for me".
-2. **Access to the Supabase project `syqpooenhygbkedfthwe`**, or Rob applies migrations
-   2000–2002 to prod himself.
+2. **Access to the Supabase project "Katy Chavez Law"** (shorthand `KCL`, ref
+   `syqpooenhygbkedfthwe` — the mapping is in `deploy/README.md`), or Rob applies migrations
+   2000–2002 to prod himself. He deploys from `C:\Sites\katychavez`.
 3. **Finish or merge `origin/module/monday-sync`** — a read-only adapter with pagination and
    pinned columns already exists there, unmerged. Slice 1b should reuse it, not rewrite it.
 
