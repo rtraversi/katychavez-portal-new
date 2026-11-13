@@ -128,8 +128,14 @@ import { onRequest as storageSyncImportClient }    from './functions/api/storage
 import { onRequest as bookingPublic }              from './functions/api/booking-public.js';
 import { onRequest as bookingStaff }               from './functions/api/booking-staff.js';
 import { runBookingReminders }                     from './functions/api/_booking-reminders.js';
+import { onRequest as telegramWebhook }            from './functions/api/telegram-webhook.js';
 
 export const routes = {
+  // Bea-Bot. NOT in RATE_LIMITS on purpose: Telegram redelivers anything it
+  // does not get a 2xx for, and a 429 here loses staff messages permanently.
+  // The endpoint authenticates on the X-Telegram-Bot-Api-Secret-Token header
+  // and an allow-list of two chat ids instead of a session.
+  '/api/telegram-webhook':  telegramWebhook,
   '/api/confirm-upload':    confirmUpload,
   '/api/storage-sync-recon':    storageSyncRecon,
   '/api/storage-sync-status':   storageSyncStatus,
