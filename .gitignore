@@ -29,3 +29,6 @@ deploy/kcl/kcl-sync.ps1
 KCL-SYNC-DEPLOY.md
 SCROGGINS-CLONE-DEPLOY.md
 kcl-sync.ps1
+
+# Bea-Bot throwaway deploy harness (local test only, never production)
+.bea-test/
