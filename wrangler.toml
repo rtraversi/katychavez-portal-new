@@ -28,7 +28,7 @@ binding    = "R2"
 bucket_name = "katychavez-portal"
 
 [triggers]
-crons = ["0 14 * * *", "*/5 * * * *"]   # Daily 9am CST: doc reminders | Every 5 min: message notifications
+crons = ["0 14 * * *", "*/5 * * * *", "0 * * * *"]   # Daily 9am CST: doc reminders | Every 5 min: message notifications | Hourly: Bea daily brief (self-gates on local hour)
 
 # ── Non-sensitive vars (safe to commit once filled in) ────────────────────────
 # Secrets (listed below) are set via: npx wrangler secret put <NAME>

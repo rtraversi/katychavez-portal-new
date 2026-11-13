@@ -129,6 +129,7 @@ import { onRequest as bookingPublic }              from './functions/api/booking
 import { onRequest as bookingStaff }               from './functions/api/booking-staff.js';
 import { runBookingReminders }                     from './functions/api/_booking-reminders.js';
 import { onRequest as telegramWebhook }            from './functions/api/telegram-webhook.js';
+import { onRequest as processDailyBrief, run as runDailyBrief } from './functions/api/process-daily-brief.js';
 
 export const routes = {
   // Bea-Bot. NOT in RATE_LIMITS on purpose: Telegram redelivers anything it
@@ -136,6 +137,7 @@ export const routes = {
   // The endpoint authenticates on the X-Telegram-Bot-Api-Secret-Token header
   // and an allow-list of two chat ids instead of a session.
   '/api/telegram-webhook':  telegramWebhook,
+  '/api/process-daily-brief': processDailyBrief,
   '/api/confirm-upload':    confirmUpload,
   '/api/storage-sync-recon':    storageSyncRecon,
   '/api/storage-sync-status':   storageSyncStatus,
@@ -394,6 +396,13 @@ export default {
       // Every 5 min — consult reminder emails (no-ops unless the scheduling
       // premium module is enabled AND reminders are on in booking_settings)
       ctx.waitUntil(runBookingReminders(env));
+    } else if (event.cron === '0 * * * *') {
+      // Hourly — Bea's daily brief. The job gates itself on the firm's
+      // configured local hour and no-ops on every other tick: a cron expression
+      // is UTC, so it cannot express "9am wherever Katy is", and she is often in
+      // Queretaro, which does not observe DST. No-ops entirely until the brief
+      // module is configured.
+      ctx.waitUntil(runDailyBrief(env));
     }
   },
 
