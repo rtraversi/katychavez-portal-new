@@ -1,116 +1,217 @@
 <!-- Bank Accounts (bank_feeds module) — the firm's own balances + transactions, pulled
-     from a bank-data provider (SimpleFIN first) once a day. Owner only by default.
-     Loaded into #page-content by menu.js; logic in bank-accounts.js, categories in
-     categorize.js (ES module, unit-tested). -->
+     from a bank-data provider (SimpleFIN first) once a day, categorized for the books.
+     Owner only by default. Loaded into #page-content by menu.js; logic in
+     bank-accounts.js, categories + report in categorize.js, Quicken import in qif.js
+     (ES modules, unit-tested). Three tabs: Accounts, Report, Categories. -->
 <div class="dk-masthead">
   <div class="dk-kicker rise" style="animation-delay:.04s">Finance · Bank Accounts</div>
   <h1 class="dk-title rise" style="animation-delay:.09s">The firm's <em>bank accounts</em>.</h1>
-  <p class="dk-sub rise" style="animation-delay:.13s">Current balances and recent transactions, pulled from the bank about once a day. Read-only: nothing here can move money.</p>
+  <p class="dk-sub rise" style="animation-delay:.13s">Balances and transactions pulled from the bank about once a day, each one sorted into a category for the year-end books. Read-only: nothing here can move money.</p>
 </div>
 
 <div id="ba-deskbar"></div>
 
-<div class="ba-top">
-  <section class="dk-sec" id="ba-sec-accounts">
-    <div class="dk-sec-head"><h2>Accounts</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-accounts"></span></div>
-    <div id="ba-accounts" class="ba-compact"><p class="dk-empty">Loading…</p></div>
-  </section>
-
-  <section class="dk-sec" id="ba-sec-in">
-    <div class="dk-sec-head"><h2>Income</h2><span class="dk-sec-rule"></span><span class="dk-sec-count ba-flow-total in" id="ba-total-in"></span></div>
-    <div id="ba-in" class="ba-compact"><p class="dk-empty">Loading…</p></div>
-  </section>
-
-  <section class="dk-sec" id="ba-sec-out">
-    <div class="dk-sec-head">
-      <h2>Expenses</h2><span class="dk-sec-rule"></span>
-      <span class="dk-sec-count ba-flow-total" id="ba-total-out"></span>
-    </div>
-    <div id="ba-out" class="ba-compact"><p class="dk-empty">Loading…</p></div>
-  </section>
-</div>
-<div class="ba-period-row">
-  <span class="ba-period-note" id="ba-period-note"></span>
-  <span class="ba-period" id="ba-period" role="group" aria-label="Period for income and expenses">
-    <button type="button" class="dk-linkbtn" data-days="30">30 days</button>
-    <button type="button" class="dk-linkbtn" data-days="90">90 days</button>
-  </span>
+<div class="detail-tabs-row ba-tabs" id="ba-tabs" role="tablist">
+  <button class="detail-tab detail-tab--active" type="button" role="tab" data-tab="accounts">Accounts</button>
+  <button class="detail-tab" type="button" role="tab" data-tab="report">Report</button>
+  <button class="detail-tab" type="button" role="tab" data-tab="categories">Categories<span class="tab-count alert" id="ba-tabcount-unc" title="Uncategorized transactions"></span></button>
 </div>
 
-<section class="dk-sec" id="ba-sec-txns">
-  <div class="dk-sec-head"><h2>Transactions</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-txns"></span></div>
-  <div class="ba-toolbar" id="ba-txn-toolbar" hidden>
-    <select id="ba-txn-account" aria-label="Account"></select>
-    <select id="ba-txn-cat" aria-label="Category"></select>
-    <input type="text" inputmode="search" id="ba-txn-search" placeholder="Search payee, description or amount" aria-label="Search transactions">
+<!-- ── Accounts ─────────────────────────────────────────────────────────── -->
+<div class="tab-panel tab-panel--active" id="ba-panel-accounts">
+
+  <section class="dk-sec" id="ba-sec-conns">
+    <div class="dk-sec-head"><h2>Bank connections</h2><span class="dk-sec-rule"></span><button class="dk-sec-add" id="ba-connect-open" type="button">+ Connect a bank</button></div>
+
+    <form class="ba-connect" id="ba-connect-form" hidden autocomplete="off">
+      <ol class="ba-steps">
+        <li>Sign in to <a href="https://bridge.simplefin.org/" target="_blank" rel="noopener noreferrer">SimpleFIN Bridge</a> and link your bank there under <strong>Financial Institutions</strong>.</li>
+        <li>Under <strong>Apps</strong>, choose <strong>New app connection</strong> and copy the setup token it shows.</li>
+        <li>Paste the token below. Each token works once. If this fails after SimpleFIN accepted it, make a new one.</li>
+      </ol>
+      <div class="field">
+        <label for="ba-connect-label">Name for this connection</label>
+        <input type="text" id="ba-connect-label" maxlength="80" placeholder="e.g. Operating accounts">
+      </div>
+      <div class="field">
+        <label for="ba-connect-token">SimpleFIN setup token <span class="required">*</span></label>
+        <textarea id="ba-connect-token" rows="3" spellcheck="false" autocapitalize="off" placeholder="Paste the setup token"></textarea>
+      </div>
+      <div class="ba-connect-actions">
+        <button class="btn btn--primary" id="ba-connect-submit" type="submit">Connect</button>
+        <button class="btn btn--ghost" id="ba-connect-cancel" type="button">Cancel</button>
+      </div>
+    </form>
+
+    <div id="ba-conns" class="ba-compact"><p class="dk-empty">Loading…</p></div>
+  </section>
+
+  <div class="ba-top">
+    <section class="dk-sec" id="ba-sec-accounts">
+      <div class="dk-sec-head"><h2>Accounts</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-accounts"></span></div>
+      <div id="ba-accounts" class="ba-compact"><p class="dk-empty">Loading…</p></div>
+    </section>
+
+    <section class="dk-sec" id="ba-sec-in">
+      <div class="dk-sec-head"><h2>Income</h2><span class="dk-sec-rule"></span><span class="dk-sec-count ba-flow-total in" id="ba-total-in"></span></div>
+      <div id="ba-in" class="ba-compact"><p class="dk-empty">Loading…</p></div>
+    </section>
+
+    <section class="dk-sec" id="ba-sec-out">
+      <div class="dk-sec-head">
+        <h2>Expenses</h2><span class="dk-sec-rule"></span>
+        <span class="dk-sec-count ba-flow-total" id="ba-total-out"></span>
+      </div>
+      <div id="ba-out" class="ba-compact"><p class="dk-empty">Loading…</p></div>
+    </section>
   </div>
-  <div id="ba-txns"><p class="dk-empty">Loading…</p></div>
-  <div class="ba-more" id="ba-txn-more-wrap" hidden><button class="btn btn--ghost btn--sm" id="ba-txn-more" type="button">Show more</button></div>
-</section>
+  <div class="ba-period-row">
+    <span class="ba-period-note" id="ba-period-note"></span>
+    <span class="ba-period" id="ba-period" role="group" aria-label="Period for income and expenses">
+      <button type="button" class="dk-linkbtn" data-days="30">30 days</button>
+      <button type="button" class="dk-linkbtn" data-days="90">90 days</button>
+    </span>
+  </div>
 
-<section class="dk-sec" id="ba-sec-conns">
-  <div class="dk-sec-head"><h2>Bank connections</h2><span class="dk-sec-rule"></span><button class="dk-sec-add" id="ba-connect-open" type="button">+ Connect a bank</button></div>
-
-  <form class="ba-connect" id="ba-connect-form" hidden autocomplete="off">
-    <ol class="ba-steps">
-      <li>Sign in to <a href="https://bridge.simplefin.org/" target="_blank" rel="noopener noreferrer">SimpleFIN Bridge</a> and link your bank there under <strong>Financial Institutions</strong>.</li>
-      <li>Under <strong>Apps</strong>, choose <strong>New app connection</strong> and copy the setup token it shows.</li>
-      <li>Paste the token below. Each token works once. If this fails after SimpleFIN accepted it, make a new one.</li>
-    </ol>
-    <div class="field">
-      <label for="ba-connect-label">Name for this connection</label>
-      <input type="text" id="ba-connect-label" maxlength="80" placeholder="e.g. Operating accounts">
+  <section class="dk-sec" id="ba-sec-txns">
+    <div class="dk-sec-head"><h2>Transactions</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-txns"></span></div>
+    <div class="ba-toolbar" id="ba-txn-toolbar" hidden>
+      <select id="ba-txn-account" aria-label="Account"></select>
+      <select id="ba-txn-cat" aria-label="Category"></select>
+      <input type="text" inputmode="search" id="ba-txn-search" placeholder="Search payee, description or amount" aria-label="Search transactions">
     </div>
-    <div class="field">
-      <label for="ba-connect-token">SimpleFIN setup token <span class="required">*</span></label>
-      <textarea id="ba-connect-token" rows="3" spellcheck="false" autocapitalize="off" placeholder="Paste the setup token"></textarea>
+    <div id="ba-txns"><p class="dk-empty">Loading…</p></div>
+    <div class="ba-more" id="ba-txn-more-wrap" hidden><button class="btn btn--ghost btn--sm" id="ba-txn-more" type="button">Show more</button></div>
+  </section>
+</div>
+
+<!-- ── Report ───────────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="ba-panel-report">
+  <section class="dk-sec" id="ba-sec-report">
+    <div class="dk-sec-head"><h2>Income &amp; expenses by category</h2><span class="dk-sec-rule"></span></div>
+    <div class="ba-toolbar ba-rep-toolbar">
+      <select id="ba-rep-period" aria-label="Period">
+        <option value="this_year">This year</option>
+        <option value="last_year">Last year</option>
+        <option value="this_quarter">This quarter</option>
+        <option value="last_quarter">Last quarter</option>
+        <option value="this_month">This month</option>
+        <option value="last_month">Last month</option>
+        <option value="custom">Custom dates…</option>
+      </select>
+      <span class="ba-rep-custom" id="ba-rep-custom" hidden>
+        <input type="date" id="ba-rep-from" aria-label="From">
+        <span class="ba-rep-to">to</span>
+        <input type="date" id="ba-rep-to" aria-label="To">
+      </span>
+      <select id="ba-rep-account" aria-label="Account"></select>
+      <span class="ba-spacer"></span>
+      <button class="btn btn--ghost btn--sm" id="ba-rep-print" type="button">Print</button>
+      <button class="btn btn--ghost btn--sm" id="ba-rep-csv" type="button" title="One line per category">Summary CSV</button>
+      <button class="btn btn--ghost btn--sm" id="ba-rep-csv-txns" type="button" title="Every transaction in the period, with its category">Transactions CSV</button>
     </div>
-    <div class="ba-connect-actions">
-      <button class="btn btn--primary" id="ba-connect-submit" type="submit">Connect</button>
-      <button class="btn btn--ghost" id="ba-connect-cancel" type="button">Cancel</button>
-    </div>
-  </form>
+    <div id="ba-report"><p class="dk-empty">Loading…</p></div>
+  </section>
+</div>
 
-  <div id="ba-conns"><p class="dk-empty">Loading…</p></div>
-</section>
+<!-- ── Categories ───────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="ba-panel-categories">
+  <section class="dk-sec" id="ba-sec-cats">
+    <div class="dk-sec-head"><h2>Categories</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-cats"></span><button class="dk-sec-add" id="ba-cat-open" type="button" hidden>+ Add category</button></div>
 
-<section class="dk-sec" id="ba-sec-rules">
-  <div class="dk-sec-head"><h2>Category rules</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-rules"></span><button class="dk-sec-add" id="ba-rule-open" type="button" hidden>+ Add rule</button></div>
-
-  <form class="ba-connect ba-rule-form" id="ba-rule-form" hidden autocomplete="off">
-    <p class="ba-steps">A transaction gets the category of the first rule whose text appears in its payee or description (capitals don't matter). Rules higher in the list win.</p>
-    <div class="ba-rule-fields">
-      <div class="field">
-        <label for="ba-rule-pattern">When it mentions <span class="required">*</span></label>
-        <input type="text" id="ba-rule-pattern" maxlength="100" placeholder="e.g. gusto">
+    <form class="ba-connect" id="ba-cat-form" hidden autocomplete="off">
+      <p class="ba-steps">Use a colon for a subcategory, like Quicken: <strong>Office:Software</strong> is reported under <strong>Office</strong>.</p>
+      <div class="ba-rule-fields ba-cat-fields">
+        <div class="field">
+          <label for="ba-cat-name">Name <span class="required">*</span></label>
+          <input type="text" id="ba-cat-name" maxlength="80" placeholder="e.g. Office:Postage">
+        </div>
+        <div class="field">
+          <label for="ba-cat-kind">Report it under</label>
+          <select id="ba-cat-kind">
+            <option value="expense">Expenses</option>
+            <option value="income">Income</option>
+          </select>
+        </div>
       </div>
-      <div class="field">
-        <label for="ba-rule-category">Category <span class="required">*</span></label>
-        <input type="text" id="ba-rule-category" maxlength="60" list="ba-cat-list" placeholder="e.g. Payroll">
-        <datalist id="ba-cat-list"></datalist>
+      <div class="ba-connect-actions">
+        <button class="btn btn--primary" id="ba-cat-submit" type="submit">Add category</button>
+        <button class="btn btn--ghost" id="ba-cat-cancel" type="button">Cancel</button>
       </div>
-      <div class="field">
-        <label for="ba-rule-direction">Applies to</label>
-        <select id="ba-rule-direction">
-          <option value="any">Money in and out</option>
-          <option value="in">Money in only</option>
-          <option value="out">Money out only</option>
-        </select>
-      </div>
-    </div>
-    <div class="ba-connect-actions">
-      <button class="btn btn--primary" id="ba-rule-submit" type="submit">Add rule</button>
-      <button class="btn btn--ghost" id="ba-rule-cancel" type="button">Cancel</button>
-    </div>
-  </form>
+    </form>
 
-  <div id="ba-rules"><p class="dk-empty">Loading…</p></div>
-</section>
+    <div id="ba-cats"><p class="dk-empty">Loading…</p></div>
+  </section>
+
+  <section class="dk-sec" id="ba-sec-rules">
+    <div class="dk-sec-head"><h2>Category rules</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-rules"></span><button class="dk-sec-add" id="ba-rule-open" type="button" hidden>+ Add rule</button></div>
+
+    <form class="ba-connect ba-rule-form" id="ba-rule-form" hidden autocomplete="off">
+      <p class="ba-steps">A rule sorts every transaction whose payee or description mentions its text (capitals don't matter), past and future. Rules higher in the list win. A category set by hand on a transaction always beats a rule.</p>
+      <div class="ba-rule-fields">
+        <div class="field">
+          <label for="ba-rule-pattern">When it mentions <span class="required">*</span></label>
+          <input type="text" id="ba-rule-pattern" maxlength="100" placeholder="e.g. gusto">
+        </div>
+        <div class="field">
+          <label for="ba-rule-category">Category <span class="required">*</span></label>
+          <select id="ba-rule-category"></select>
+        </div>
+        <div class="field">
+          <label for="ba-rule-direction">Applies to</label>
+          <select id="ba-rule-direction">
+            <option value="any">Money in and out</option>
+            <option value="in">Money in only</option>
+            <option value="out">Money out only</option>
+          </select>
+        </div>
+      </div>
+      <div class="ba-connect-actions">
+        <button class="btn btn--primary" id="ba-rule-submit" type="submit">Add rule</button>
+        <button class="btn btn--ghost" id="ba-rule-cancel" type="button">Cancel</button>
+      </div>
+    </form>
+
+    <div id="ba-rules"><p class="dk-empty">Loading…</p></div>
+  </section>
+
+  <section class="dk-sec" id="ba-sec-import">
+    <div class="dk-sec-head"><h2>Import from Quicken</h2><span class="dk-sec-rule"></span></div>
+    <div class="ba-connect" id="ba-import">
+      <ol class="ba-steps">
+        <li>In Quicken, choose <strong>File › Export › Quicken Interchange Format (.QIF) File</strong>. Pick the account and the dates, and tick <strong>Transactions</strong> and <strong>Category list</strong>.</li>
+        <li>Choose that file here, and the account it belongs to.</li>
+        <li><strong>Preview</strong> shows exactly what will happen. Nothing is saved until you press <strong>Import</strong>.</li>
+      </ol>
+      <p class="ba-steps">Transactions from before the bank feed starts are added with their Quicken category. In the period the feed already covers, nothing is added twice: each Quicken entry is matched to the feed's transaction and only its category is copied over, never replacing one you set by hand.</p>
+      <div class="ba-rule-fields">
+        <div class="field">
+          <label for="ba-import-file">QIF file <span class="required">*</span></label>
+          <input type="file" id="ba-import-file" accept=".qif,.QIF,text/plain">
+        </div>
+        <div class="field" id="ba-import-src-wrap" hidden>
+          <label for="ba-import-src">Quicken account in the file</label>
+          <select id="ba-import-src"></select>
+        </div>
+        <div class="field">
+          <label for="ba-import-account">Import into <span class="required">*</span></label>
+          <select id="ba-import-account"></select>
+        </div>
+      </div>
+      <div class="ba-connect-actions">
+        <button class="btn btn--primary" id="ba-import-preview-btn" type="button">Preview</button>
+      </div>
+      <div id="ba-import-result"></div>
+    </div>
+  </section>
+</div>
 
 <style>
   /* Page-scoped bits the Docket kit doesn't have: the money column on a register row,
-     the side-by-side Accounts / Top categories row, category bars, the filter bar and
-     the two inline forms. Tokens only. */
+     the side-by-side Accounts / Income / Expenses row, category bars, filter bars, the
+     inline forms, the category picker and the printable report. Tokens only. */
+  .ba-tabs { margin: 4px 0 26px; }
+
   /* Accounts | Income | Expenses. Two rows (accounts on top) on mid widths, one column on phones. */
   .ba-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; align-items: start; }
   .ba-top > .dk-sec { margin-bottom: 0; }
@@ -142,22 +243,76 @@
   .ba-cat-foot { font-size: 12.5px; color: var(--ink-soft); padding: 10px 16px; border-top: 1px solid var(--line); }
   .ba-cat-foot button { font-size: 12.5px; }
 
-  .ba-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-  .ba-toolbar select { flex: 0 1 230px; }
-  .ba-toolbar input { flex: 1 1 220px; }
+  .ba-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .ba-toolbar select { flex: 0 1 230px; width: auto; }
+  .ba-toolbar input[type="text"] { flex: 1 1 220px; }
+  .ba-spacer { flex: 1; }
   .ba-more { text-align: center; margin-top: 12px; }
+
+  /* Category on a transaction: a tag that opens a picker. */
+  .ba-cat-btn { border: 0; background: none; padding: 0; margin-left: 4px; cursor: pointer; vertical-align: middle; }
+  .ba-cat-btn:disabled { cursor: default; }
+  .ba-cat-btn .dk-tag.mut { border-style: dashed; }
+  .ba-cat-btn:not(:disabled):hover .dk-tag { filter: brightness(.96); text-decoration: underline; }
+  .ba-cat-select { width: auto; max-width: 260px; font-size: 12.5px; padding: 2px 6px; margin-left: 6px; vertical-align: middle; }
 
   .ba-connect { background: var(--surface); border-top: 2px solid var(--ink); border-radius: 0 0 var(--r-card) var(--r-card); box-shadow: var(--card-shadow); padding: 18px 20px; margin-bottom: 14px; display: grid; gap: 14px; }
   .ba-connect textarea { font-size: 12.5px; word-break: break-all; }
   .ba-steps { margin: 0; padding-left: 20px; font-size: var(--text-sm); color: var(--ink-soft); display: grid; gap: 4px; }
   p.ba-steps { padding-left: 0; }
-  .ba-connect-actions { display: flex; gap: 8px; }
+  .ba-connect-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .ba-steps a { color: var(--color-primary); font-weight: 600; }
   .ba-rule-fields { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 14px; }
+  .ba-cat-fields { grid-template-columns: 2fr 1fr; }
   .ba-rule-fields .field { margin: 0; display: flex; flex-direction: column; }
-  @media (max-width: 720px) { .ba-rule-fields { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { .ba-rule-fields, .ba-cat-fields { grid-template-columns: 1fr; } }
   .ba-pattern { font-family: var(--font-sans); font-weight: 600; }
+  .ba-parent { color: var(--ink-soft); font-weight: 500; }
+
+  /* Import preview */
+  .ba-import-sum { display: grid; gap: 0; }
+  .ba-import-sum .dk-reg-row { padding: 10px 16px; }
+  .ba-import-samples { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--ink-soft); }
+
+  /* Report */
+  .ba-rep-custom { display: inline-flex; align-items: center; gap: 6px; }
+  .ba-rep-custom input { width: auto; }
+  .ba-rep-to { font-size: 12.5px; color: var(--ink-soft); }
+  .ba-rep-title { font-family: var(--font-serif); font-size: 15px; color: var(--ink-soft); margin: 4px 0 12px; }
+  .ba-rep .dk-reg-group { justify-content: flex-start; }
+  .ba-rep .dk-reg-group .ba-rep-sum { margin-left: auto; font-family: var(--font-serif); font-size: 14px; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .ba-rep .dk-reg-group .ba-rep-sum.neg { color: var(--color-danger); }
+  .ba-rep-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px 20px; border-bottom: 1px solid var(--line); }
+  .ba-rep-row.child { padding-left: 52px; background: color-mix(in srgb, var(--daily) 2%, var(--surface)); }
+  .ba-rep-row .ba-rep-name { font-weight: 600; font-size: 14px; }
+  .ba-rep-row.child .ba-rep-name { font-weight: 500; }
+  .ba-rep-row .ba-rep-n { font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+  .ba-rep-row.unc .ba-rep-name { font-style: italic; color: var(--ink-soft); }
+  .ba-rep-txns { padding: 4px 20px 10px 52px; border-bottom: 1px solid var(--line); background: var(--paper-deep); }
+  .ba-rep-row.child + .ba-rep-txns { padding-left: 82px; }
+  .ba-rep-txn { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 12px; padding: 6px 0; font-size: 12.5px; border-top: 1px solid var(--line); }
+  .ba-rep-txn:first-child { border-top: 0; }
+  .ba-rep-txn .d { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .ba-rep-txn .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ba-rep-net { display: flex; justify-content: flex-end; align-items: baseline; gap: 18px; padding: 14px 20px; border-top: 2px solid var(--ink); font-weight: 700; }
+  .ba-rep-net .lbl { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); }
+  @media (max-width: 620px) {
+    .ba-rep-row { grid-template-columns: 22px minmax(0, 1fr) auto; padding: 9px 12px; }
+    .ba-rep-row .ba-rep-n { display: none; }
+    .ba-rep-row.child { padding-left: 30px; }
+    .ba-rep-txns, .ba-rep-row.child + .ba-rep-txns { padding-left: 30px; padding-right: 12px; }
+    .ba-rep-txn { grid-template-columns: 78px minmax(0, 1fr) auto; }
+  }
+
+  /* Print just the report. */
+  @media print {
+    body.ba-printing * { visibility: hidden !important; }
+    body.ba-printing #ba-report, body.ba-printing #ba-report * { visibility: visible !important; }
+    body.ba-printing #ba-report { position: absolute; left: 0; top: 0; width: 100%; }
+    body.ba-printing .dk-disclosure { display: none; }
+    body.ba-printing .ba-rep-row { grid-template-columns: 0 minmax(0, 1fr) auto auto; }
+  }
 
   /* The display rules above would otherwise beat the [hidden] attribute. */
-  .ba-connect[hidden], .ba-toolbar[hidden], .ba-more[hidden] { display: none; }
+  .ba-connect[hidden], .ba-toolbar[hidden], .ba-more[hidden], .ba-rep-custom[hidden], .field[hidden] { display: none; }
 </style>

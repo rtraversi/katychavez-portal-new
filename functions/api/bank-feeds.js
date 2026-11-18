@@ -4,10 +4,15 @@
 //   { action: 'connect',    setup_token, label? }   claim a provider token, then sync once
 //   { action: 'sync',       id }                    pull the latest now (throttled)
 //   { action: 'disconnect', id }                    delete the link and everything it pulled
+//   { action: 'import', account_id, entries, categories?, dry_run? }
+//                                                   add Quicken history to an account and
+//                                                   categorize what the feed already has
+//                                                   (_bank-import.js). dry_run only reports.
 //
 // The page reads accounts, transactions and connection status straight from the tables
-// (RLS, can_read('bank_feeds')). Everything that calls the provider or writes goes
-// through here, because the provider credential never leaves the Worker.
+// (RLS, can_read('bank_feeds')). Everything that calls the provider or writes
+// transactions goes through here, because the provider credential never leaves the Worker
+// and transactions are only ever written by the service role.
 
 import { verifyAuth, json } from './_helpers.js';
 import { getBankFeedAdapter, BankFeedError } from './_adapters/bank-feed/index.js';
@@ -15,13 +20,14 @@ import {
   MODULE_KEY, isModuleEnabled, isEncryptionConfigured, encryptSecret,
   syncConnection, manualSyncWaitSeconds,
 } from './_bank-feeds.js';
+import { runImport, MAX_ENTRIES } from './_bank-import.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NOT_CONFIGURED = 'Bank feeds are not configured on this portal: set BANK_FEED_ENCRYPTION_KEY (64-char hex) or SSN_ENCRYPTION_KEY.';
 
 // Who may do what. Viewing needs only read (RLS). Pulling fresh data needs write;
-// adding or removing a bank link needs admin.
-const LEVEL = { connect: 'admin', disconnect: 'admin', sync: 'write' };
+// adding or removing a bank link, or loading history in bulk, needs admin.
+const LEVEL = { connect: 'admin', disconnect: 'admin', sync: 'write', import: 'admin' };
 
 const STATUS_FOR_KIND = {
   invalid_token: 422,
@@ -45,6 +51,31 @@ export async function onRequest(context) {
   const { admin, profile } = auth;
 
   if (!(await isModuleEnabled(admin))) return json(409, { error: 'Bank Accounts is not enabled for this firm.' });
+
+  // ── import (no provider call, so no credential key needed) ───────────────
+  if (action === 'import') {
+    if (!UUID_RE.test(body.account_id || '')) return json(400, { error: 'Choose the account to import into.' });
+    if (!Array.isArray(body.entries) || !body.entries.length) return json(422, { error: 'The file has no transactions to import.' });
+    if (body.entries.length > MAX_ENTRIES) {
+      return json(422, { error: `That file has ${body.entries.length} transactions; the limit is ${MAX_ENTRIES} at a time. Export a shorter date range.` });
+    }
+    const { data: acct } = await admin.from('bank_accounts').select('id').eq('id', body.account_id).maybeSingle();
+    if (!acct) return json(404, { error: 'That account no longer exists.' });
+    try {
+      const result = await runImport(admin, {
+        accountId: acct.id,
+        entries: body.entries,
+        fileCategories: Array.isArray(body.categories) ? body.categories.slice(0, 2000) : [],
+        dryRun: body.dry_run !== false,
+        userId: profile?.id,
+      });
+      return json(200, { import: result });
+    } catch (err) {
+      console.error('[bank-feeds] import failed:', err.message);
+      return json(500, { error: 'The import stopped partway. Running it again is safe: it only adds what is still missing.' });
+    }
+  }
+
   if (!isEncryptionConfigured(env)) return json(503, { error: NOT_CONFIGURED });
 
   // ── disconnect ────────────────────────────────────────────────────────────
