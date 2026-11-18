@@ -169,3 +169,4 @@
 2401_bank_feeds_schema.sql
 2402_bank_category_rules.sql
 2403_bank_ledger.sql
+2404_bank_category_not_counted.sql
