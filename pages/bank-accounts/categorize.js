@@ -9,11 +9,17 @@
 //      fits: 'in' = money in (amount > 0), 'out' = money out, 'any' = both.
 //   3. otherwise it is uncategorized.
 //
-// The category list (bank_categories) gives each name a kind, income or expense, which
-// decides where the report puts it. A colon makes a subcategory: "Office:Software" is
-// reported under "Office".
+// The category list (bank_categories) gives each name a kind, which decides where the
+// report puts it: income, expense, or excluded ("Not counted": money moved between the
+// firm's own accounts, like paying the credit card from checking, and the owner's draw).
+// Excluded money stays out of the income and expense totals, the way Quicken leaves
+// transfers out. A colon makes a subcategory: "Office:Software" is reported under "Office".
 
 export const UNCATEGORIZED = 'Uncategorized';
+
+export const KINDS = ['income', 'expense', 'excluded'];
+export const KIND_LABEL = { income: 'Income', expense: 'Expenses', excluded: 'Not counted' };
+export const normalizeKind = (k) => (KINDS.includes(k) ? k : 'expense');
 
 // ── Category list ───────────────────────────────────────────────────────────
 
@@ -33,11 +39,18 @@ export function normalizeCategoryName(raw) {
 
 export const topLevel = (name) => String(name).split(':')[0];
 
+// The kind a brand-new category should get when nothing else says: Quicken transfers
+// ("Transfer" and "Transfer:…") are not counted; otherwise the sign of its money.
+export function defaultKind(name, cents) {
+  if (/^transfers?$/i.test(topLevel(name || ''))) return 'excluded';
+  return cents >= 0 ? 'income' : 'expense';
+}
+
 // Category rows → lookups. { byId: Map(id → cat), byName: Map(lowercase name → cat), list }
 export function ledgerFrom(categories) {
   const list = (categories || [])
     .filter(c => c && c.name)
-    .map(c => ({ id: c.id, name: String(c.name), kind: c.kind === 'income' ? 'income' : 'expense' }))
+    .map(c => ({ id: c.id, name: String(c.name), kind: normalizeKind(c.kind) }))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   return {
     list,
@@ -156,6 +169,12 @@ export function categorize(t, compiled, ledger) {
   return matchRule(t, compiled)?.category ?? null;
 }
 
+// True when the transaction's category is a Not counted one.
+export function isExcluded(t, compiled, ledger) {
+  const name = categorize(t, compiled, ledger);
+  return !!name && ledger?.byName.get(name.toLowerCase())?.kind === 'excluded';
+}
+
 // ── Overview tiles ──────────────────────────────────────────────────────────
 
 // Transactions → per-category totals, biggest money movement first.
@@ -188,7 +207,7 @@ export function summarize(txns, compiled, ledger) {
 // Money in and money out, summarized separately. Every deposit lands under income and
 // every payment under expenses, each grouped by category. A category that has both
 // (e.g. a refund from a software vendor) shows in each column with just that side,
-// and nothing is netted across the two.
+// and nothing is netted across the two. Not counted categories are left out of both.
 //   { income: summarize(deposits), expenses: summarize(payments) }
 export function summarizeFlows(txns, compiled, ledger) {
   const moneyIn = [];
@@ -196,6 +215,7 @@ export function summarizeFlows(txns, compiled, ledger) {
   for (const t of txns || []) {
     const n = Number(t?.amount);
     if (!Number.isFinite(n) || n === 0) continue;
+    if (isExcluded(t, compiled, ledger)) continue;
     (n > 0 ? moneyIn : moneyOut).push(t);
   }
   return { income: summarize(moneyIn, compiled, ledger), expenses: summarize(moneyOut, compiled, ledger) };
@@ -212,12 +232,17 @@ export function since(txns, sinceDate) {
 // Unlike the overview tiles, the report sorts by the category's KIND, not by the sign of
 // each transaction: a vendor refund booked to an expense category reduces that expense.
 // Each category's total is net. Uncategorized money is split by sign, deposits under
-// Income and payments under Expenses, so nothing is silently dropped.
+// Income and payments under Expenses, so nothing is silently dropped. Not counted
+// categories get their own section, outside `net`: a card payment from checking and the
+// same payment arriving on the card net to zero there, while the card's purchases count
+// as expenses once.
 //
 //   {
-//     income:   { total, count, groups },
-//     expenses: { total, count, groups },
-//     net, count,
+//     income:     { total, count, groups },
+//     expenses:   { total, count, groups },
+//     notCounted: { total, count, groups },
+//     net,        income + expenses
+//     count,      every transaction in the report, Not counted included
 //   }
 //   group:  { name, total, count, uncategorized?, members: [member] }   (top-level name)
 //   member: { name, label, total, count, txns }                          (full name)
@@ -245,7 +270,7 @@ export function buildReport(txns, compiled, ledger) {
     byName.set(name, row);
   }
 
-  const sections = { income: new Map(), expense: new Map() };
+  const sections = { income: new Map(), expense: new Map(), excluded: new Map() };
   for (const row of byName.values()) {
     const kind = ledger?.byName.get(row.name.toLowerCase())?.kind || (row.cents >= 0 ? 'income' : 'expense');
     const top = topLevel(row.name);
@@ -277,9 +302,11 @@ export function buildReport(txns, compiled, ledger) {
     return { total: cents / 100, count: list.reduce((n, g) => n + g.count, 0), groups: list };
   };
 
+  const none = { cents: 0, count: 0, txns: [] };
   const income = finish(sections.income, unc.in);
   const expenses = finish(sections.expense, unc.out);
-  return { income, expenses, net: (Math.round(income.total * 100) + Math.round(expenses.total * 100)) / 100, count };
+  const notCounted = finish(sections.excluded, none);
+  return { income, expenses, notCounted, net: (Math.round(income.total * 100) + Math.round(expenses.total * 100)) / 100, count };
 }
 
 // ── Report periods ──────────────────────────────────────────────────────────
@@ -338,6 +365,7 @@ export function reportCsv(report) {
   };
   add('Income', report.income);
   add('Expenses', report.expenses);
-  rows.push(['', 'Overall', report.count, report.net.toFixed(2)]);
+  rows.push(['', 'Overall', report.income.count + report.expenses.count, report.net.toFixed(2)]);
+  if (report.notCounted?.count) add('Not counted', report.notCounted);
   return toCsv(rows);
 }

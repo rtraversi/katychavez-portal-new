@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import {
   compileRules, categorize, summarize, summarizeFlows, since, haystack, UNCATEGORIZED,
   ledgerFrom, categorySource, matchRule, buildReport, normalizeCategoryName, topLevel,
-  periodRange, toCsv, reportCsv, payeeKey, learnableRules,
+  periodRange, toCsv, reportCsv, payeeKey, learnableRules, isExcluded, defaultKind, KINDS,
 } from '../../pages/bank-accounts/categorize.js';
 
 const rule = (pattern, category, direction = 'any', extra = {}) => ({ pattern, category, direction, ...extra });
@@ -277,6 +277,68 @@ describe('buildReport', () => {
     expect(csv).toContain('Expenses,Payroll:Payroll Taxes,1,-41.23');
     expect(csv).toContain('Income,Total income,4,6050.00');
     expect(csv[csv.length - 1]).toBe(',Overall,10,5393.54');
+  });
+});
+
+describe('Not counted categories (transfers, owner\'s draw)', () => {
+  // Checking pays the credit card; the card shows the same payment arriving. Both are
+  // filed under a Not counted category, so only the card's purchases are expenses.
+  const ledger = ledgerFrom([
+    { id: 'inc', name: 'Card Income', kind: 'income' },
+    { id: 'off', name: 'Office', kind: 'expense' },
+    { id: 'tr', name: 'Transfer:Chase Card', kind: 'excluded' },
+    { id: 'own', name: 'Owner Draw', kind: 'excluded' },
+  ]);
+  const rules = compileRules([
+    { pattern: 'chase epay', category_id: 'tr', category: 'x', direction: 'out' },
+    { pattern: 'payment thank you', category_id: 'tr', category: 'x', direction: 'in' },
+  ], ledger);
+  const txns = [
+    tx(2000, 'Merch Dep', '', { id: 'a', category_id: 'inc' }),
+    tx(-500, 'Chase Epay', '', { id: 'b', account_id: 'checking' }),
+    tx(500, 'Payment Thank You', '', { id: 'c', account_id: 'card' }),
+    tx(-320, 'Staples', '', { id: 'd', account_id: 'card', category_id: 'off' }),
+    tx(-180, 'Office Depot', '', { id: 'e', account_id: 'card', category_id: 'off' }),
+    tx(-1000, 'Katy', '', { id: 'f', category_id: 'own' }),
+  ];
+
+  it('keeps them out of income, expenses and the net, in a section of their own', () => {
+    const rep = buildReport(txns, rules, ledger);
+    expect(rep.income.total).toBe(2000);
+    expect(rep.expenses.total).toBe(-500);
+    expect(rep.net).toBe(1500);
+    expect(rep.notCounted.groups.map(g => [g.name, g.total, g.count])).toEqual([['Owner Draw', -1000, 1], ['Transfer', 0, 2]]);
+    expect(rep.notCounted.total).toBe(-1000);
+    expect(rep.count).toBe(6);
+  });
+
+  it('leaves them out of the overview tiles', () => {
+    const f = summarizeFlows(txns, rules, ledger);
+    expect(f.income.categories.map(c => c.category)).toEqual(['Card Income']);
+    expect(f.income.uncategorized.count).toBe(0);
+    expect(f.expenses.categories.map(c => [c.category, c.total])).toEqual([['Office', -500]]);
+    expect(isExcluded(txns[1], rules, ledger)).toBe(true);
+    expect(isExcluded(txns[3], rules, ledger)).toBe(false);
+  });
+
+  it('adds a Not counted block to the summary CSV, after the overall line', () => {
+    const csv = reportCsv(buildReport(txns, rules, ledger)).trim().split('\r\n');
+    const overall = csv.indexOf(',Overall,3,1500.00');
+    expect(overall).toBeGreaterThan(0);
+    expect(csv.slice(overall + 1)).toEqual([
+      'Not counted,Owner Draw,1,-1000.00',
+      'Not counted,Transfer:Chase Card,2,0.00',
+      'Not counted,Total not counted,3,-1000.00',
+    ]);
+  });
+
+  it('reads an unknown kind as expense, and defaults Quicken transfers to Not counted', () => {
+    expect(ledgerFrom([{ id: 'x', name: 'X', kind: 'weird' }]).list[0].kind).toBe('expense');
+    expect(KINDS).toEqual(['income', 'expense', 'excluded']);
+    expect(defaultKind('Transfer:Chase Card', -500)).toBe('excluded');
+    expect(defaultKind('Transfers', 100)).toBe('excluded');
+    expect(defaultKind('Transportation', -10)).toBe('expense');
+    expect(defaultKind('Refunds', 10)).toBe('income');
   });
 });
 

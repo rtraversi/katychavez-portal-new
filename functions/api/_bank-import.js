@@ -17,7 +17,7 @@
 // Re-running the same file is harmless: added rows carry a key built from the entry
 // itself (date, amount, payee, and which repeat it is), so they are only ever added once.
 
-import { normalizeCategoryName, ledgerFrom, compileRules, categorize } from '../../pages/bank-accounts/categorize.js';
+import { normalizeCategoryName, ledgerFrom, compileRules, categorize, defaultKind } from '../../pages/bank-accounts/categorize.js';
 
 export const MATCH_WINDOW_DAYS = 3;
 export const MAX_ENTRIES = 10000;
@@ -141,9 +141,9 @@ export function rowsForInsert({ entry, key }, accountId) {
   }));
 }
 
-// Categories the plan needs that the list lacks, with a kind for each: the file's own
-// category list when it says (or the nearest parent it lists), else the sign of the
-// money that will land there.
+// Categories the plan needs that the list lacks, with a kind for each: Not counted for
+// Quicken transfers ("Transfer:Chase Card"), else the file's own category list when it
+// says (or the nearest parent it lists), else the sign of the money that will land there.
 export function newCategoriesFor(plan, existingNames, fileCategories) {
   const have = new Set([...existingNames].map(n => n.toLowerCase()));
   const fileKind = new Map((fileCategories || []).map(c => [String(c.name).toLowerCase(), c.kind === 'income' ? 'income' : 'expense']));
@@ -170,7 +170,7 @@ export function newCategoriesFor(plan, existingNames, fileCategories) {
   }
   for (const { entry } of plan.matched) if (!entry.splits) add(entry.category, entry.cents);
   return [...net.values()]
-    .map(r => ({ name: r.name, kind: kindFromFile(r.name) || (r.cents >= 0 ? 'income' : 'expense'), count: r.count }))
+    .map(r => ({ name: r.name, kind: (defaultKind(r.name, 0) === 'excluded' ? 'excluded' : kindFromFile(r.name)) || defaultKind(r.name, r.cents), count: r.count }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

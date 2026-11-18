@@ -23,6 +23,10 @@
   const TOP_OUT = 7;        // expense categories shown (payments)
   const NONE = '__none__';  // category filter value for "Uncategorized"
   const NEW = '__new__';    // picker value for "+ New category…"
+  // Category kinds in report order. Mirrors categorize.js, which may fail to load.
+  const KINDS = ['income', 'expense', 'excluded'];
+  const KIND_LABEL = { income: 'Income', expense: 'Expenses', excluded: 'Not counted' };
+  const KIND_TONE = { income: 'ok', expense: 'crit', excluded: 'mut' };
   const MAX_LOAD = 5000;    // transactions the Accounts tab loads (newest first)
   const DB_PAGE = 1000;     // PostgREST's row cap per request
   const REPORT_TXN_ROWS = 300;
@@ -374,11 +378,19 @@
     });
   }
 
-  // Tag color for a category: income green, expense light red. Names the list doesn't
-  // know go by the transaction's sign.
+  // Tag color for a category: income green, expense light red, Not counted grey. Names
+  // the list doesn't know go by the transaction's sign.
   function kindTag(name, amount) {
     const kind = state.ledger?.byName.get(String(name).toLowerCase())?.kind || (Number(amount) > 0 ? 'income' : 'expense');
-    return kind === 'income' ? 'ok' : 'crit';
+    return KIND_TONE[kind] || 'crit';
+  }
+
+  // Category <optgroup>s, one per kind, in report order.
+  function kindGroups(list, optionHtml, labelOf = (k) => KIND_LABEL[k]) {
+    return KINDS.map(k => {
+      const rows = list.filter(c => c.kind === k);
+      return rows.length ? `<optgroup label="${esc(labelOf(k))}">${rows.map(optionHtml).join('')}</optgroup>` : '';
+    }).join('');
   }
 
   // The category on one transaction: a tag that opens the picker.
@@ -443,11 +455,8 @@
   function pickerOptions(selectedId) {
     const list = state.ledger?.list || [];
     const opt = (c) => `<option value="${esc(c.id)}"${c.id === selectedId ? ' selected' : ''}>${esc(c.name)}</option>`;
-    const income = list.filter(c => c.kind === 'income');
-    const expense = list.filter(c => c.kind === 'expense');
     return `<option value=""${selectedId ? '' : ' selected'}>${selectedId ? 'Clear (let rules decide)' : 'Choose a category…'}</option>` +
-      (income.length ? `<optgroup label="Income">${income.map(opt).join('')}</optgroup>` : '') +
-      (expense.length ? `<optgroup label="Expenses">${expense.map(opt).join('')}</optgroup>` : '') +
+      kindGroups(list, opt) +
       `<option value="${NEW}">+ New category…</option>`;
   }
 
@@ -499,7 +508,7 @@
     state.cats.push(data);
     recategorize();
     renderCategoryList(); renderRules(); renderTxnToolbar();
-    Utils.toast(`Added ${name} under ${kind === 'income' ? 'Income' : 'Expenses'}.`, 'success');
+    Utils.toast(`Added ${name} under ${KIND_LABEL[kind]}.`, 'success');
     return data.id;
   }
 
@@ -615,15 +624,15 @@
         const meta = [`${nt} transaction${nt === 1 ? '' : 's'}`, nr ? `${nr} rule${nr === 1 ? '' : 's'}` : ''].filter(Boolean).join('<span class="sep">·</span>');
         const acts = state.canWrite ? `<div class="dk-reg-act">
             <button class="dk-linkbtn" type="button" data-cat-rename="${esc(c.id)}">Rename</button>
-            <button class="dk-linkbtn" type="button" data-cat-kind="${esc(c.id)}">Move to ${kind === 'income' ? 'Expenses' : 'Income'}</button>
+            <select class="ba-cat-select ba-kind-select" data-cat-kind="${esc(c.id)}" aria-label="Report ${esc(c.name)} under" title="Which part of the report it lands in">${KINDS.map(k => `<option value="${k}"${k === kind ? ' selected' : ''}>${KIND_LABEL[k]}</option>`).join('')}</select>
             <button class="dk-linkbtn d" type="button" data-cat-del="${esc(c.id)}">Delete</button>
           </div>` : '';
         return `<div class="dk-reg-row"><div><div class="dk-reg-title">${nameHtml(c.name)}</div><div class="dk-reg-meta">${meta}</div></div>${acts}</div>`;
       }).join('');
     };
-    el.innerHTML = `<div class="dk-register ba-compact">${group('Income', 'income')}${group('Expenses', 'expense')}</div>`;
+    el.innerHTML = `<div class="dk-register ba-compact">${KINDS.map(k => group(KIND_LABEL[k], k)).join('')}</div>`;
     el.querySelectorAll('[data-cat-rename]').forEach(b => b.addEventListener('click', () => renameCategory(b.dataset.catRename)));
-    el.querySelectorAll('[data-cat-kind]').forEach(b => b.addEventListener('click', () => flipKind(b.dataset.catKind)));
+    el.querySelectorAll('[data-cat-kind]').forEach(sel => sel.addEventListener('change', () => setKind(sel.dataset.catKind, sel.value)));
     el.querySelectorAll('[data-cat-del]').forEach(b => b.addEventListener('click', () => deleteCategory(b.dataset.catDel)));
   }
 
@@ -651,13 +660,13 @@
     Utils.toast(`Renamed to ${name}.`, 'success');
   }
 
-  async function flipKind(id) {
+  async function setKind(id, kind) {
     const c = state.ledger.byId.get(id);
-    if (!c) return;
-    const kind = c.kind === 'income' ? 'expense' : 'income';
+    if (!c || !KINDS.includes(kind) || kind === c.kind) return;
     const { error } = await db.from('bank_categories').update({ kind }).eq('id', id);
-    if (error) { Utils.toast(`Could not change it: ${error.message}`, 'error', 7000); return; }
+    if (error) Utils.toast(`Could not change it: ${error.message}`, 'error', 7000);
     await afterCategoryChange();
+    if (!error) Utils.toast(`${c.name} is now under ${KIND_LABEL[kind]}.`, 'success');
   }
 
   async function deleteCategory(id) {
@@ -692,7 +701,7 @@
     const name = Cat.normalizeCategoryName($('ba-cat-name').value);
     if (!name) { Utils.toast('Enter a category name.', 'error'); return; }
     if (state.ledger.byName.has(name.toLowerCase())) { Utils.toast(`${name} is already on the list.`, 'error'); return; }
-    const kind = $('ba-cat-kind').value === 'income' ? 'income' : 'expense';
+    const kind = KINDS.includes($('ba-cat-kind').value) ? $('ba-cat-kind').value : 'expense';
     const btn = $('ba-cat-submit');
     btn.disabled = true;
     const { error } = await db.from('bank_categories').insert({ name, kind, created_by: state.profileId });
@@ -711,10 +720,7 @@
     $('ba-rule-learn').hidden = !state.canWrite || !state.catsOk;
     const list = state.ledger?.list || [];
     $('ba-rule-category').innerHTML = '<option value="">Choose…</option>' +
-      ['income', 'expense'].map(k => {
-        const rows = list.filter(c => c.kind === k);
-        return rows.length ? `<optgroup label="${k === 'income' ? 'Income' : 'Expenses'}">${rows.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</optgroup>` : '';
-      }).join('');
+      kindGroups(list, c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`);
     $('ba-count-rules').textContent = state.rules.length ? String(state.rules.length) : '';
     const el = $('ba-rules');
     if (!state.catsOk) { el.innerHTML = '<p class="dk-empty">Category rules are not available yet.</p>'; return; }
@@ -736,7 +742,7 @@
       const name = cat?.name || r.category;
       const kind = cat?.kind || (r.direction === 'in' ? 'income' : 'expense');
       return `<div class="dk-reg-row">
-        <div><div class="dk-reg-title"><span class="ba-pattern">"${esc(r.pattern)}"</span> → ${DK.tag(name, kind === 'income' ? 'ok' : 'crit')}</div>
+        <div><div class="dk-reg-title"><span class="ba-pattern">"${esc(r.pattern)}"</span> → ${DK.tag(name, KIND_TONE[kind] || 'crit')}</div>
           <div class="dk-reg-meta">${esc(DIRECTION_LABEL[r.direction] || DIRECTION_LABEL.any)}<span class="sep">·</span>${n} transaction${n === 1 ? '' : 's'}</div></div>
         ${state.canWrite ? `<div class="dk-reg-act"><button class="dk-linkbtn d" type="button" data-rule-del="${esc(r.id)}">Delete</button></div>` : ''}
       </div>`;
@@ -893,10 +899,16 @@
       return `<div class="dk-reg-group">${label} <span class="n">${sec.count}</span><span class="ba-rep-sum${sec.total < 0 ? ' neg' : ''}">${esc(money(sec.total, cur))}</span></div>${rows}`;
     };
 
+    // Not counted sits below the net, only when the period has any: transfers between
+    // the firm's accounts and the owner's draw, kept out of the totals above.
+    const notCounted = rep.notCounted?.count
+      ? `${section(KIND_LABEL.excluded, rep.notCounted, 'nc')}<p class="ba-rep-note">Transfers between your own accounts and money the owner takes out. Not part of the income, expense or overall totals.</p>`
+      : '';
     $('ba-report').innerHTML = `${head}<div class="dk-register ba-rep">
         ${section('Income', rep.income, 'in')}
         ${section('Expenses', rep.expenses, 'out')}
         <div class="ba-rep-net"><span class="lbl">Overall</span>${amt(rep.net)}</div>
+        ${notCounted}
       </div>`;
 
     $('ba-report').querySelectorAll('[data-rep-toggle]').forEach(b => b.addEventListener('click', () => {
@@ -953,7 +965,7 @@
     const rows = [['Date', 'Account', 'Payee', 'Description', 'Memo', 'Category', 'Kind', 'Amount']];
     for (const t of r.txns) {
       const name = Cat.categorize(t, state.compiled, state.ledger);
-      const kind = name ? (state.ledger.byName.get(name.toLowerCase())?.kind || '') : '';
+      const kind = name ? (KIND_LABEL[state.ledger.byName.get(name.toLowerCase())?.kind] || '') : '';
       rows.push([String(t.posted_at).slice(0, 10), accounts.get(t.account_id)?.name || '', t.payee || '', t.description || '', t.memo || '', name || Cat.UNCATEGORIZED, kind, Number(t.amount).toFixed(2)]);
     }
     download(`transactions_${r.range.from}_to_${r.range.to}.csv`, Cat.toCsv(rows));
@@ -1068,15 +1080,12 @@
     const qc = p.quicken_categories || [];
     qc.forEach(c => { if (state.importMap[c.name] === undefined) state.importMap[c.name] = c.suggestion || ''; });
     const list = state.ledger?.list || [];
-    const options = (selected, kind) => `<option value=""${selected ? '' : ' selected'}>Create it as a new ${kind} category</option>` +
-      ['income', 'expense'].map(k => {
-        const group = list.filter(c => c.kind === k);
-        return group.length ? `<optgroup label="Use my ${k === 'income' ? 'Income' : 'Expenses'} category">${group.map(c =>
-          `<option value="${esc(c.name)}"${c.name === selected ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>` : '';
-      }).join('');
+    const options = (selected, kind) => `<option value=""${selected ? '' : ' selected'}>Create it as a new ${KIND_LABEL[kind] || KIND_LABEL.expense} category</option>` +
+      kindGroups(list, c => `<option value="${esc(c.name)}"${c.name === selected ? ' selected' : ''}>${esc(c.name)}</option>`,
+        k => `Use my ${KIND_LABEL[k]} category`);
     const mapRows = qc.map(c => `<div class="dk-reg-row ba-map-row">
         <div><div class="dk-reg-title">${nameHtml(c.name)}</div>
-          <div class="dk-reg-meta">${plural(c.count, 'transaction', 'transactions')}<span class="sep">·</span>${c.kind} in Quicken${c.suggestion ? `<span class="sep">·</span>your rules call these ${esc(c.suggestion)}` : ''}</div></div>
+          <div class="dk-reg-meta">${plural(c.count, 'transaction', 'transactions')}<span class="sep">·</span>${c.kind === 'excluded' ? 'a transfer' : c.kind} in Quicken${c.suggestion ? `<span class="sep">·</span>your rules call these ${esc(c.suggestion)}` : ''}</div></div>
         <select data-map="${esc(c.name)}" aria-label="Where ${esc(c.name)} goes">${options(state.importMap[c.name], c.kind)}</select>
       </div>`).join('');
     const mapBlock = qc.length ? `<div class="dk-register ba-import-sum" style="margin-top:14px">

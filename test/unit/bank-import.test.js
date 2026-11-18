@@ -265,6 +265,12 @@ describe('rowsForInsert / newCategoriesFor', () => {
       { name: 'Payroll:Payroll Taxes', kind: 'expense', count: 1 },
     ]);
   });
+
+  it('creates Quicken transfers as Not counted, whatever their sign', () => {
+    const [t] = validateEntries([e('2026-01-07', -500, 'Chase Epay', '[Chase Card]')]).entries;
+    const cats = newCategoriesFor({ insert: [{ entry: t }], matched: [] }, [], [{ name: 'Transfer', kind: 'expense' }]);
+    expect(cats).toEqual([{ name: 'Transfer:Chase Card', kind: 'excluded', count: 1 }]);
+  });
 });
 
 describe('category mapping', () => {
