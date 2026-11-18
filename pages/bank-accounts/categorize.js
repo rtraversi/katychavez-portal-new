@@ -67,7 +67,68 @@ export function compileRules(rules, ledger) {
 }
 
 export function haystack(t) {
-  return [t?.payee, t?.description, t?.memo].filter(Boolean).join(' ').toLowerCase();
+  return [t?.payee, t?.description, t?.memo].filter(Boolean).join(' ').toLowerCase().replace(/\s+/g, ' ');
+}
+
+// ── Learning (the Quicken "memorized payee") ────────────────────────────────
+//
+// Bank text carries a stable name plus parts that change every time:
+//   "Trans Human Interest Inte;111726;401k 88213"  →  "human interest inte"
+//   "Trans Gusto ;100526;icd 209291"                →  "gusto"
+//   "Purchase Yah*mailstor100g 7399 Ny 800-361-5610" → "yah*mailstor100g"
+// payeeKey keeps the stable name: the text before the first ; , or |, without a
+// leading bank word ("Trans", "Purchase"…), stopping at the first token with no
+// letters in it (a store number, a date, a phone number), at most 4 words.
+
+const BANK_WORDS = new Set(['trans', 'purchase', 'pos', 'ach', 'debit', 'recurring', 'checkcard', 'withdrawal', 'preauthorized', 'pre-authorized', 'electronic']);
+
+function keyFrom(text) {
+  const head = String(text || '').toLowerCase().split(/[;,|]/)[0];
+  const words = head.split(/\s+/).filter(Boolean);
+  while (words.length && BANK_WORDS.has(words[0])) words.shift();
+  const kept = [];
+  for (const w of words) {
+    if (!/[a-z]/.test(w)) break;
+    kept.push(w);
+    if (kept.length === 4) break;
+  }
+  const key = kept.join(' ');
+  return key.length >= 3 ? key : null;
+}
+
+// Transaction → the text a learned rule should match, or null.
+export function payeeKey(t) {
+  return keyFrom(t?.payee) || keyFrom(t?.description);
+}
+
+// Rules worth adding, learned from transactions that carry a stored category but that
+// no rule covers yet. One per payee key and direction, and only when every such
+// transaction under that key agrees on the category, so a vendor with two kinds of
+// charges (a payroll service's wages and its taxes) never gets a rule that flips.
+//   → [{ pattern, direction, category_id, category, count }]
+// Pass `onlyKey` to ask about one payee (after a single categorization).
+export function learnableRules(txns, compiled, ledger, { onlyKey = null } = {}) {
+  const groups = new Map();
+  const taken = new Set((compiled || []).map(r => `${r.needle}|${r.direction}`));
+  for (const t of txns || []) {
+    if (!t?.category_id || !ledger?.byId.has(t.category_id)) continue;
+    if (matchRule(t, compiled)) continue;
+    const key = payeeKey(t);
+    if (!key || (onlyKey && key !== onlyKey)) continue;
+    if (!haystack(t).includes(key)) continue;
+    const direction = Number(t.amount) > 0 ? 'in' : 'out';
+    const g = groups.get(`${key}|${direction}`) || { pattern: key, direction, ids: new Set(), count: 0 };
+    g.ids.add(t.category_id);
+    g.count++;
+    groups.set(`${key}|${direction}`, g);
+  }
+  return [...groups.entries()]
+    .filter(([k, g]) => g.ids.size === 1 && !taken.has(k))
+    .map(([, g]) => {
+      const id = [...g.ids][0];
+      return { pattern: g.pattern, direction: g.direction, category_id: id, category: ledger.byId.get(id).name, count: g.count };
+    })
+    .sort((a, b) => b.count - a.count || a.pattern.localeCompare(b.pattern) || a.direction.localeCompare(b.direction));
 }
 
 // The rule that decides this transaction, or null.

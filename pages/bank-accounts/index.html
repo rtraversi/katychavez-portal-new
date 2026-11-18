@@ -144,10 +144,10 @@
   </section>
 
   <section class="dk-sec" id="ba-sec-rules">
-    <div class="dk-sec-head"><h2>Category rules</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-rules"></span><button class="dk-sec-add" id="ba-rule-open" type="button" hidden>+ Add rule</button></div>
+    <div class="dk-sec-head"><h2>Category rules</h2><span class="dk-sec-rule"></span><span class="dk-sec-count" id="ba-count-rules"></span><button class="dk-sec-add" id="ba-rule-learn" type="button" hidden title="Make rules from the categories already set on transactions">Learn from my categories</button><button class="dk-sec-add" id="ba-rule-open" type="button" hidden>+ Add rule</button></div>
 
     <form class="ba-connect ba-rule-form" id="ba-rule-form" hidden autocomplete="off">
-      <p class="ba-steps">A rule sorts every transaction whose payee or description mentions its text (capitals don't matter), past and future. Rules higher in the list win. A category set by hand on a transaction always beats a rule.</p>
+      <p class="ba-steps">A rule sorts every transaction whose payee or description mentions its text (capitals don't matter), past and future. Rules higher in the list win. A category set by hand on a transaction always beats a rule, and setting one teaches the portal that payee: it adds a rule for it automatically.</p>
       <div class="ba-rule-fields">
         <div class="field">
           <label for="ba-rule-pattern">When it mentions <span class="required">*</span></label>
@@ -210,7 +210,9 @@
   /* Page-scoped bits the Docket kit doesn't have: the money column on a register row,
      the side-by-side Accounts / Income / Expenses row, category bars, filter bars, the
      inline forms, the category picker and the printable report. Tokens only. */
-  .ba-tabs { margin: 4px 0 26px; }
+  /* Three short tabs never need to scroll; the kit's overflow-x:auto would otherwise
+     draw a scrollbar for the active tab's 2px underline overhang on Windows. */
+  .ba-tabs { margin: 4px 0 26px; overflow: visible; }
 
   /* Accounts | Income | Expenses. Two rows (accounts on top) on mid widths, one column on phones. */
   .ba-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; align-items: start; }
@@ -252,7 +254,8 @@
   /* Category on a transaction: a tag that opens a picker. */
   .ba-cat-btn { border: 0; background: none; padding: 0; margin-left: 4px; cursor: pointer; vertical-align: middle; }
   .ba-cat-btn:disabled { cursor: default; }
-  .ba-cat-btn .dk-tag.mut { border-style: dashed; }
+  /* Filled in by a rule rather than set on the transaction: same color, dashed outline. */
+  .ba-cat-btn.rule .dk-tag { border: 1px dashed currentColor; padding: 1px 8px; }
   .ba-cat-btn:not(:disabled):hover .dk-tag { filter: brightness(.96); text-decoration: underline; }
   .ba-cat-select { width: auto; max-width: 260px; font-size: 12.5px; padding: 2px 6px; margin-left: 6px; vertical-align: middle; }
 

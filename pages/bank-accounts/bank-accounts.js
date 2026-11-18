@@ -373,8 +373,15 @@
     });
   }
 
+  // Tag color for a category: income green, expense light red. Names the list doesn't
+  // know go by the transaction's sign.
+  function kindTag(name, amount) {
+    const kind = state.ledger?.byName.get(String(name).toLowerCase())?.kind || (Number(amount) > 0 ? 'income' : 'expense');
+    return kind === 'income' ? 'ok' : 'crit';
+  }
+
   // The category on one transaction: a tag that opens the picker.
-  //   stored (set by hand or imported) → solid tag · from a rule → dashed tag · none → amber
+  //   set by hand or imported → solid · filled in by a rule → dashed outline · none → amber
   function catControl(t) {
     if (!state.catsOk) return '';
     const name = Cat.categorize(t, state.compiled, state.ledger);
@@ -383,14 +390,15 @@
     let title;
     if (!name) { tag = DK.tag('Uncategorized', 'warn'); title = 'Choose a category'; }
     else if (src === 'rule') {
-      tag = DK.tag(name, 'mut');
+      tag = DK.tag(name, kindTag(name, t.amount));
       title = `From the rule "${Cat.matchRule(t, state.compiled)?.needle || ''}". Click to set a category on this transaction instead.`;
     } else {
-      tag = DK.tag(name, Number(t.amount) > 0 ? 'ok' : 'acc');
+      tag = DK.tag(name, kindTag(name, t.amount));
       title = t.source === 'import' ? 'From the Quicken import. Click to change.' : 'Set on this transaction. Click to change.';
     }
-    if (!state.canWrite) return ` <span class="ba-cat-btn" title="${esc(src === 'rule' ? title : '')}">${tag}</span>`;
-    return ` <button class="ba-cat-btn" type="button" data-pick="${esc(t.id)}" title="${esc(title)}">${tag}</button>`;
+    const cls = `ba-cat-btn${src === 'rule' ? ' rule' : ''}`;
+    if (!state.canWrite) return ` <span class="${cls}" title="${esc(src === 'rule' ? title : '')}">${tag}</span>`;
+    return ` <button class="${cls}" type="button" data-pick="${esc(t.id)}" title="${esc(title)}">${tag}</button>`;
   }
 
   function txnRow(t, accounts, multi) {
@@ -510,9 +518,57 @@
       const row = list.find(x => x.id === t.id);
       if (row) Object.assign(row, patch);
     }
-    recategorize();
+    Object.assign(t, patch);
+    const learned = categoryId ? await learnFrom(t) : null;
+    if (learned) await loadCategories(); else recategorize();
     rerenderTxnViews();
-    renderCats(); renderDeskbar(); renderCategoryList(); renderRules();
+    renderCats(); renderDeskbar(); renderTxnToolbar(); renderCategoryList(); renderRules();
+  }
+
+  // Remember a payee after it is categorized by hand, the way Quicken memorizes one:
+  // add a rule so the next transaction from it lands in the same category. Skipped when
+  // a rule already covers this transaction (then the choice is for this one only) or
+  // when this payee's hand-set categories disagree.
+  async function learnFrom(t) {
+    const cat = state.ledger.byId.get(t.category_id);
+    const covering = Cat.matchRule(t, state.compiled);
+    if (covering) {
+      if (covering.category !== cat?.name) {
+        Utils.toast(`Set on this transaction. The rule "${covering.needle}" still files the others as ${covering.category}.`, 'info', 7000);
+      }
+      return null;
+    }
+    const key = Cat.payeeKey(t);
+    if (!key) return null;
+    const pool = state.txns.some(x => x.id === t.id) ? state.txns : [...state.txns, t];
+    const direction = Number(t.amount) > 0 ? 'in' : 'out';
+    const rule = Cat.learnableRules(pool, state.compiled, state.ledger, { onlyKey: key }).find(r => r.direction === direction);
+    if (!rule) return null;
+    const { error } = await db.from('bank_category_rules').insert({
+      pattern: rule.pattern, category: rule.category, category_id: rule.category_id, direction: rule.direction, created_by: state.profileId,
+    });
+    if (error) { console.warn('[bank-accounts] could not learn a rule', error.message); return null; }
+    Utils.toast(`Saved. From now on, "${rule.pattern}" ${direction === 'in' ? 'deposits are' : 'payments are'} ${rule.category}. (Categories tab › Category rules to change.)`, 'success', 7000);
+    return rule;
+  }
+
+  async function learnAll() {
+    const rules = Cat.learnableRules(state.txns, state.compiled, state.ledger);
+    if (!rules.length) {
+      Utils.toast('Nothing new to learn: every payee you have categorized is already covered by a rule, or its categories disagree.', 'info', 7000);
+      return;
+    }
+    const sample = rules.slice(0, 8).map(r => `"${r.pattern}" → ${r.category}`).join('; ');
+    const ok = await Utils.confirm(
+      `Add ${rules.length} rule${rules.length === 1 ? '' : 's'} learned from the categories already set on transactions? ${sample}${rules.length > 8 ? '; …' : ''}. Each payee's future transactions (and any uncategorized ones now) get the same category.`,
+      { confirmLabel: `Add ${rules.length} rule${rules.length === 1 ? '' : 's'}` });
+    if (!ok) return;
+    const { error } = await db.from('bank_category_rules').insert(rules.map(r => ({
+      pattern: r.pattern, category: r.category, category_id: r.category_id, direction: r.direction, created_by: state.profileId,
+    })));
+    if (error) { Utils.toast(`Could not add the rules: ${error.message}`, 'error', 7000); return; }
+    await afterCategoryChange();
+    Utils.toast(`Added ${rules.length} learned rule${rules.length === 1 ? '' : 's'}.`, 'success');
   }
 
   // After a category changes: the transaction list, and the report if it has run.
@@ -651,6 +707,7 @@
 
   function renderRules() {
     $('ba-rule-open').hidden = !state.canWrite || !state.catsOk || !$('ba-rule-form').hidden;
+    $('ba-rule-learn').hidden = !state.canWrite || !state.catsOk;
     const list = state.ledger?.list || [];
     $('ba-rule-category').innerHTML = '<option value="">Choose…</option>' +
       ['income', 'expense'].map(k => {
@@ -678,7 +735,7 @@
       const name = cat?.name || r.category;
       const kind = cat?.kind || (r.direction === 'in' ? 'income' : 'expense');
       return `<div class="dk-reg-row">
-        <div><div class="dk-reg-title"><span class="ba-pattern">"${esc(r.pattern)}"</span> → ${DK.tag(name, kind === 'income' ? 'ok' : 'acc')}</div>
+        <div><div class="dk-reg-title"><span class="ba-pattern">"${esc(r.pattern)}"</span> → ${DK.tag(name, kind === 'income' ? 'ok' : 'crit')}</div>
           <div class="dk-reg-meta">${esc(DIRECTION_LABEL[r.direction] || DIRECTION_LABEL.any)}<span class="sep">·</span>${n} transaction${n === 1 ? '' : 's'}</div></div>
         ${state.canWrite ? `<div class="dk-reg-act"><button class="dk-linkbtn d" type="button" data-rule-del="${esc(r.id)}">Delete</button></div>` : ''}
       </div>`;
@@ -698,6 +755,7 @@
     openRuleForm(true);
   });
   $('ba-rule-cancel').addEventListener('click', () => openRuleForm(false));
+  $('ba-rule-learn').addEventListener('click', learnAll);
   $('ba-rule-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const pattern = $('ba-rule-pattern').value.trim();

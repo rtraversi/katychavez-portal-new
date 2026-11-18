@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import {
   compileRules, categorize, summarize, summarizeFlows, since, haystack, UNCATEGORIZED,
   ledgerFrom, categorySource, matchRule, buildReport, normalizeCategoryName, topLevel,
-  periodRange, toCsv, reportCsv,
+  periodRange, toCsv, reportCsv, payeeKey, learnableRules,
 } from '../../pages/bank-accounts/categorize.js';
 
 const rule = (pattern, category, direction = 'any', extra = {}) => ({ pattern, category, direction, ...extra });
@@ -296,6 +296,79 @@ describe('periodRange', () => {
     expect(periodRange('last_month', jan)).toEqual({ from: '2026-12-01', to: '2026-12-31' });
     expect(periodRange('last_quarter', jan)).toEqual({ from: '2026-10-01', to: '2026-12-31' });
     expect(periodRange('custom', jan)).toBeNull();
+  });
+});
+
+describe('payeeKey', () => {
+  it('keeps the stable name and drops dates, ids and bank words', () => {
+    expect(payeeKey({ payee: 'Trans Human Interest Inte;111726;401k 88213' })).toBe('human interest inte');
+    expect(payeeKey({ payee: 'Trans Gusto ;100526;icd 209291' })).toBe('gusto');
+    expect(payeeKey({ payee: 'Purchase Yah*mailstor100g 7399 Ny 800-361-5610 Yah*mailstor100gb' })).toBe('yah*mailstor100g');
+    expect(payeeKey({ payee: 'Trans Farmacias Benavi,101326,purchase Farmacia' })).toBe('farmacias benavi');
+    expect(payeeKey({ payee: 'Verizon Wireless' })).toBe('verizon wireless');
+    expect(payeeKey({ payee: 'One Two Three Four Five' })).toBe('one two three four');
+  });
+
+  it('falls back to the description when the payee has nothing stable', () => {
+    expect(payeeKey({ payee: 'Trans', description: 'MATRIX TRUST CO;101326;401K' })).toBe('matrix trust co');
+    expect(payeeKey({ payee: '12345', description: '' })).toBeNull();
+    expect(payeeKey({ payee: 'Trans Ab' })).toBeNull();
+  });
+
+  it('is always found in the transaction text, even with odd spacing', () => {
+    const t = { payee: 'Trans  Human   Interest Inte;111726' };
+    expect(haystack(t).includes(payeeKey(t))).toBe(true);
+  });
+});
+
+describe('learnableRules', () => {
+  const ledger = ledgerFrom([
+    { id: 'k401', name: '401(k)', kind: 'expense' },
+    { id: 'pay', name: 'Payroll', kind: 'expense' },
+    { id: 'ptx', name: 'Payroll:Payroll Taxes', kind: 'expense' },
+    { id: 'ref', name: 'Vendor Refund', kind: 'income' },
+  ]);
+  const t = (id, amount, payee, category_id = null) => ({ id, amount: String(amount), payee, description: null, memo: null, category_id });
+
+  it('learns a payee whose hand-set categories agree', () => {
+    const txns = [
+      t('a', -25.3, 'Trans Human Interest Inte;100526;x', 'k401'),
+      t('b', -27.83, 'Trans Human Interest Inte;101326;x', 'k401'),
+      t('c', -35.42, 'Trans Human Interest Inte;102026;x'),
+    ];
+    expect(learnableRules(txns, [], ledger)).toEqual([
+      { pattern: 'human interest inte', direction: 'out', category_id: 'k401', category: '401(k)', count: 2 },
+    ]);
+  });
+
+  it('never learns a payee whose categories disagree (wages vs taxes)', () => {
+    const txns = [t('a', -574, 'Trans Gusto ;100526;icd 1', 'pay'), t('b', -41.23, 'Trans Gusto ;100526;tax 2', 'ptx')];
+    expect(learnableRules(txns, [], ledger)).toEqual([]);
+  });
+
+  it('skips payees a rule already covers, and keeps money in and out apart', () => {
+    const rules = compileRules([{ pattern: 'gusto', category_id: 'pay', category: 'Payroll' }], ledger);
+    const txns = [
+      t('a', -41.23, 'Trans Gusto ;100526;tax 2', 'ptx'),
+      t('b', -11.26, 'Microsoft', 'k401'),
+      t('c', 11.26, 'Microsoft', 'ref'),
+    ];
+    const learned = learnableRules(txns, rules, ledger);
+    expect(learned.map(r => [r.pattern, r.direction, r.category])).toEqual([['microsoft', 'in', 'Vendor Refund'], ['microsoft', 'out', '401(k)']]);
+  });
+
+  it('can be asked about a single payee, and ignores ids not on the list', () => {
+    const txns = [t('a', -9, 'Mail Plus', 'k401'), t('b', -5, 'Coffee Co', 'k401'), t('c', -5, 'Gone Co', 'deleted')];
+    expect(learnableRules(txns, [], ledger, { onlyKey: 'mail plus' }).map(r => r.pattern)).toEqual(['mail plus']);
+    expect(learnableRules(txns, [], ledger).map(r => r.pattern)).toEqual(['coffee co', 'mail plus']);
+  });
+
+  it('a learned rule then categorizes the payee\'s other transactions', () => {
+    const txns = [t('a', -25.3, 'Trans Human Interest Inte;100526;x', 'k401'), t('c', -35.42, 'Trans Human Interest Inte;102026;y')];
+    const learned = learnableRules(txns, [], ledger);
+    const rules = compileRules(learned.map(r => ({ ...r })), ledger);
+    expect(categorize(txns[1], rules, ledger)).toBe('401(k)');
+    expect(learnableRules(txns, rules, ledger)).toEqual([]);
   });
 });
 
