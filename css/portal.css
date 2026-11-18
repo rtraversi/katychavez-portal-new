@@ -3736,3 +3736,40 @@ body.help-drawer-lock { overflow: hidden; }
 .dk-ctp-mk:hover { color: var(--docs); }
 .dk-ctp-x { font: inherit; font-size: 15px; line-height: 1; width: 22px; height: 22px; border-radius: 50%; border: 0; background: none; color: var(--ink-faint); cursor: pointer; }
 .dk-ctp-x:hover { background: var(--color-danger-bg); color: var(--color-danger); }
+
+/* ── Docket kit · tabs — top-level section nav within a page ───────────────────
+   Promoted out of pages/clients/detail/index.html so any page can use the same
+   underlined strip (client detail, trust). Pair a `.detail-tabs-row` of
+   `.detail-tab` buttons with sibling `.tab-panel` sections; the showing pair
+   each carry the `--active` modifier. `.tab-count` is an optional chip in the
+   label for sections whose size is worth seeing before you open them. */
+.detail-tabs-row { display: flex; gap: 0; border-bottom: 2px solid var(--line); overflow-x: auto; }
+.detail-tab {
+  padding: var(--space-3) var(--space-5);
+  border: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.detail-tab:hover { color: var(--color-text); }
+.detail-tab--active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
+
+.detail-tab .tab-count {
+  display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: 999px;
+  background: var(--paper-deep); color: var(--ink-faint);
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; vertical-align: 1px;
+}
+.detail-tab--active .tab-count { background: color-mix(in srgb, var(--color-primary) 13%, transparent); color: var(--color-primary); }
+/* Attention variant — a count that means "something needs looking at" (stale checks) */
+.detail-tab .tab-count.alert { background: var(--color-danger-bg); color: var(--color-danger); }
+.detail-tab .tab-count:empty { display: none; }
+
+.tab-panel { display: none; }
+.tab-panel--active { display: block; }
