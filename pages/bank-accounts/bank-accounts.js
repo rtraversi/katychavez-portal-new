@@ -51,6 +51,7 @@
     report: { period: 'this_year', from: '', to: '', account: '', range: null, data: null, txns: [], open: new Set(), loaded: false, seq: 0 },
     qif: null,          // the parsed QIF file
     importPlan: null,   // the last dry-run result
+    importMap: {},      // Quicken category → existing category name ('' = create it)
   };
 
   try {
@@ -974,6 +975,7 @@
   $('ba-import-file').addEventListener('change', async (e) => {
     state.qif = null;
     state.importPlan = null;
+    state.importMap = {};
     $('ba-import-result').innerHTML = '';
     $('ba-import-src-wrap').hidden = true;
     const file = e.target.files?.[0];
@@ -1005,6 +1007,7 @@
       account_id: $('ba-import-account').value,
       dry_run: dryRun,
       categories: state.qif.categories,
+      category_map: Object.fromEntries(Object.entries(state.importMap).filter(([, v]) => v)),
       entries: state.qif.entries.filter(e => e.account === src).map(({ account, ...rest }) => rest),
     };
   }
@@ -1057,18 +1060,45 @@
         `Left out, so nothing is counted twice. Usually these were typed into Quicken by hand, or are still pending at the bank.<ul class="ba-import-samples">${samples}${p.unmatched > p.unmatched_samples.length ? '<li>…</li>' : ''}</ul>`,
         DK.tag('Skip', 'warn'));
     }
-    if (p.new_categories.length) {
-      row(`${plural(p.new_categories.length, 'new category', 'new categories')} will be created`,
-        p.new_categories.map(c => `${esc(c.name)} (${c.kind})`).join('<span class="sep">·</span>'));
-    }
     if (q.warnings.length) row(plural(q.warnings.length, 'note on the file', 'notes on the file'), q.warnings.slice(0, 5).map(esc).join('<br>'));
 
-    const nothing = !p.add && !p.match_categorize && !p.new_categories.length;
-    $('ba-import-result').innerHTML = `<div class="dk-register ba-import-sum">${rows.join('')}</div>
+    // Quicken categories that aren't on the list: file each under an existing category
+    // or create it. The default is what the firm's own rules call the same bank
+    // transactions, when the file and the feed overlap.
+    const qc = p.quicken_categories || [];
+    qc.forEach(c => { if (state.importMap[c.name] === undefined) state.importMap[c.name] = c.suggestion || ''; });
+    const list = state.ledger?.list || [];
+    const options = (selected, kind) => `<option value=""${selected ? '' : ' selected'}>Create it as a new ${kind} category</option>` +
+      ['income', 'expense'].map(k => {
+        const group = list.filter(c => c.kind === k);
+        return group.length ? `<optgroup label="Use my ${k === 'income' ? 'Income' : 'Expenses'} category">${group.map(c =>
+          `<option value="${esc(c.name)}"${c.name === selected ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>` : '';
+      }).join('');
+    const mapRows = qc.map(c => `<div class="dk-reg-row ba-map-row">
+        <div><div class="dk-reg-title">${nameHtml(c.name)}</div>
+          <div class="dk-reg-meta">${plural(c.count, 'transaction', 'transactions')}<span class="sep">·</span>${c.kind} in Quicken${c.suggestion ? `<span class="sep">·</span>your rules call these ${esc(c.suggestion)}` : ''}</div></div>
+        <select data-map="${esc(c.name)}" aria-label="Where ${esc(c.name)} goes">${options(state.importMap[c.name], c.kind)}</select>
+      </div>`).join('');
+    const mapBlock = qc.length ? `<div class="dk-register ba-import-sum" style="margin-top:14px">
+        <div class="dk-reg-group">Quicken categories not on your list <span class="n">${qc.length}</span><span class="ba-map-note" id="ba-import-newcount"></span></div>
+        ${mapRows}</div>` : '';
+
+    const nothing = !p.add && !p.match_categorize;
+    $('ba-import-result').innerHTML = `<div class="dk-register ba-import-sum">${rows.join('')}</div>${mapBlock}
       <div class="ba-connect-actions" style="margin-top:12px">
         ${nothing ? '<p class="dk-empty" style="margin:0">Nothing to change: this file is already in.</p>'
           : '<button class="btn btn--primary" id="ba-import-run" type="button">Import</button>'}
       </div>`;
+    const updateCount = () => {
+      const n = qc.filter(c => !state.importMap[c.name]).length;
+      const el = $('ba-import-newcount');
+      if (el) el.textContent = n ? `${n} will be created` : 'all filed under your categories';
+    };
+    $('ba-import-result').querySelectorAll('[data-map]').forEach(sel => sel.addEventListener('change', () => {
+      state.importMap[sel.dataset.map] = sel.value;
+      updateCount();
+    }));
+    updateCount();
     $('ba-import-run')?.addEventListener('click', runImportNow);
   }
 

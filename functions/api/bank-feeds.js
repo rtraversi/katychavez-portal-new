@@ -4,7 +4,7 @@
 //   { action: 'connect',    setup_token, label? }   claim a provider token, then sync once
 //   { action: 'sync',       id }                    pull the latest now (throttled)
 //   { action: 'disconnect', id }                    delete the link and everything it pulled
-//   { action: 'import', account_id, entries, categories?, dry_run? }
+//   { action: 'import', account_id, entries, categories?, category_map?, dry_run? }
 //                                                   add Quicken history to an account and
 //                                                   categorize what the feed already has
 //                                                   (_bank-import.js). dry_run only reports.
@@ -66,6 +66,7 @@ export async function onRequest(context) {
         accountId: acct.id,
         entries: body.entries,
         fileCategories: Array.isArray(body.categories) ? body.categories.slice(0, 2000) : [],
+        categoryMap: body.category_map,
         dryRun: body.dry_run !== false,
         userId: profile?.id,
       });

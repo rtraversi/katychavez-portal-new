@@ -17,7 +17,7 @@
 // Re-running the same file is harmless: added rows carry a key built from the entry
 // itself (date, amount, payee, and which repeat it is), so they are only ever added once.
 
-import { normalizeCategoryName } from '../../pages/bank-accounts/categorize.js';
+import { normalizeCategoryName, ledgerFrom, compileRules, categorize } from '../../pages/bank-accounts/categorize.js';
 
 export const MATCH_WINDOW_DAYS = 3;
 export const MAX_ENTRIES = 10000;
@@ -159,8 +159,9 @@ export function newCategoriesFor(plan, existingNames, fileCategories) {
   const add = (name, cents) => {
     if (!name || have.has(name.toLowerCase())) return;
     const k = name.toLowerCase();
-    const row = net.get(k) || { name, cents: 0 };
+    const row = net.get(k) || { name, cents: 0, count: 0 };
     row.cents += cents;
+    row.count++;
     net.set(k, row);
   };
   for (const { entry } of plan.insert) {
@@ -169,7 +170,7 @@ export function newCategoriesFor(plan, existingNames, fileCategories) {
   }
   for (const { entry } of plan.matched) if (!entry.splits) add(entry.category, entry.cents);
   return [...net.values()]
-    .map(r => ({ name: r.name, kind: kindFromFile(r.name) || (r.cents >= 0 ? 'income' : 'expense') }))
+    .map(r => ({ name: r.name, kind: kindFromFile(r.name) || (r.cents >= 0 ? 'income' : 'expense'), count: r.count }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -183,22 +184,91 @@ async function selectAll(build) {
   }
 }
 
+// ── Mapping Quicken's categories onto the firm's list ───────────────────────
+//
+// The firm's list may already cover what Quicken calls by another name ("Credit Card
+// Income" in Quicken is "Card Deposits" on the list). The page offers each Quicken
+// category that isn't on the list as "use <existing>" or "create new", and sends the
+// choices as { quickenName: existingName }.
+
+// Untrusted { quickenName: existingName } → Map(lowercase quicken name → the existing
+// category's own name). Pairs pointing at a name not on the list are ignored.
+export function resolveCategoryMap(raw, ledger) {
+  const out = new Map();
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [from, to] of Object.entries(raw).slice(0, 1000)) {
+    const src = normalizeCategoryName(from);
+    const target = typeof to === 'string' ? ledger.byName.get(to.trim().toLowerCase()) : null;
+    if (src && target) out.set(src.toLowerCase(), target.name);
+  }
+  return out;
+}
+
+// An entry with its categories put through the map. The originals stay on
+// sourceCategory, so suggestions can still be worked out from Quicken's own names.
+export function mapEntry(entry, map) {
+  if (!map.size) return entry;
+  const to = (c) => (c && map.get(c.toLowerCase())) || c;
+  return {
+    ...entry,
+    category: to(entry.category),
+    splits: entry.splits ? entry.splits.map(s => ({ ...s, category: to(s.category) })) : null,
+  };
+}
+
+// For entries matched to a bank-feed transaction, what the firm's own rules call that
+// same transaction: Quicken name → the list's name that most often stands for it.
+//   → Map(lowercase quicken name → existing name)
+export function suggestCategoryMap(matched, compiled, ledger) {
+  const tally = new Map();
+  for (const { entry, txn } of matched || []) {
+    if (entry.splits || !entry.category || ledger.byName.has(entry.category.toLowerCase())) continue;
+    const portal = categorize(txn, compiled, ledger);
+    if (!portal || !ledger.byName.has(portal.toLowerCase())) continue;
+    const k = entry.category.toLowerCase();
+    const counts = tally.get(k) || new Map();
+    counts.set(portal, (counts.get(portal) || 0) + 1);
+    tally.set(k, counts);
+  }
+  const out = new Map();
+  for (const [k, counts] of tally) {
+    const [best] = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    out.set(k, best[0]);
+  }
+  return out;
+}
+
 // Run (or, with dryRun, only describe) an import into one account.
-//   body: { account_id, entries, categories?, dry_run? }
+//   body: { account_id, entries, categories?, category_map?, dry_run? }
 // → summary for the page; throws only for the portal's own database failures.
-export async function runImport(admin, { accountId, entries: rawEntries, fileCategories, dryRun, userId }) {
+export async function runImport(admin, { accountId, entries: rawEntries, fileCategories, categoryMap, dryRun, userId }) {
   const { entries, dropped } = validateEntries(rawEntries);
 
-  const [bankTxns, imported, cats] = await Promise.all([
-    selectAll(() => admin.from('bank_transactions').select('id, posted_at, amount, category_id')
+  const [bankTxns, imported, cats, rules] = await Promise.all([
+    selectAll(() => admin.from('bank_transactions').select('id, posted_at, amount, category_id, payee, description, memo')
       .eq('account_id', accountId).eq('source', 'provider').order('id')),
     selectAll(() => admin.from('bank_transactions').select('provider_txn_id')
       .eq('account_id', accountId).eq('source', 'import').order('id')),
-    selectAll(() => admin.from('bank_categories').select('id, name').order('id')),
+    selectAll(() => admin.from('bank_categories').select('id, name, kind').order('id')),
+    selectAll(() => admin.from('bank_category_rules').select('id, pattern, category, category_id, direction, priority, created_at').order('id')),
   ]);
+  const ledger = ledgerFrom(cats);
+  const compiled = compileRules(rules, ledger);
 
-  const plan = planImport(entries, bankTxns);
+  // Matching doesn't look at categories, so plan once on Quicken's own names...
+  const raw = planImport(entries, bankTxns);
   const existingKeys = new Set(imported.map(r => r.provider_txn_id));
+  const rawFresh = raw.insert.filter(p => !existingKeys.has(p.key));
+  const quickenCats = newCategoriesFor({ insert: rawFresh, matched: raw.matched }, cats.map(c => c.name), fileCategories);
+  const suggested = suggestCategoryMap(raw.matched, compiled, ledger);
+
+  // ...then put the categories through the page's map.
+  const map = resolveCategoryMap(categoryMap, ledger);
+  const plan = {
+    ...raw,
+    insert: raw.insert.map(p => ({ ...p, entry: mapEntry(p.entry, map) })),
+    matched: raw.matched.map(m => ({ ...m, entry: mapEntry(m.entry, map) })),
+  };
   const fresh = plan.insert.filter(p => !existingKeys.has(p.key));
   const newCats = newCategoriesFor({ insert: fresh, matched: plan.matched }, cats.map(c => c.name), fileCategories);
   const matchable = plan.matched.filter(m => !m.entry.splits && m.entry.category);
@@ -218,6 +288,13 @@ export async function runImport(admin, { accountId, entries: rawEntries, fileCat
     match_split: plan.matched.filter(m => m.entry.splits).length,
     unmatched: plan.unmatched.length,
     unmatched_samples: plan.unmatched.slice(0, 12).map(e => ({ date: e.date, payee: e.payee, amount: e.cents / 100 })),
+    // Every Quicken category the import would use that isn't on the list, with what
+    // the firm's rules suggest it maps to and what the page chose.
+    quicken_categories: quickenCats.map(c => ({
+      ...c,
+      suggestion: suggested.get(c.name.toLowerCase()) || null,
+      mapped_to: map.get(c.name.toLowerCase()) || null,
+    })),
     new_categories: newCats,
   };
   if (dryRun) return { dry_run: true, ...summary };

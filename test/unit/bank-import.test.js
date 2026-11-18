@@ -16,7 +16,9 @@ import { describe, it, expect } from 'vitest';
 import { parseQif, parseQifDate, parseQifAmount, decodeQifBytes } from '../../pages/bank-accounts/qif.js';
 import {
   validateEntries, planImport, importKey, rowsForInsert, newCategoriesFor, runImport,
+  resolveCategoryMap, mapEntry, suggestCategoryMap,
 } from '../../functions/api/_bank-import.js';
+import { ledgerFrom, compileRules } from '../../pages/bank-accounts/categorize.js';
 
 const QIF = [
   '!Option:AutoSwitch',
@@ -258,10 +260,52 @@ describe('rowsForInsert / newCategoriesFor', () => {
     const plan = { insert: [{ entry: plain }, { entry: split }], matched: [{ entry: validateEntries([e('2026-09-01', -5, 'x', 'Office:Postage')]).entries[0] }] };
     const fileCats = [{ name: 'Payroll', kind: 'expense' }, { name: 'Card Income', kind: 'income' }];
     expect(newCategoriesFor(plan, ['payroll'], fileCats)).toEqual([
-      { name: 'Card Income', kind: 'income' },
-      { name: 'Office:Postage', kind: 'expense' },
-      { name: 'Payroll:Payroll Taxes', kind: 'expense' },
+      { name: 'Card Income', kind: 'income', count: 1 },
+      { name: 'Office:Postage', kind: 'expense', count: 1 },
+      { name: 'Payroll:Payroll Taxes', kind: 'expense', count: 1 },
     ]);
+  });
+});
+
+describe('category mapping', () => {
+  const ledger = ledgerFrom([
+    { id: 'c1', name: 'Card Deposits (Elavon)', kind: 'income' },
+    { id: 'c2', name: 'Merchant Fees', kind: 'expense' },
+    { id: 'c3', name: 'Payroll', kind: 'expense' },
+  ]);
+
+  it('keeps only pairs that point at a category on the list, using its own spelling', () => {
+    const m = resolveCategoryMap({ 'Credit Card Income': 'card deposits (elavon)', 'CC Fees': 'Nope', ' ': 'Payroll', x: 5 }, ledger);
+    expect([...m]).toEqual([['credit card income', 'Card Deposits (Elavon)']]);
+    expect(resolveCategoryMap(null, ledger).size).toBe(0);
+    expect(resolveCategoryMap(['a'], ledger).size).toBe(0);
+  });
+
+  it('maps an entry and its splits, leaving unmapped names alone', () => {
+    const map = new Map([['cc fees', 'Merchant Fees']]);
+    const [plain, split] = validateEntries([
+      e('2026-01-02', -30, 'Merchant Service', 'CC Fees'),
+      { date: '2026-01-03', amount: -40, payee: 'P', splits: [{ category: 'CC Fees', amount: -10 }, { category: 'Other', amount: -30 }] },
+    ]).entries;
+    expect(mapEntry(plain, map).category).toBe('Merchant Fees');
+    expect(mapEntry(split, map).splits.map(s => s.category)).toEqual(['Merchant Fees', 'Other']);
+    expect(mapEntry(plain, new Map())).toBe(plain);
+  });
+
+  it('suggests what the firm\'s rules call the same bank transactions, by majority', () => {
+    const rules = compileRules([
+      { pattern: 'merch dep', category_id: 'c1', category: 'x', direction: 'in' },
+      { pattern: 'merch fee', category_id: 'c2', category: 'x', direction: 'out' },
+    ], ledger);
+    const pair = (cat, payee, amount) => ({ entry: validateEntries([e('2026-09-01', amount, payee, cat)]).entries[0], txn: { payee, amount: String(amount) } });
+    const s = suggestCategoryMap([
+      pair('Credit Card Income', 'Merch Dep', 300),
+      pair('Credit Card Income', 'Merch Dep', 900),
+      pair('Credit Card Income', 'Odd Deposit', 50),       // no rule: no vote
+      pair('CC Fees', 'Merch Fee', -30),
+      pair('Payroll', 'Payroll Co', -574),                 // already on the list: nothing to suggest
+    ], rules, ledger);
+    expect([...s]).toEqual([['credit card income', 'Card Deposits (Elavon)'], ['cc fees', 'Merchant Fees']]);
   });
 });
 
@@ -360,5 +404,25 @@ describe('runImport', () => {
 
     const again = await runImport(admin, { accountId: ACCT, entries: fileEntries, fileCategories: [], dryRun: true });
     expect(again).toMatchObject({ add: 0, already_added: 1, match_categorize: 0, match_already_set: 2, new_categories: [] });
+  });
+
+  it('suggests the firm\'s own category for a Quicken one, and files under it when mapped', async () => {
+    const admin = seed();
+    admin.db.bank_categories.push({ id: 'cat-card', name: 'Card Deposits', kind: 'income' });
+    admin.db.bank_category_rules = [{ id: 'r1', pattern: 'merch dep', category: 'Card Deposits', category_id: 'cat-card', direction: 'in', priority: 100 }];
+    admin.db.bank_transactions.push({ id: 'b4', account_id: ACCT, source: 'provider', posted_at: '2026-08-20T07:00:00Z', amount: '650', category_id: null, payee: 'Merch Dep' });
+    const entries = [...fileEntries, { date: '2026-08-20', amount: 650, payee: 'Merch Dep', category: 'Card Income' }];
+
+    const dry = await runImport(admin, { accountId: ACCT, entries, fileCategories: [], dryRun: true });
+    expect(dry.quicken_categories.find(c => c.name === 'Card Income')).toMatchObject({ suggestion: 'Card Deposits', mapped_to: null, count: 3 });
+
+    const r = await runImport(admin, { accountId: ACCT, entries, fileCategories: [], categoryMap: { 'Card Income': 'Card Deposits' }, dryRun: false, userId: 'u1' });
+    // Nothing new to create: Card Income goes to Card Deposits, Payroll is on the list,
+    // and the Office entry is skipped (the bank never reported it).
+    expect(r).toMatchObject({ categories_created: 0, new_categories: [], categorized: 2 });
+    expect(r.quicken_categories.find(c => c.name === 'Card Income').mapped_to).toBe('Card Deposits');
+    expect(admin.db.bank_categories.some(c => c.name === 'Card Income')).toBe(false);
+    expect(admin.db.bank_transactions.find(t => t.source === 'import').category_id).toBe('cat-card');
+    expect(admin.db.bank_transactions.find(t => t.id === 'b4').category_id).toBe('cat-card');
   });
 });
